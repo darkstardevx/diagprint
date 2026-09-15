@@ -1,5 +1,5 @@
 use crate::{
-    render::{JsonRenderer, MarkdownRenderer, PlainRenderer, Renderer, TerminalRenderer},
+    render::{JsonRenderer, MarkdownRenderer, PlainRenderer, Renderer, TerminalRenderer, Theme},
     rotation::{RotationCadence, RotationPolicy, RotationState},
     Diagnostic, Severity,
 };
@@ -10,12 +10,14 @@ use std::{
     sync::{Arc, Mutex},
 };
 use uuid::Uuid;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Compression {
     None,
     Gzip,
     Zstd,
 }
+
 #[derive(Debug, Clone)]
 pub struct Reporter {
     application: String,
@@ -27,117 +29,152 @@ pub struct Reporter {
     lock: Arc<Mutex<()>>,
     compression: Compression,
 }
+
 impl Reporter {
     pub fn builder() -> ReporterBuilder {
         ReporterBuilder::default()
     }
+
     pub fn session_id(&self) -> Uuid {
         self.session_id
     }
-    pub fn diagnostic(&self, s: Severity, m: impl Into<String>) -> Diagnostic {
-        Diagnostic::new(self.session_id, self.application.clone(), s, m)
+
+    pub fn diagnostic(&self, severity: Severity, message: impl Into<String>) -> Diagnostic {
+        Diagnostic::new(self.session_id, self.application.clone(), severity, message)
     }
-    pub fn trace(&self, m: impl Into<String>) -> Diagnostic {
-        self.diagnostic(Severity::Trace, m)
+
+    pub fn trace(&self, message: impl Into<String>) -> Diagnostic {
+        self.diagnostic(Severity::Trace, message)
     }
-    pub fn debug(&self, m: impl Into<String>) -> Diagnostic {
-        self.diagnostic(Severity::Debug, m)
+
+    pub fn debug(&self, message: impl Into<String>) -> Diagnostic {
+        self.diagnostic(Severity::Debug, message)
     }
-    pub fn info(&self, m: impl Into<String>) -> Diagnostic {
-        self.diagnostic(Severity::Info, m)
+
+    pub fn info(&self, message: impl Into<String>) -> Diagnostic {
+        self.diagnostic(Severity::Info, message)
     }
-    pub fn warning(&self, m: impl Into<String>) -> Diagnostic {
-        self.diagnostic(Severity::Warning, m)
+
+    pub fn warning(&self, message: impl Into<String>) -> Diagnostic {
+        self.diagnostic(Severity::Warning, message)
     }
-    pub fn error(&self, m: impl Into<String>) -> Diagnostic {
-        self.diagnostic(Severity::Error, m)
+
+    pub fn error(&self, message: impl Into<String>) -> Diagnostic {
+        self.diagnostic(Severity::Error, message)
     }
-    pub fn fatal(&self, m: impl Into<String>) -> Diagnostic {
-        self.diagnostic(Severity::Fatal, m)
+
+    pub fn fatal(&self, message: impl Into<String>) -> Diagnostic {
+        self.diagnostic(Severity::Fatal, message)
     }
-    pub fn emit(&self, d: &Diagnostic) -> io::Result<bool> {
-        if d.severity < self.min_severity {
+
+    pub fn emit(&self, diagnostic: &Diagnostic) -> io::Result<bool> {
+        if diagnostic.severity < self.min_severity {
             return Ok(false);
         }
-        print!("{}", self.terminal.render(d));
+
+        print!("{}", self.terminal.render(diagnostic));
         io::stdout().flush()?;
-        if let Some(p) = &self.file {
-            self.write(p, &PlainRenderer.render(d))?
+
+        if let Some(path) = &self.file {
+            self.write(path, &PlainRenderer.render(diagnostic))?;
         }
+
         Ok(true)
     }
-    pub fn emit_json(&self, d: &Diagnostic) -> io::Result<bool> {
-        self.emit_with(d, &JsonRenderer)
+
+    pub fn emit_json(&self, diagnostic: &Diagnostic) -> io::Result<bool> {
+        self.emit_with(diagnostic, &JsonRenderer)
     }
-    pub fn emit_markdown(&self, d: &Diagnostic) -> io::Result<bool> {
-        self.emit_with(d, &MarkdownRenderer)
+
+    pub fn emit_markdown(&self, diagnostic: &Diagnostic) -> io::Result<bool> {
+        self.emit_with(diagnostic, &MarkdownRenderer)
     }
-    fn emit_with(&self, d: &Diagnostic, r: &impl Renderer) -> io::Result<bool> {
-        if d.severity < self.min_severity {
+
+    fn emit_with(&self, diagnostic: &Diagnostic, renderer: &impl Renderer) -> io::Result<bool> {
+        if diagnostic.severity < self.min_severity {
             return Ok(false);
         }
-        let t = r.render(d);
-        println!("{t}");
-        if let Some(p) = &self.file {
-            self.write(p, &t)?
+
+        let rendered = renderer.render(diagnostic);
+
+        println!("{rendered}");
+
+        if let Some(path) = &self.file {
+            self.write(path, &rendered)?;
         }
+
         Ok(true)
     }
-    fn write(&self, p: &Path, t: &str) -> io::Result<()> {
-        let _g = self
+
+    fn write(&self, path: &Path, text: &str) -> io::Result<()> {
+        let _guard = self
             .lock
             .lock()
             .map_err(|_| io::Error::other("diagprint output lock poisoned"))?;
-        if let Some(parent) = p.parent() {
+
+        if let Some(parent) = path.parent() {
             if !parent.as_os_str().is_empty() {
-                fs::create_dir_all(parent)?
+                fs::create_dir_all(parent)?;
             }
         }
-        if self.rotation.should_rotate(p, t.len() + 1)? {
-            if let Some(a) = self.rotation.rotate(p)? {
-                self.compress(&a)?
+
+        if self.rotation.should_rotate(path, text.len() + 1)? {
+            if let Some(archive) = self.rotation.rotate(path)? {
+                self.compress(&archive)?;
             }
         }
-        let mut f = OpenOptions::new().create(true).append(true).open(p)?;
-        writeln!(f, "{t}")
+
+        let mut file = OpenOptions::new().create(true).append(true).open(path)?;
+        writeln!(file, "{text}")
     }
-    fn compress(&self, p: &Path) -> io::Result<()> {
+
+    fn compress(&self, path: &Path) -> io::Result<()> {
         match self.compression {
             Compression::None => Ok(()),
-            Compression::Gzip => compress_gzip(p),
-            Compression::Zstd => compress_zstd(p),
+            Compression::Gzip => compress_gzip(path),
+            Compression::Zstd => compress_zstd(path),
         }
     }
 }
+
 #[cfg(feature = "compression")]
-fn compress_gzip(p: &Path) -> io::Result<()> {
-    use flate2::{write::GzEncoder, Compression as Gz};
-    let input = fs::read(p)?;
-    let out = fs::File::create(format!("{}.gz", p.display()))?;
-    let mut enc = GzEncoder::new(out, Gz::default());
-    enc.write_all(&input)?;
-    enc.finish()?;
-    fs::remove_file(p)
+fn compress_gzip(path: &Path) -> io::Result<()> {
+    use flate2::{write::GzEncoder, Compression as GzipCompression};
+
+    let input = fs::read(path)?;
+    let output = fs::File::create(format!("{}.gz", path.display()))?;
+
+    let mut encoder = GzEncoder::new(output, GzipCompression::default());
+    encoder.write_all(&input)?;
+    encoder.finish()?;
+
+    fs::remove_file(path)
 }
+
 #[cfg(not(feature = "compression"))]
 fn compress_gzip(_: &Path) -> io::Result<()> {
     Err(io::Error::other(
         "enable diagprint feature `compression` for gzip",
     ))
 }
+
 #[cfg(feature = "compression")]
-fn compress_zstd(p: &Path) -> io::Result<()> {
-    let input = fs::read(p)?;
-    let out = fs::File::create(format!("{}.zst", p.display()))?;
-    zstd::stream::copy_encode(&input[..], out, 3)?;
-    fs::remove_file(p)
+fn compress_zstd(path: &Path) -> io::Result<()> {
+    let input = fs::read(path)?;
+    let output = fs::File::create(format!("{}.zst", path.display()))?;
+
+    zstd::stream::copy_encode(&input[..], output, 3)?;
+
+    fs::remove_file(path)
 }
+
 #[cfg(not(feature = "compression"))]
 fn compress_zstd(_: &Path) -> io::Result<()> {
     Err(io::Error::other(
         "enable diagprint feature `compression` for zstd",
     ))
 }
+
 #[derive(Debug, Clone)]
 pub struct ReporterBuilder {
     application: String,
@@ -151,7 +188,9 @@ pub struct ReporterBuilder {
     rotation_count: usize,
     cadence: RotationCadence,
     compression: Compression,
+    theme: Theme,
 }
+
 impl Default for ReporterBuilder {
     fn default() -> Self {
         Self {
@@ -166,54 +205,72 @@ impl Default for ReporterBuilder {
             rotation_count: 5,
             cadence: RotationCadence::Never,
             compression: Compression::None,
+            theme: Theme::default(),
         }
     }
 }
+
 impl ReporterBuilder {
-    pub fn application(mut self, v: impl Into<String>) -> Self {
-        self.application = v.into();
+    pub fn application(mut self, value: impl Into<String>) -> Self {
+        self.application = value.into();
         self
     }
-    pub fn min_severity(mut self, v: Severity) -> Self {
-        self.min_severity = v;
+
+    pub fn min_severity(mut self, value: Severity) -> Self {
+        self.min_severity = value;
         self
     }
-    pub fn file(mut self, v: impl Into<PathBuf>) -> Self {
-        self.file = Some(v.into());
+
+    pub fn file(mut self, value: impl Into<PathBuf>) -> Self {
+        self.file = Some(value.into());
         self
     }
-    pub fn color(mut self, v: bool) -> Self {
-        self.color = v;
+
+    pub fn color(mut self, value: bool) -> Self {
+        self.color = value;
         self
     }
-    pub fn show_metadata(mut self, v: bool) -> Self {
-        self.show_metadata = v;
+
+    pub fn show_metadata(mut self, value: bool) -> Self {
+        self.show_metadata = value;
         self
     }
-    pub fn source_context_lines(mut self, v: usize) -> Self {
-        self.source_context_lines = v;
+
+    pub fn source_context_lines(mut self, value: usize) -> Self {
+        self.source_context_lines = value;
         self
     }
-    pub fn width(mut self, v: usize) -> Self {
-        self.width = v;
+
+    pub fn width(mut self, value: usize) -> Self {
+        self.width = value;
         self
     }
-    pub fn max_file_size(mut self, v: u64) -> Self {
-        self.max_file_size = Some(v);
+
+    pub fn max_file_size(mut self, value: u64) -> Self {
+        self.max_file_size = Some(value);
         self
     }
-    pub fn rotation_count(mut self, v: usize) -> Self {
-        self.rotation_count = v;
+
+    pub fn rotation_count(mut self, value: usize) -> Self {
+        self.rotation_count = value;
         self
     }
-    pub fn rotation_cadence(mut self, v: RotationCadence) -> Self {
-        self.cadence = v;
+
+    pub fn rotation_cadence(mut self, value: RotationCadence) -> Self {
+        self.cadence = value;
         self
     }
-    pub fn compression(mut self, v: Compression) -> Self {
-        self.compression = v;
+
+    pub fn compression(mut self, value: Compression) -> Self {
+        self.compression = value;
         self
     }
+
+    pub fn theme(mut self, value: Theme) -> Self {
+        self.theme = value;
+        self
+    }
+
     pub fn build(self) -> io::Result<Reporter> {
         Ok(Reporter {
             application: self.application,
@@ -225,6 +282,7 @@ impl ReporterBuilder {
                 show_metadata: self.show_metadata,
                 source_context_lines: self.source_context_lines,
                 width: self.width,
+                theme: self.theme,
             },
             rotation: RotationState::new(RotationPolicy {
                 max_file_size: self.max_file_size,
