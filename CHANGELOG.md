@@ -17,6 +17,10 @@ The project follows Semantic Versioning.
 
 ### Added
 
+- Dependency-free `GithubActionsRenderer` for native GitHub Actions
+  `notice`, `warning`, and `error` annotations with source ranges, command
+  escaping, diagnostic codes, help, notes, and secondary related locations.
+
 - `CapturedDiagnostic` bundles a diagnostic with its immutable source
   snapshot for stable editor/LSP storage, stale detection, and exact rendering.
 

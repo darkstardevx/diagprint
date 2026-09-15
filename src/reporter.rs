@@ -1,6 +1,9 @@
 use crate::{
     CapturedDiagnostic, Diagnostic, Severity, SourceCache, SourceProvider, SourceSnapshot,
-    render::{JsonRenderer, MarkdownRenderer, PlainRenderer, Renderer, TerminalRenderer, Theme},
+    render::{
+        GithubActionsRenderer, JsonRenderer, MarkdownRenderer, PlainRenderer, Renderer,
+        TerminalRenderer, Theme,
+    },
     rotation::{RotationCadence, RotationPolicy, RotationState},
 };
 use std::{
@@ -157,6 +160,11 @@ impl Reporter {
     /// Emits a captured diagnostic using its immutable source snapshot.
     pub fn emit_captured(&self, captured: &CapturedDiagnostic) -> io::Result<bool> {
         self.emit_with_snapshot(captured.diagnostic(), captured.sources())
+    }
+
+    /// Emits GitHub Actions workflow-command annotations.
+    pub fn emit_github_actions(&self, diagnostic: &Diagnostic) -> io::Result<bool> {
+        self.emit_with(diagnostic, &GithubActionsRenderer)
     }
 
     pub fn emit_json(&self, diagnostic: &Diagnostic) -> io::Result<bool> {
