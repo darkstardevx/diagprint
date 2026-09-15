@@ -16,6 +16,11 @@ categories = ["command-line-utilities", "development-tools::debugging"]
 # Cybercore is available from the target registry.
 publish = false
 
+exclude = [
+    "/.github/",
+    "/reports/",
+]
+
 [features]
 default = []
 
