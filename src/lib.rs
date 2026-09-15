@@ -46,6 +46,10 @@
 //! ## Virtual and cached source text
 //!
 //! [`SourceCache`] stores named source text independently from diagnostics.
+//! [`SourceProvider`] lets parsers, bridges, and other integrations populate
+//! that cache without coupling the renderer to a specific ecosystem.
+//! [`SourceProvider`] lets parsers, bridges, and other integrations populate
+//! that cache without coupling the renderer to a specific ecosystem.
 //! Terminal rendering can prefer cached source and fall back to filesystem
 //! reads when no cached source exists.
 //!
@@ -228,7 +232,7 @@ pub use rotation::{RotationCadence, RotationPolicy, RotationState};
 
 pub use severity::Severity;
 
-pub use source::SourceCache;
+pub use source::{SourceCache, SourceProvider};
 
 pub use suggestion::{
     Applicability, DocumentationLink, Edit, SuggestedCommand, Suggestion, TextRange,

@@ -20,7 +20,7 @@
 
 use crate::{
     Diagnostic, InteropDiagnostic, InteropDiagnosticSource, InteropLabel, LabelKind, Reporter,
-    Severity,
+    Severity, SourceCache, SourceProvider,
 };
 use ::annotate_snippets::{AnnotationKind, Group, Level, Snippet};
 use std::{collections::BTreeMap, error::Error, fmt, ops::Range};
@@ -363,6 +363,14 @@ impl AnnotateSnippetsBridge {
 impl InteropDiagnosticSource for AnnotateSnippetsBridge {
     fn to_interop_diagnostic(&self) -> InteropDiagnostic {
         AnnotateSnippetsBridge::to_interop_diagnostic(self)
+    }
+}
+
+impl SourceProvider for AnnotateSnippetsBridge {
+    fn populate_source_cache(&self, cache: &SourceCache) {
+        for (file, source) in &self.sources {
+            cache.insert(file.clone(), source.clone());
+        }
     }
 }
 

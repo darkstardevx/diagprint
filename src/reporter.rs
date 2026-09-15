@@ -1,5 +1,5 @@
 use crate::{
-    Diagnostic, Severity, SourceCache,
+    Diagnostic, Severity, SourceCache, SourceProvider,
     render::{JsonRenderer, MarkdownRenderer, PlainRenderer, Renderer, TerminalRenderer, Theme},
     rotation::{RotationCadence, RotationPolicy, RotationState},
 };
@@ -50,6 +50,11 @@ impl Reporter {
     /// Inserts or replaces an in-memory source available to terminal rendering.
     pub fn register_source(&self, name: impl Into<String>, source: impl Into<String>) {
         self.source_cache.insert(name, source);
+    }
+
+    /// Registers every source currently exposed by a source provider.
+    pub fn register_sources(&self, provider: &impl SourceProvider) {
+        provider.populate_source_cache(&self.source_cache);
     }
 
     /// Removes an in-memory source from this reporter.
@@ -304,6 +309,12 @@ impl ReporterBuilder {
     /// Uses an existing shared source cache.
     pub fn source_cache(mut self, value: SourceCache) -> Self {
         self.source_cache = value;
+        self
+    }
+
+    /// Adds all sources currently exposed by a source provider.
+    pub fn sources_from(self, provider: &impl SourceProvider) -> Self {
+        provider.populate_source_cache(&self.source_cache);
         self
     }
 

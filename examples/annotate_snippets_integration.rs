@@ -1,23 +1,19 @@
 use annotate_snippets::Renderer as SnippetRenderer;
-use diagprint::{
-    AnnotateSnippetsBridge, Reporter, Severity,
-    render::{Renderer, TerminalRenderer},
-};
+use diagprint::{AnnotateSnippetsBridge, Reporter, Severity};
+
+const SOURCE_NAME: &str = "memory://annotate-snippets/example.tao";
+
+const SOURCE: &str = concat!("let left = 42;\n", "let right = \"forty-two\";\n",);
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    const SOURCE: &str = include_str!("fixtures/ariadne_sample.tao");
-
-    let source_path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/examples/fixtures/ariadne_sample.tao"
-    );
-
     let bridge = AnnotateSnippetsBridge::new(Severity::Error, "Cannot combine incompatible values")
-        .source(source_path, SOURCE)
+        .source(SOURCE_NAME, SOURCE)
         .code("E-SNIPPET")
         .help("make both values use the same type")
-        .primary_label(source_path, 4..8, "numeric value originates here")
-        .secondary_label(source_path, 28..37, "string value originates here");
+        .primary_label(SOURCE_NAME, 4..8, "numeric value originates here")
+        .secondary_label(SOURCE_NAME, 28..37, "string value originates here");
+
+    println!("--- annotate-snippets ---");
 
     let groups = bridge.to_annotate_snippets_groups()?;
 
@@ -26,21 +22,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         SnippetRenderer::plain().term_width(76).render(&groups)
     );
 
+    println!();
+    println!("--- diagprint ---");
+
     let reporter = Reporter::builder()
         .application("annotate-snippets-example")
-        .build()
-        .unwrap();
+        .color(false)
+        .width(76)
+        .sources_from(&bridge)
+        .build()?;
 
     let diagnostic = bridge.to_diagprint(&reporter);
 
-    let renderer = TerminalRenderer {
-        color: false,
-        width: 76,
-        ..Default::default()
-    };
-
-    println!();
-    print!("{}", renderer.render(&diagnostic));
+    reporter.emit(&diagnostic)?;
 
     Ok(())
 }

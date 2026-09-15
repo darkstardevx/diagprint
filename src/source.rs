@@ -19,6 +19,25 @@ use std::{
 /// Thread-safe shared cache of named source texts.
 ///
 /// Cloning a `SourceCache` is cheap: clones share the same underlying cache.
+/// A type which can supply named source text to a [`SourceCache`].
+///
+/// This is intentionally independent of any particular diagnostic ecosystem.
+/// Parsers, compilers, editor integrations, and third-party bridges can expose
+/// their in-memory source text through the same interface.
+pub trait SourceProvider {
+    /// Adds this provider's current sources to `cache`.
+    ///
+    /// Existing entries with the same exact source name are replaced.
+    fn populate_source_cache(&self, cache: &SourceCache);
+
+    /// Builds a new cache containing this provider's current sources.
+    fn source_cache(&self) -> SourceCache {
+        let cache = SourceCache::new();
+        self.populate_source_cache(&cache);
+        cache
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SourceCache {
     inner: Arc<RwLock<BTreeMap<String, Arc<str>>>>,

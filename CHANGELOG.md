@@ -17,6 +17,9 @@ The project follows Semantic Versioning.
 
 ### Added
 
+- Generic `SourceProvider` handoff for integrations which own in-memory
+  sources, with Ariadne and annotate-snippets bridges implementing it.
+
 - Shared `SourceCache` for virtual and in-memory source text.
 - Terminal rendering can prefer cached source and fall back to filesystem
   source without changing the existing `Renderer` API.

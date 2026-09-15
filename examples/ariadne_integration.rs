@@ -1,47 +1,41 @@
-use diagprint::{
-    AriadneBridge, Reporter, Severity,
-    render::{Renderer, TerminalRenderer},
-};
+use diagprint::{AriadneBridge, Reporter, Severity};
+
+const SOURCE_NAME: &str = "memory://ariadne/example.tao";
+
+const SOURCE: &str = concat!("let left = 42;\n", "let right = \"forty-two\";\n",);
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    const SOURCE: &str = include_str!("fixtures/ariadne_sample.tao");
-
-    let source_path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/examples/fixtures/ariadne_sample.tao"
-    );
-
     let bridge = AriadneBridge::new(
         Severity::Error,
         "Cannot combine incompatible values",
-        source_path,
+        SOURCE_NAME,
         4..8,
     )
-    .source(source_path, SOURCE)
+    .source(SOURCE_NAME, SOURCE)
     .code("E-ARIADNE")
     .help("make both values use the same type")
-    .primary_label(source_path, 4..8, "numeric value originates here")
-    .secondary_label(source_path, 28..37, "string value originates here");
+    .primary_label(SOURCE_NAME, 4..8, "numeric value originates here")
+    .secondary_label(SOURCE_NAME, 28..37, "string value originates here");
 
-    let ariadne_report = bridge.to_ariadne_report()?;
+    println!("--- Ariadne ---");
 
-    ariadne_report.print(ariadne::sources(bridge.ariadne_sources()))?;
+    let report = bridge.to_ariadne_report()?;
+
+    report.print(ariadne::sources(bridge.ariadne_sources()))?;
+
+    println!();
+    println!("--- diagprint ---");
 
     let reporter = Reporter::builder()
         .application("ariadne-example")
-        .build()
-        .unwrap();
+        .color(false)
+        .width(76)
+        .sources_from(&bridge)
+        .build()?;
 
     let diagnostic = bridge.to_diagprint(&reporter);
 
-    let renderer = TerminalRenderer {
-        color: false,
-        width: 76,
-        ..Default::default()
-    };
-
-    println!();
-    print!("{}", renderer.render(&diagnostic));
+    reporter.emit(&diagnostic)?;
 
     Ok(())
 }

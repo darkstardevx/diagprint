@@ -17,7 +17,7 @@
 
 use crate::{
     Diagnostic, InteropDiagnostic, InteropDiagnosticSource, InteropLabel, LabelKind, Reporter,
-    Severity,
+    Severity, SourceCache, SourceProvider,
 };
 use ::ariadne::{Label as AriadneLabel, Report as AriadneReport, ReportKind};
 use std::{collections::BTreeMap, error::Error, fmt, ops::Range};
@@ -407,6 +407,14 @@ impl AriadneBridge {
 impl InteropDiagnosticSource for AriadneBridge {
     fn to_interop_diagnostic(&self) -> InteropDiagnostic {
         AriadneBridge::to_interop_diagnostic(self)
+    }
+}
+
+impl SourceProvider for AriadneBridge {
+    fn populate_source_cache(&self, cache: &SourceCache) {
+        for (file, source) in &self.sources {
+            cache.insert(file.clone(), source.clone());
+        }
     }
 }
 

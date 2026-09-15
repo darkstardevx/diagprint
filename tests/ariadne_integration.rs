@@ -2,6 +2,7 @@
 
 use diagprint::{
     AriadneBridge, AriadneBridgeError, AriadneBridgeLabel, LabelKind, Reporter, Severity,
+    render::TerminalRenderer,
 };
 
 #[test]
@@ -121,4 +122,45 @@ fn bridge_converts_directly_to_diagprint() {
     assert_eq!(diagnostic.severity, Severity::Error);
     assert_eq!(diagnostic.labels.len(), 1);
     assert_eq!(diagnostic.labels[0].kind, LabelKind::Primary);
+}
+
+#[test]
+fn bridge_sources_feed_virtual_diagprint_rendering() {
+    const SOURCE_NAME: &str = "memory://ariadne/example.tao";
+
+    let bridge = AriadneBridge::new(
+        Severity::Error,
+        "virtual Ariadne diagnostic",
+        SOURCE_NAME,
+        4..8,
+    )
+    .source(SOURCE_NAME, "let left = 42;\nlet right = \"forty-two\";\n")
+    .primary_label(SOURCE_NAME, 4..8, "numeric value")
+    .secondary_label(SOURCE_NAME, 28..37, "string value");
+
+    let reporter = Reporter::builder()
+        .application("ariadne-virtual-source-test")
+        .sources_from(&bridge)
+        .build()
+        .unwrap();
+
+    let diagnostic = bridge.to_diagprint(&reporter);
+
+    let renderer = TerminalRenderer {
+        color: false,
+        width: 72,
+        ..Default::default()
+    };
+
+    let cache = reporter.source_cache();
+
+    let rendered = renderer.render_with_sources(&diagnostic, &cache);
+
+    assert!(rendered.contains("memory://ariadne/example.tao"));
+    assert!(rendered.contains("let left = 42;"));
+    assert!(rendered.contains("let right = \"forty-two\";"));
+    assert!(rendered.contains("^^^^"));
+    assert!(rendered.contains("---------"));
+    assert!(rendered.contains("└─ numeric value"));
+    assert!(rendered.contains("└· string value"));
 }
