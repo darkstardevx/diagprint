@@ -18,6 +18,7 @@ publish = false
 
 exclude = [
     "/.github/",
+    "/.gitignore",
     "/reports/",
 ]
 
