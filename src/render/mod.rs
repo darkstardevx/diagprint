@@ -14,7 +14,7 @@ pub use sarif::SarifRenderer;
 pub use terminal::TerminalRenderer;
 pub use theme::{SeverityTheme, Style, Theme};
 
-use crate::Diagnostic;
+use crate::{Diagnostic, ExportDiagnostic};
 
 pub trait Renderer {
     fn render(&self, diagnostic: &Diagnostic) -> String;
@@ -61,7 +61,10 @@ impl ReportRenderer for MarkdownRenderer {
 
 impl ReportRenderer for JsonRenderer {
     fn render_report<'a>(&self, diagnostics: impl IntoIterator<Item = &'a Diagnostic>) -> String {
-        let diagnostics: Vec<&Diagnostic> = diagnostics.into_iter().collect();
+        let diagnostics = diagnostics
+            .into_iter()
+            .map(ExportDiagnostic::from)
+            .collect::<Vec<_>>();
 
         serde_json::to_string_pretty(&diagnostics).expect("diagnostic report serialization failed")
     }

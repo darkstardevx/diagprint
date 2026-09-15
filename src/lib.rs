@@ -179,6 +179,7 @@ mod cargo;
 mod compiler;
 mod diagnostic;
 mod documentation;
+mod export;
 mod fixer;
 mod fixplan;
 mod intelligence;
@@ -243,7 +244,13 @@ pub use interop::{
 
 pub use render::{ReportRenderer, SeverityTheme, Style, Theme};
 
-pub use redaction::{REDACTED, RedactionPolicy, Sensitive};
+pub use redaction::{
+    REDACTED, RedactionPolicy, Sensitive, is_sensitive_key, sanitize_path, sanitize_url,
+};
+
+pub use export::{
+    ExportDiagnostic, ExportDocumentationLink, ExportLabel, ExportSourceLocation, ExportSuggestion,
+};
 
 pub use report::{DiagnosticReport, ReportStatus, SeverityCounts};
 

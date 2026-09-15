@@ -1,9 +1,13 @@
 use super::Renderer;
-use crate::Diagnostic;
+use crate::{Diagnostic, ExportDiagnostic};
+
 #[derive(Debug, Default, Clone, Copy)]
 pub struct JsonRenderer;
+
 impl Renderer for JsonRenderer {
-    fn render(&self, d: &Diagnostic) -> String {
-        serde_json::to_string_pretty(d).expect("diagnostic serialization failed")
+    fn render(&self, diagnostic: &Diagnostic) -> String {
+        let export = ExportDiagnostic::from(diagnostic);
+
+        serde_json::to_string_pretty(&export).expect("diagnostic serialization failed")
     }
 }

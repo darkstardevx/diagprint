@@ -1,4 +1,4 @@
-use crate::{Diagnostic, DiagnosticReport, render::Renderer};
+use crate::{Diagnostic, DiagnosticReport, ExportDiagnostic, render::Renderer};
 use std::{
     error::Error,
     fmt,
@@ -193,7 +193,9 @@ where
     fn emit(&self, diagnostic: &Diagnostic) -> SinkResult<()> {
         let mut writer = self.writer.lock().map_err(|_| SinkError::poisoned())?;
 
-        serde_json::to_writer(&mut *writer, diagnostic)?;
+        let export = ExportDiagnostic::from(diagnostic);
+
+        serde_json::to_writer(&mut *writer, &export)?;
 
         writer.write_all(b"\n")?;
 

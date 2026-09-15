@@ -8,6 +8,8 @@ The project follows Semantic Versioning.
 
 ### Added
 
+- Added an export-safe diagnostic representation used by JSON and JSON Lines output; default external serialization omits arbitrary attribute values, remediation source text, and suggested command contents while retaining structural counts.
+- Added dependency-free path, URL, and common sensitive-key sanitization primitives for external diagnostic boundaries.
 - Added explicit OpenTelemetry attribute privacy controls with `AttributeExport::{Omit, Redact, Full}`; arbitrary structured diagnostic attributes are omitted by default.
 - Full OpenTelemetry attribute export preserves supported typed values and losslessly falls back to decimal strings for integers outside OpenTelemetry's signed 64-bit range.
 - Added typed `DiagnosticAttribute` / `DiagnosticValue` metadata so structured booleans, integers, floating-point values, and strings no longer need to be flattened into diagnostic notes.
