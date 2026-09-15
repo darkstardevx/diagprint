@@ -10,6 +10,9 @@ The project follows Semantic Versioning.
 
 - Introduced a Cargo workspace with the optional `diagprint-derive` procedural
   macro crate.
+- Expanded `diagprint-derive` with enum and variant metadata, inheritance/overrides,
+  structured suggestions, and fail-closed rejection of machine-applicable suggestions
+  that do not carry guarded edits.
 - Added derive-based typed diagnostic metadata with structured primary and
   secondary source labels.
 - Added `DiagnosticReport` and `SeverityCounts` for aggregation, filtering,
