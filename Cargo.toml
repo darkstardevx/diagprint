@@ -12,8 +12,6 @@ readme = "README.md"
 keywords = ["diagnostics", "errors", "logging", "terminal", "reporting"]
 categories = ["command-line-utilities", "development-tools::debugging"]
 
-publish = false
-
 exclude = [
     "/.github/",
     "/.gitignore",
