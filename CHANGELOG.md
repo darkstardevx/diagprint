@@ -58,6 +58,7 @@ The project follows Semantic Versioning.
 - Source revision exhaustion remains deliberately fail-stop rather than wrapping or saturating, preserving the guarantee that stale source revisions are never silently reused.
 - URL sanitization now strips credentials from scheme-relative hierarchical URLs in addition to ordinary hierarchical URLs.
 - CI now enforces strict rustdoc warnings, tracing-only feature coverage, full MSRV tests, and root feature-isolation checks.
+- Pinned `yoke-derive` to 0.8.2 on the `terminal-docs` feature path so fresh dependency resolution remains compatible with the Rust 1.85 MSRV; 0.8.3 is currently selectable by Cargo's MSRV-aware resolver but does not compile on Rust 1.85.
 
 
 ### Planned

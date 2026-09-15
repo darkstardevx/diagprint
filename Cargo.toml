@@ -37,6 +37,10 @@ terminal-docs = [
     "dep:html2text",
     "dep:scraper",
     "dep:syntect",
+
+    # MSRV guard: yoke-derive 0.8.3 is currently selected by fresh
+    # dependency resolution but does not compile on Rust 1.85.
+    "dep:yoke-derive",
 ]
 
 anyhow = [
@@ -131,6 +135,14 @@ version = "5.3"
 optional = true
 default-features = false
 features = ["default-fancy"]
+
+[dependencies.yoke-derive]
+# Keep terminal-docs compatible with diagprint's Rust 1.85 MSRV.
+# 0.8.3 currently uses syntax/API unavailable on Rust 1.85 even though
+# Cargo's MSRV-aware resolver can select that release.
+version = "=0.8.2"
+optional = true
+default-features = false
 [dev-dependencies]
 thiserror = "2"
 
