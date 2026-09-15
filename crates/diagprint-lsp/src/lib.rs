@@ -8,12 +8,13 @@
 //! separate.
 
 mod action;
+mod batch;
 mod diagnostic;
 mod document;
 mod error;
 mod position;
 
-use diagprint::{CapturedDiagnostic, Diagnostic, SourceSnapshot};
+use diagprint::{CapturedDiagnostic, Diagnostic, DiagnosticReport, SourceSnapshot};
 use lsp_types::{CodeAction, Diagnostic as LspDiagnostic, PublishDiagnosticsParams};
 
 pub use document::{DocumentMap, LspDocument};
@@ -78,6 +79,29 @@ impl LspAdapter {
             &self.documents,
             self.encoding,
         )
+    }
+
+    /// Converts a report into one publishDiagnostics payload per primary
+    /// document.
+    ///
+    /// Diagnostics targeting the same primary source are grouped together.
+    /// Output order is deterministic by diagprint source name.
+    pub fn publish_report(
+        &self,
+        report: &DiagnosticReport,
+        sources: &SourceSnapshot,
+    ) -> Result<Vec<PublishDiagnosticsParams>, LspError> {
+        batch::publish_report(report, sources, &self.documents, self.encoding)
+    }
+
+    /// Builds CodeActions for every diagnostic in a report against one
+    /// immutable source snapshot.
+    pub fn code_actions_report(
+        &self,
+        report: &DiagnosticReport,
+        sources: &SourceSnapshot,
+    ) -> Result<Vec<CodeAction>, LspError> {
+        batch::code_actions_report(report, sources, &self.documents, self.encoding)
     }
 
     pub fn code_actions(&self, captured: &CapturedDiagnostic) -> Result<Vec<CodeAction>, LspError> {

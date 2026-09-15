@@ -8,6 +8,9 @@ The project follows Semantic Versioning.
 
 ### Added
 
+- Added first-class batch/report output with deterministic report status and configurable severity-based exit decisions.
+- Added valid multi-diagnostic JSON, Markdown, GitHub Actions, and SARIF report rendering plus Reporter batch emission APIs.
+- Added grouped LSP report publishing and report-wide CodeAction generation against immutable source snapshots.
 - Added the `diagprint-lsp` companion crate with revision-aware LSP diagnostic conversion, UTF-8/UTF-16/UTF-32 position encoding, external document-version tracking, and safe versioned CodeActions.
 - LSP remediation fails closed for stale guards, missing document versions, invalid ranges, overlapping edits, placeholder/manual fixes, and suggested commands.
 - Introduced a Cargo workspace with the optional `diagprint-derive` procedural

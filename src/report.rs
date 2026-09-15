@@ -23,10 +23,36 @@ impl SeverityCounts {
     }
 }
 
+/// Result of evaluating a diagnostic report against a failure threshold.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReportStatus {
+    Success,
+    Failure,
+}
+
+impl ReportStatus {
+    /// Conventional process exit code for this report status.
+    pub const fn exit_code(self) -> u8 {
+        match self {
+            Self::Success => 0,
+            Self::Failure => 1,
+        }
+    }
+
+    pub const fn is_success(self) -> bool {
+        matches!(self, Self::Success)
+    }
+
+    pub const fn is_failure(self) -> bool {
+        matches!(self, Self::Failure)
+    }
+}
+
 /// An owned collection of structured diagnostics.
 ///
 /// `DiagnosticReport` provides common aggregation, filtering, counting, and
-/// deterministic ordering without coupling the diagnostic model to a renderer.
+/// deterministic ordering without coupling the diagnostic model to a specific
+/// output destination.
 #[derive(Debug, Clone, Default)]
 pub struct DiagnosticReport {
     diagnostics: Vec<Diagnostic>,
@@ -106,9 +132,7 @@ impl DiagnosticReport {
 
     /// Whether the report contains Error or Fatal diagnostics.
     pub fn has_errors(&self) -> bool {
-        self.diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.severity >= Severity::Error)
+        self.contains_at_least(Severity::Error)
     }
 
     /// Whether the report contains a Warning.
@@ -118,18 +142,77 @@ impl DiagnosticReport {
             .any(|diagnostic| diagnostic.severity == Severity::Warning)
     }
 
+    /// Whether at least one diagnostic meets or exceeds `minimum`.
+    pub fn contains_at_least(&self, minimum: Severity) -> bool {
+        self.diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.severity >= minimum)
+    }
+
+    /// Number of diagnostics meeting or exceeding `minimum`.
+    pub fn count_at_or_above(&self, minimum: Severity) -> usize {
+        self.diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.severity >= minimum)
+            .count()
+    }
+
+    /// Evaluates the report using Error as the default failure threshold.
+    pub fn status(&self) -> ReportStatus {
+        self.status_at(Severity::Error)
+    }
+
+    /// Evaluates the report against an explicit failure threshold.
+    ///
+    /// This supports applications where warnings should fail CI while keeping
+    /// diagprint's default behavior at Error/Fatal.
+    pub fn status_at(&self, failure_threshold: Severity) -> ReportStatus {
+        if self.contains_at_least(failure_threshold) {
+            ReportStatus::Failure
+        } else {
+            ReportStatus::Success
+        }
+    }
+
+    /// Conventional process exit code using Error as the failure threshold.
+    pub fn exit_code(&self) -> u8 {
+        self.status().exit_code()
+    }
+
+    /// Conventional process exit code for an explicit failure threshold.
+    pub fn exit_code_at(&self, failure_threshold: Severity) -> u8 {
+        self.status_at(failure_threshold).exit_code()
+    }
+
     /// Counts diagnostics by severity.
     pub fn counts(&self) -> SeverityCounts {
         let mut counts = SeverityCounts::default();
 
         for diagnostic in &self.diagnostics {
             match diagnostic.severity {
-                Severity::Trace => counts.trace += 1,
-                Severity::Debug => counts.debug += 1,
-                Severity::Info => counts.info += 1,
-                Severity::Warning => counts.warning += 1,
-                Severity::Error => counts.error += 1,
-                Severity::Fatal => counts.fatal += 1,
+                Severity::Trace => {
+                    counts.trace += 1;
+                }
+
+                Severity::Debug => {
+                    counts.debug += 1;
+                }
+
+                Severity::Info => {
+                    counts.info += 1;
+                }
+
+                Severity::Warning => {
+                    counts.warning += 1;
+                }
+
+                Severity::Error => {
+                    counts.error += 1;
+                }
+
+                Severity::Fatal => {
+                    counts.fatal += 1;
+                }
             }
         }
 
@@ -144,11 +227,19 @@ impl DiagnosticReport {
         self
     }
 
+    /// Returns an owned report filtered to diagnostics at or above `minimum`.
+    pub fn filtered_min_severity(&self, minimum: Severity) -> Self {
+        self.diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.severity >= minimum)
+            .cloned()
+            .collect()
+    }
+
     /// Sorts diagnostics into a stable, renderer-independent order.
     ///
-    /// Higher severities appear first, followed by code, message, and primary
-    /// source location. Random report IDs and timestamps are deliberately not
-    /// used as ordering keys.
+    /// Higher severities appear first, followed by code, message, and source
+    /// location. Random report IDs and timestamps are deliberately excluded.
     pub fn sort_deterministic(&mut self) -> &mut Self {
         self.diagnostics.sort_by(|left, right| {
             right

@@ -1,8 +1,9 @@
 use crate::{
-    CapturedDiagnostic, Diagnostic, Severity, SourceCache, SourceProvider, SourceSnapshot,
+    CapturedDiagnostic, Diagnostic, DiagnosticReport, Severity, SourceCache, SourceProvider,
+    SourceSnapshot,
     render::{
         GithubActionsRenderer, JsonRenderer, MarkdownRenderer, PlainRenderer, Renderer,
-        TerminalRenderer, Theme,
+        ReportRenderer, SarifRenderer, TerminalRenderer, Theme,
     },
     rotation::{RotationCadence, RotationPolicy, RotationState},
 };
@@ -162,6 +163,61 @@ impl Reporter {
         self.emit_with_snapshot(captured.diagnostic(), captured.sources())
     }
 
+    /// Emits every diagnostic in a report using the normal terminal renderer.
+    ///
+    /// Returns the number of diagnostics which passed the reporter's minimum
+    /// severity filter.
+    pub fn emit_report(&self, report: &DiagnosticReport) -> io::Result<usize> {
+        let mut emitted = 0;
+
+        for diagnostic in report {
+            if self.emit(diagnostic)? {
+                emitted += 1;
+            }
+        }
+
+        Ok(emitted)
+    }
+
+    /// Emits every diagnostic in a report against one immutable source
+    /// snapshot.
+    pub fn emit_report_with_snapshot(
+        &self,
+        report: &DiagnosticReport,
+        sources: &SourceSnapshot,
+    ) -> io::Result<usize> {
+        let mut emitted = 0;
+
+        for diagnostic in report {
+            if self.emit_with_snapshot(diagnostic, sources)? {
+                emitted += 1;
+            }
+        }
+
+        Ok(emitted)
+    }
+
+    /// Emits one valid GitHub Actions batch.
+    pub fn emit_github_actions_report(&self, report: &DiagnosticReport) -> io::Result<usize> {
+        self.emit_rendered_report(report, &GithubActionsRenderer)
+    }
+
+    /// Emits one JSON array containing every diagnostic which passes the
+    /// reporter's minimum severity filter.
+    pub fn emit_json_report(&self, report: &DiagnosticReport) -> io::Result<usize> {
+        self.emit_rendered_report(report, &JsonRenderer)
+    }
+
+    /// Emits one Markdown document containing the filtered report.
+    pub fn emit_markdown_report(&self, report: &DiagnosticReport) -> io::Result<usize> {
+        self.emit_rendered_report(report, &MarkdownRenderer)
+    }
+
+    /// Emits one complete SARIF 2.1.0 document containing the filtered report.
+    pub fn emit_sarif_report(&self, report: &DiagnosticReport) -> io::Result<usize> {
+        self.emit_rendered_report(report, &SarifRenderer)
+    }
+
     /// Emits GitHub Actions workflow-command annotations.
     pub fn emit_github_actions(&self, diagnostic: &Diagnostic) -> io::Result<bool> {
         self.emit_with(diagnostic, &GithubActionsRenderer)
@@ -173,6 +229,31 @@ impl Reporter {
 
     pub fn emit_markdown(&self, diagnostic: &Diagnostic) -> io::Result<bool> {
         self.emit_with(diagnostic, &MarkdownRenderer)
+    }
+
+    fn emit_rendered_report(
+        &self,
+        report: &DiagnosticReport,
+        renderer: &impl ReportRenderer,
+    ) -> io::Result<usize> {
+        let diagnostics = report
+            .iter()
+            .filter(|diagnostic| diagnostic.severity >= self.min_severity)
+            .collect::<Vec<_>>();
+
+        if diagnostics.is_empty() {
+            return Ok(0);
+        }
+
+        let rendered = renderer.render_report(diagnostics.iter().copied());
+
+        println!("{rendered}");
+
+        if let Some(path) = &self.file {
+            self.write(path, &rendered)?;
+        }
+
+        Ok(diagnostics.len())
     }
 
     fn emit_with(&self, diagnostic: &Diagnostic, renderer: &impl Renderer) -> io::Result<bool> {

@@ -237,11 +237,11 @@ pub use interop::{
     InteropLabel,
 };
 
-pub use render::{SeverityTheme, Style, Theme};
+pub use render::{ReportRenderer, SeverityTheme, Style, Theme};
 
 pub use redaction::{REDACTED, RedactionPolicy, Sensitive};
 
-pub use report::{DiagnosticReport, SeverityCounts};
+pub use report::{DiagnosticReport, ReportStatus, SeverityCounts};
 
 pub use result_ext::{CapturedDiagnosticResult, DiagnosticResult, ResultDiagnosticExt};
 

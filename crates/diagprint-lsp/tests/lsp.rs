@@ -288,3 +288,121 @@ fn publish_uses_external_document_version() {
 
     assert_eq!(revision.get(), 1);
 }
+
+#[test]
+fn report_publishes_once_per_primary_document() {
+    use diagprint::DiagnosticReport;
+
+    let reporter = Reporter::builder()
+        .application("batch-lsp-test")
+        .build()
+        .unwrap();
+
+    let main_revision = reporter
+        .source_cache()
+        .insert_revisioned("main.rs", "one\ntwo\n");
+
+    let other_revision = reporter
+        .source_cache()
+        .insert_revisioned("other.rs", "three\n");
+
+    let report: DiagnosticReport = [
+        reporter.error("first").label_at_revision(
+            "main.rs",
+            main_revision,
+            1,
+            Some(1),
+            Some(3),
+            Some("one"),
+        ),
+        reporter.warning("second").label_at_revision(
+            "main.rs",
+            main_revision,
+            2,
+            Some(1),
+            Some(3),
+            Some("two"),
+        ),
+        reporter.error("third").label_at_revision(
+            "other.rs",
+            other_revision,
+            1,
+            Some(1),
+            Some(5),
+            Some("three"),
+        ),
+    ]
+    .into_iter()
+    .collect();
+
+    let snapshot = reporter.source_snapshot();
+
+    let adapter = LspAdapter::utf16(documents(&[("main.rs", 11), ("other.rs", 22)]));
+
+    let published = adapter.publish_report(&report, &snapshot).unwrap();
+
+    assert_eq!(published.len(), 2);
+
+    let total: usize = published
+        .iter()
+        .map(|params| params.diagnostics.len())
+        .sum();
+
+    assert_eq!(total, 3);
+
+    let main = published
+        .iter()
+        .find(|params| params.uri == uri("main.rs"))
+        .unwrap();
+
+    assert_eq!(main.version, Some(11));
+
+    assert_eq!(main.diagnostics.len(), 2);
+}
+
+#[test]
+fn report_code_actions_are_flattened_safely() {
+    use diagprint::DiagnosticReport;
+
+    let reporter = Reporter::builder()
+        .application("batch-action-test")
+        .build()
+        .unwrap();
+
+    let revision = reporter
+        .source_cache()
+        .insert_revisioned("main.rs", "let old = 1;\n");
+
+    let report: DiagnosticReport = [
+        reporter
+            .error("replace")
+            .label_at_revision("main.rs", revision, 1, Some(5), Some(3), Some("old"))
+            .suggestion(
+                Suggestion::new("Replace old")
+                    .applicability(Applicability::MachineApplicable)
+                    .edit(Edit::replace("main.rs", TextRange::new(4, 7), "old", "new")),
+            ),
+        reporter
+            .warning("manual")
+            .label_at_revision("main.rs", revision, 1, Some(5), Some(3), Some("old"))
+            .suggestion(Suggestion::new("Review manually")),
+    ]
+    .into_iter()
+    .collect();
+
+    let snapshot = reporter.source_snapshot();
+
+    let adapter = LspAdapter::utf16(documents(&[("main.rs", 44)]));
+
+    let actions = adapter.code_actions_report(&report, &snapshot).unwrap();
+
+    assert_eq!(actions.len(), 2);
+
+    assert_eq!(actions[0].is_preferred, Some(true));
+
+    assert!(actions[0].edit.is_some());
+
+    assert!(actions[1].edit.is_none());
+
+    assert!(actions[1].disabled.is_some());
+}
