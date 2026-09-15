@@ -170,5 +170,6 @@ required-features = ["annotate-snippets"]
 [workspace]
 members = [
     "crates/diagprint-derive",
+    "crates/diagprint-lsp",
 ]
 resolver = "3"

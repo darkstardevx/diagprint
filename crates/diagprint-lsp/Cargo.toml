@@ -1,0 +1,17 @@
+[package]
+name = "diagprint-lsp"
+version = "0.7.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Language Server Protocol diagnostics and code actions for diagprint."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/darkstardevx/diagprint"
+homepage = "https://github.com/darkstardevx/diagprint"
+documentation = "https://docs.rs/diagprint-lsp"
+
+[dependencies]
+lsp-types = "0.97.0"
+
+[dependencies.diagprint]
+version = "0.7.0"
+path = "../.."
