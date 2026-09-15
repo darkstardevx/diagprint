@@ -8,6 +8,7 @@
 //! mutation:
 //!
 //! - [`Diagnostic`] describes what happened.
+//! - [`CapturedDiagnostic`] pairs a diagnostic with its immutable source snapshot.
 //! - [`Suggestion`] describes a possible resolution.
 //! - [`Fixer`] validates and applies guarded structured edits.
 //! - [`FixPlan`] coordinates transactional multi-file remediation.
@@ -171,6 +172,7 @@
 //!
 //! All optional features are disabled by default.
 
+mod captured;
 mod cargo;
 mod compiler;
 mod diagnostic;
@@ -201,6 +203,8 @@ pub mod integrations;
 pub mod docs;
 
 pub mod render;
+
+pub use captured::CapturedDiagnostic;
 
 pub use cargo::{
     CargoArtifact, CargoBuildFinished, CargoBuildScript, CargoBuildSummary,

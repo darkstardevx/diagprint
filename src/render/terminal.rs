@@ -1,6 +1,7 @@
 use super::{Renderer, Style, Theme};
 use crate::{
-    Diagnostic, LabelKind, Severity, SourceCache, SourceRevision, SourceSnapshot, Suggestion,
+    CapturedDiagnostic, Diagnostic, LabelKind, Severity, SourceCache, SourceRevision,
+    SourceSnapshot, Suggestion,
 };
 use std::{fs, sync::Arc};
 use terminal_size::{Width, terminal_size};
@@ -850,6 +851,11 @@ impl TerminalRenderer {
         sources: &SourceSnapshot,
     ) -> String {
         self.render_inner(diagnostic, Some(SourceStore::Snapshot(sources)))
+    }
+
+    /// Renders a diagnostic against the exact snapshot captured with it.
+    pub fn render_captured(&self, captured: &CapturedDiagnostic) -> String {
+        self.render_with_snapshot(captured.diagnostic(), captured.sources())
     }
 
     fn render_inner(&self, diagnostic: &Diagnostic, sources: Option<SourceStore<'_>>) -> String {

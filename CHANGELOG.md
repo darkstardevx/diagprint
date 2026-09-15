@@ -17,6 +17,9 @@ The project follows Semantic Versioning.
 
 ### Added
 
+- `CapturedDiagnostic` bundles a diagnostic with its immutable source
+  snapshot for stable editor/LSP storage, stale detection, and exact rendering.
+
 - Revision-bound diagnostic source locations with stale-source detection.
 - Terminal rendering fails closed when a diagnostic revision does not match
   the available live source, preventing misleading highlights on newer text.

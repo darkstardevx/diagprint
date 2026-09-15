@@ -196,12 +196,14 @@ impl Diagnostic {
         length: Option<usize>,
         message: Option<impl Into<String>>,
     ) -> Self {
-        self.push_label(
+        self.label_with_location(
             LabelKind::Primary,
-            file,
-            line,
-            column,
-            None,
+            SourceLocation {
+                file: file.into(),
+                line,
+                column,
+                revision: None,
+            },
             length,
             message,
         )
@@ -216,12 +218,14 @@ impl Diagnostic {
         length: Option<usize>,
         message: Option<impl Into<String>>,
     ) -> Self {
-        self.push_label(
+        self.label_with_location(
             LabelKind::Primary,
-            file,
-            line,
-            column,
-            Some(revision),
+            SourceLocation {
+                file: file.into(),
+                line,
+                column,
+                revision: Some(revision),
+            },
             length,
             message,
         )
@@ -235,12 +239,14 @@ impl Diagnostic {
         length: Option<usize>,
         message: Option<impl Into<String>>,
     ) -> Self {
-        self.push_label(
+        self.label_with_location(
             LabelKind::Secondary,
-            file,
-            line,
-            column,
-            None,
+            SourceLocation {
+                file: file.into(),
+                line,
+                column,
+                revision: None,
+            },
             length,
             message,
         )
@@ -255,12 +261,14 @@ impl Diagnostic {
         length: Option<usize>,
         message: Option<impl Into<String>>,
     ) -> Self {
-        self.push_label(
+        self.label_with_location(
             LabelKind::Secondary,
-            file,
-            line,
-            column,
-            Some(revision),
+            SourceLocation {
+                file: file.into(),
+                line,
+                column,
+                revision: Some(revision),
+            },
             length,
             message,
         )
@@ -275,42 +283,33 @@ impl Diagnostic {
         length: Option<usize>,
         message: Option<impl Into<String>>,
     ) -> Self {
-        self.push_label(kind, file, line, column, None, length, message)
+        self.label_with_location(
+            kind,
+            SourceLocation {
+                file: file.into(),
+                line,
+                column,
+                revision: None,
+            },
+            length,
+            message,
+        )
     }
 
-    pub fn label_with_kind_at_revision(
-        self,
-        kind: LabelKind,
-        file: impl Into<String>,
-        revision: SourceRevision,
-        line: u32,
-        column: Option<u32>,
-        length: Option<usize>,
-        message: Option<impl Into<String>>,
-    ) -> Self {
-        self.push_label(kind, file, line, column, Some(revision), length, message)
-    }
-
-    fn push_label(
+    /// Adds a label using a fully specified source location.
+    ///
+    /// This is the general form for callers that already have structured
+    /// location metadata, including an optional source revision.
+    pub fn label_with_location(
         mut self,
         kind: LabelKind,
-        file: impl Into<String>,
-        line: u32,
-        column: Option<u32>,
-        revision: Option<SourceRevision>,
+        location: SourceLocation,
         length: Option<usize>,
         message: Option<impl Into<String>>,
     ) -> Self {
         self.labels.push(Label {
             kind,
-
-            location: SourceLocation {
-                file: file.into(),
-                line,
-                column,
-                revision,
-            },
-
+            location,
             length,
             message: message.map(Into::into),
         });
@@ -332,10 +331,6 @@ impl Diagnostic {
         self.label_at_revision(file, revision, line, column, None, None::<String>)
     }
 
-    /// Binds unversioned labels to revisions captured by `sources`.
-    ///
-    /// Labels whose source is absent from the snapshot remain unversioned.
-    /// Existing explicit revisions are preserved.
     pub fn bind_source_revisions(mut self, sources: &SourceSnapshot) -> Self {
         for label in &mut self.labels {
             if label.location.revision.is_some() {

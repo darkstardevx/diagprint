@@ -1,5 +1,5 @@
 use crate::{
-    Diagnostic, Severity, SourceCache, SourceProvider, SourceSnapshot,
+    CapturedDiagnostic, Diagnostic, Severity, SourceCache, SourceProvider, SourceSnapshot,
     render::{JsonRenderer, MarkdownRenderer, PlainRenderer, Renderer, TerminalRenderer, Theme},
     rotation::{RotationCadence, RotationPolicy, RotationState},
 };
@@ -53,6 +53,15 @@ impl Reporter {
     /// snapshot.
     pub fn source_snapshot(&self) -> SourceSnapshot {
         self.source_cache.snapshot()
+    }
+
+    /// Captures a diagnostic together with the reporter's current source
+    /// snapshot.
+    ///
+    /// Any unversioned labels whose sources are present in the reporter cache
+    /// are bound to the revisions captured by that snapshot.
+    pub fn capture(&self, diagnostic: Diagnostic) -> CapturedDiagnostic {
+        CapturedDiagnostic::new(diagnostic, self.source_snapshot())
     }
 
     /// Inserts or replaces an in-memory source available to terminal rendering.
@@ -143,6 +152,11 @@ impl Reporter {
         }
 
         Ok(true)
+    }
+
+    /// Emits a captured diagnostic using its immutable source snapshot.
+    pub fn emit_captured(&self, captured: &CapturedDiagnostic) -> io::Result<bool> {
+        self.emit_with_snapshot(captured.diagnostic(), captured.sources())
     }
 
     pub fn emit_json(&self, diagnostic: &Diagnostic) -> io::Result<bool> {
