@@ -24,28 +24,83 @@ pub struct SarifRenderer;
 impl SarifRenderer {
     const SCHEMA: &'static str = "https://json.schemastore.org/sarif-2.1.0.json";
 
-    /// Renders multiple diagnostics into one complete SARIF document.
+    fn serialization_fallback() -> String {
+        r#"{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "diagprint"
+        }
+      },
+      "results": [
+        {
+          "level": "error",
+          "message": {
+            "text": "diagprint SARIF serialization failed"
+          }
+        }
+      ]
+    }
+  ]
+}"#
+        .to_owned()
+    }
+
+    /// Attempts to render multiple diagnostics into one complete SARIF
+    /// document.
     ///
     /// This preserves the historical path and text behavior.
+    pub fn try_render_many<'a>(
+        &self,
+        diagnostics: impl IntoIterator<Item = &'a Diagnostic>,
+    ) -> serde_json::Result<String> {
+        self.try_render_many_internal(diagnostics, None)
+    }
+
+    /// Renders multiple diagnostics into one complete SARIF document.
+    ///
+    /// Serialization failures produce a minimal valid SARIF error document
+    /// rather than panicking. Use [`SarifRenderer::try_render_many`] when the
+    /// caller needs the serialization error itself.
     pub fn render_many<'a>(&self, diagnostics: impl IntoIterator<Item = &'a Diagnostic>) -> String {
-        self.render_many_internal(diagnostics, None)
+        self.try_render_many(diagnostics)
+            .unwrap_or_else(|_| Self::serialization_fallback())
+    }
+
+    /// Attempts to render multiple diagnostics into one complete SARIF
+    /// document using an explicit external-export policy.
+    pub fn try_render_many_with_policy<'a>(
+        &self,
+        diagnostics: impl IntoIterator<Item = &'a Diagnostic>,
+        policy: &ExportPolicy,
+    ) -> serde_json::Result<String> {
+        self.try_render_many_internal(diagnostics, Some(policy))
     }
 
     /// Renders multiple diagnostics into one complete SARIF document using an
     /// explicit external-export policy.
+    ///
+    /// Serialization failures produce a minimal valid SARIF error document
+    /// rather than panicking. Use
+    /// [`SarifRenderer::try_render_many_with_policy`] when the caller needs the
+    /// serialization error itself.
     pub fn render_many_with_policy<'a>(
         &self,
         diagnostics: impl IntoIterator<Item = &'a Diagnostic>,
         policy: &ExportPolicy,
     ) -> String {
-        self.render_many_internal(diagnostics, Some(policy))
+        self.try_render_many_with_policy(diagnostics, policy)
+            .unwrap_or_else(|_| Self::serialization_fallback())
     }
 
-    fn render_many_internal<'a>(
+    fn try_render_many_internal<'a>(
         &self,
         diagnostics: impl IntoIterator<Item = &'a Diagnostic>,
         policy: Option<&ExportPolicy>,
-    ) -> String {
+    ) -> serde_json::Result<String> {
         let diagnostics: Vec<&Diagnostic> = diagnostics.into_iter().collect();
 
         let mut rule_sources: BTreeMap<String, &Diagnostic> = BTreeMap::new();
@@ -94,7 +149,7 @@ impl SarifRenderer {
             ]
         });
 
-        serde_json::to_string_pretty(&log).expect("SARIF serialization failed")
+        serde_json::to_string_pretty(&log)
     }
 
     /// Writes one complete SARIF document.
@@ -106,7 +161,11 @@ impl SarifRenderer {
         path: impl AsRef<Path>,
         diagnostics: impl IntoIterator<Item = &'a Diagnostic>,
     ) -> io::Result<()> {
-        fs::write(path, self.render_many(diagnostics))
+        let rendered = self
+            .try_render_many(diagnostics)
+            .map_err(io::Error::other)?;
+
+        fs::write(path, rendered)
     }
 
     /// Writes one complete policy-controlled SARIF document.
@@ -116,7 +175,11 @@ impl SarifRenderer {
         diagnostics: impl IntoIterator<Item = &'a Diagnostic>,
         policy: &ExportPolicy,
     ) -> io::Result<()> {
-        fs::write(path, self.render_many_with_policy(diagnostics, policy))
+        let rendered = self
+            .try_render_many_with_policy(diagnostics, policy)
+            .map_err(io::Error::other)?;
+
+        fs::write(path, rendered)
     }
 
     fn rule_id(diagnostic: &Diagnostic) -> String {
@@ -214,15 +277,15 @@ impl SarifRenderer {
     ) -> Value {
         let rule_id = Self::rule_id(diagnostic);
 
-        let rule_index = *rule_indices
-            .get(&rule_id)
-            .expect("SARIF rule index must exist");
+        let rule_index = rule_indices.get(&rule_id).copied();
 
         let mut result = Map::new();
 
         result.insert("ruleId".into(), json!(rule_id));
 
-        result.insert("ruleIndex".into(), json!(rule_index));
+        if let Some(rule_index) = rule_index {
+            result.insert("ruleIndex".into(), json!(rule_index));
+        }
 
         result.insert("level".into(), json!(Self::level(diagnostic.severity)));
 

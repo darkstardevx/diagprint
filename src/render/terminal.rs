@@ -125,7 +125,12 @@ fn truncate_visible(s: &str, max_width: usize) -> String {
     while let Some(ch) = chars.next() {
         if ch == '\x1b' && chars.peek() == Some(&'[') {
             output.push(ch);
-            output.push(chars.next().expect("ANSI sequence prefix disappeared"));
+
+            if let Some(prefix) = chars.next() {
+                output.push(prefix);
+            } else {
+                break;
+            }
 
             for ansi_ch in chars.by_ref() {
                 output.push(ansi_ch);

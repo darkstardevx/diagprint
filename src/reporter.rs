@@ -116,12 +116,20 @@ impl Reporter {
             return Ok(false);
         }
 
-        print!(
-            "{}",
-            self.terminal
-                .render_with_sources(diagnostic, &self.source_cache)
-        );
-        io::stdout().flush()?;
+        {
+            let stdout = io::stdout();
+
+            let mut stdout = stdout.lock();
+
+            write!(
+                stdout,
+                "{}",
+                self.terminal
+                    .render_with_sources(diagnostic, &self.source_cache,)
+            )?;
+
+            stdout.flush()?;
+        }
 
         if let Some(path) = &self.file {
             self.write(path, &PlainRenderer.render(diagnostic))?;
@@ -144,12 +152,19 @@ impl Reporter {
             return Ok(false);
         }
 
-        print!(
-            "{}",
-            self.terminal.render_with_snapshot(diagnostic, sources)
-        );
+        {
+            let stdout = io::stdout();
 
-        io::stdout().flush()?;
+            let mut stdout = stdout.lock();
+
+            write!(
+                stdout,
+                "{}",
+                self.terminal.render_with_snapshot(diagnostic, sources,)
+            )?;
+
+            stdout.flush()?;
+        }
 
         if let Some(path) = &self.file {
             self.write(path, &PlainRenderer.render(diagnostic))?;
@@ -247,7 +262,15 @@ impl Reporter {
 
         let rendered = renderer.render_report(diagnostics.iter().copied());
 
-        println!("{rendered}");
+        {
+            let stdout = io::stdout();
+
+            let mut stdout = stdout.lock();
+
+            writeln!(stdout, "{rendered}")?;
+
+            stdout.flush()?;
+        }
 
         if let Some(path) = &self.file {
             self.write(path, &rendered)?;
@@ -263,7 +286,15 @@ impl Reporter {
 
         let rendered = renderer.render(diagnostic);
 
-        println!("{rendered}");
+        {
+            let stdout = io::stdout();
+
+            let mut stdout = stdout.lock();
+
+            writeln!(stdout, "{rendered}")?;
+
+            stdout.flush()?;
+        }
 
         if let Some(path) = &self.file {
             self.write(path, &rendered)?;

@@ -162,9 +162,14 @@ impl SourceCacheState {
     fn next_revision(&mut self, name: &str) -> SourceRevision {
         let revision = self.revisions.entry(name.to_owned()).or_insert(0);
 
-        *revision = revision
-            .checked_add(1)
-            .expect("diagprint source revision counter overflowed u64");
+        let Some(next_revision) = revision.checked_add(1) else {
+            // Never wrap or saturate this counter: either behavior could
+            // eventually reuse a revision and make stale source snapshots
+            // appear current.
+            panic!("diagprint source revision space exhausted; refusing to reuse revisions");
+        };
+
+        *revision = next_revision;
 
         SourceRevision(*revision)
     }

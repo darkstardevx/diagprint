@@ -45,6 +45,21 @@ The project follows Semantic Versioning.
   primitives for future exporters and integrations.
 
 
+
+### Fixed
+
+- Corrected the tracing integration so structured active span hierarchy is exposed as `tracing.span_path` rather than being misrepresented as `tracing-error::SpanTrace`.
+- Removed the unused `tracing-error` feature, dependency, and `TracingErrorLayer` re-export.
+- Bounded retained tracing emission failures so a permanently failing output destination cannot cause unbounded diagnostic-layer memory growth.
+- Reserved the generated `tracing.span_path` attribute when structured span-path capture is enabled, preventing event-field collisions from overriding library-generated context.
+- Reporter stdout emission now propagates `io::Error` instead of relying on panic-prone standard printing macros.
+- JSON and SARIF renderers now expose fallible serialization entry points; the existing string-rendering APIs degrade to valid format-specific error documents instead of panicking on serialization failure.
+- Removed avoidable internal panic sites from cause-chain construction, documentation version resolution, ANSI truncation, and SARIF rule lookup.
+- Source revision exhaustion remains deliberately fail-stop rather than wrapping or saturating, preserving the guarantee that stale source revisions are never silently reused.
+- URL sanitization now strips credentials from scheme-relative hierarchical URLs in addition to ordinary hierarchical URLs.
+- CI now enforces strict rustdoc warnings, tracing-only feature coverage, full MSRV tests, and root feature-isolation checks.
+
+
 ### Planned
 
 - Nonblocking and asynchronous report output.

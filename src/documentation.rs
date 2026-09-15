@@ -268,7 +268,12 @@ impl DocumentationResolver {
             });
         }
 
-        Ok(versions.iter().next().expect("non-empty version set"))
+        versions.iter().next().map(String::as_str).ok_or_else(|| {
+            DocumentationError::AmbiguousPackage {
+                package: package.to_owned(),
+                versions: Vec::new(),
+            }
+        })
     }
 
     fn rust_docs_base(&self) -> String {

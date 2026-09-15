@@ -159,6 +159,28 @@ pub fn sanitize_url(value: &str) -> String {
         .split_once('?')
         .map_or(without_fragment, |(head, _)| head);
 
+    if let Some(rest) = without_query.strip_prefix("//") {
+        let (authority, path) = match rest.split_once('/') {
+            Some((authority, path)) => (authority, Some(path)),
+
+            None => (rest, None),
+        };
+
+        let safe_authority = authority
+            .rsplit_once('@')
+            .map_or(authority, |(_, host)| host);
+
+        return match path {
+            Some(path) => {
+                format!("//{safe_authority}/{path}")
+            }
+
+            None => {
+                format!("//{safe_authority}")
+            }
+        };
+    }
+
     let Some((scheme, rest)) = without_query.split_once("://") else {
         return without_query.to_owned();
     };
@@ -181,5 +203,42 @@ pub fn sanitize_url(value: &str) -> String {
         None => {
             format!("{scheme}://{safe_authority}")
         }
+    }
+}
+
+#[cfg(test)]
+mod sanitizer_tests {
+    use super::sanitize_url;
+
+    #[test]
+    fn sanitizer_removes_hierarchical_url_userinfo_query_and_fragment() {
+        assert_eq!(
+            sanitize_url("https://alice:secret@example.com/docs?token=abc#private"),
+            "https://example.com/docs"
+        );
+    }
+
+    #[test]
+    fn sanitizer_handles_scheme_relative_userinfo() {
+        assert_eq!(
+            sanitize_url("//alice:secret@example.com/docs?token=abc#private"),
+            "//example.com/docs"
+        );
+    }
+
+    #[test]
+    fn sanitizer_removes_query_and_fragment_from_relative_links() {
+        assert_eq!(
+            sanitize_url("/docs/page?token=secret#private"),
+            "/docs/page"
+        );
+    }
+
+    #[test]
+    fn sanitizer_preserves_safe_hierarchical_urls() {
+        assert_eq!(
+            sanitize_url("https://example.com/docs/reference"),
+            "https://example.com/docs/reference"
+        );
     }
 }

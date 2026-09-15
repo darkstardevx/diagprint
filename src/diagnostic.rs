@@ -70,12 +70,10 @@ impl Cause {
         let mut next = error.source();
 
         while let Some(error) = next {
-            tail.source = Some(Box::new(Cause::new(error.to_string())));
-
             tail = tail
                 .source
-                .as_mut()
-                .expect("cause was inserted immediately before access");
+                .insert(Box::new(Cause::new(error.to_string())))
+                .as_mut();
 
             next = error.source();
         }

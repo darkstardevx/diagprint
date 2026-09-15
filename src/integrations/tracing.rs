@@ -12,6 +12,12 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+const MAX_RETAINED_EMISSION_FAILURES: usize = 64;
+
+const OMITTED_FAILURES_MESSAGE: &str = "additional tracing emission failures omitted";
+
+const SPAN_PATH_ATTRIBUTE: &str = "tracing.span_path";
+
 /// A `tracing-subscriber` layer that converts tracing events into structured
 /// `diagprint` diagnostics.
 ///
@@ -35,8 +41,8 @@ use std::{
 ///   `tracing.span_path` diagnostic attribute.
 ///
 /// Both are derived directly from the event scope supplied by
-/// `tracing-subscriber`. This is structured span context, not a
-/// an error backtrace or external span-trace type.
+/// `tracing-subscriber`. This is structured span context, not an error
+/// backtrace or external span-trace type.
 #[derive(Debug, Clone)]
 pub struct TracingLayer {
     reporter: Reporter,
@@ -65,11 +71,13 @@ impl TracingLayer {
 
     pub fn minimum_severity(mut self, severity: Severity) -> Self {
         self.minimum_severity = severity;
+
         self
     }
 
     pub fn with_target(mut self, enabled: bool) -> Self {
         self.include_target = enabled;
+
         self
     }
 
@@ -77,6 +85,7 @@ impl TracingLayer {
     /// attributes.
     pub fn with_fields(mut self, enabled: bool) -> Self {
         self.include_fields = enabled;
+
         self
     }
 
@@ -84,22 +93,30 @@ impl TracingLayer {
     /// human-readable diagnostic note.
     pub fn with_span_context(mut self, enabled: bool) -> Self {
         self.include_span_context = enabled;
+
         self
     }
 
     /// Controls whether the active tracing span hierarchy is added as the
     /// structured `tracing.span_path` diagnostic attribute.
     ///
-    /// This records span names from the event's active
-    /// `tracing-subscriber` scope. It does not capture a
-    /// an error backtrace or external span-trace type.
+    /// Only span names are included. Span fields are not copied into this
+    /// attribute.
+    ///
+    /// This is disabled by default because span names can reveal application
+    /// structure.
+    ///
+    /// If an event supplies its own `tracing.span_path` field while this
+    /// option is enabled, the generated span path takes precedence.
     pub fn with_span_path_attribute(mut self, enabled: bool) -> Self {
         self.include_span_path_attribute = enabled;
+
         self
     }
 
     pub fn with_source_location(mut self, enabled: bool) -> Self {
         self.include_source_location = enabled;
+
         self
     }
 
@@ -130,7 +147,15 @@ impl TracingLayer {
             Err(poisoned) => poisoned.into_inner(),
         };
 
-        failures.push(error.to_string());
+        if failures.len() < MAX_RETAINED_EMISSION_FAILURES {
+            failures.push(error.to_string());
+
+            return;
+        }
+
+        if failures.len() == MAX_RETAINED_EMISSION_FAILURES {
+            failures.push(OMITTED_FAILURES_MESSAGE.to_owned());
+        }
     }
 }
 
@@ -154,9 +179,13 @@ where
             code,
             help,
             notes,
-            attributes,
+            mut attributes,
             cause,
         } = visitor;
+
+        if self.include_span_path_attribute {
+            attributes.retain(|attribute| attribute.name != SPAN_PATH_ATTRIBUTE);
+        }
 
         let message = message.unwrap_or_else(|| event.metadata().name().to_string());
 
@@ -207,7 +236,7 @@ where
 
         if self.include_span_path_attribute {
             if let Some(spans) = span_path.as_ref() {
-                diagnostic = diagnostic.attribute("tracing.span_path", spans.join(" > "));
+                diagnostic = diagnostic.attribute(SPAN_PATH_ATTRIBUTE, spans.join(" > "));
             }
         }
 
@@ -310,9 +339,13 @@ impl Visit for EventVisitor {
 fn severity_from_level(level: &Level) -> Severity {
     match *level {
         Level::ERROR => Severity::Error,
+
         Level::WARN => Severity::Warning,
+
         Level::INFO => Severity::Info,
+
         Level::DEBUG => Severity::Debug,
+
         Level::TRACE => Severity::Trace,
     }
 }
