@@ -1,5 +1,5 @@
 use crate::{
-    Diagnostic, Severity, SourceCache, SourceProvider,
+    Diagnostic, Severity, SourceCache, SourceProvider, SourceSnapshot,
     render::{JsonRenderer, MarkdownRenderer, PlainRenderer, Renderer, TerminalRenderer, Theme},
     rotation::{RotationCadence, RotationPolicy, RotationState},
 };
@@ -45,6 +45,14 @@ impl Reporter {
     /// Cloning the returned handle does not copy source text.
     pub fn source_cache(&self) -> SourceCache {
         self.source_cache.clone()
+    }
+
+    /// Captures the reporter's current in-memory sources.
+    ///
+    /// Later changes to the live source cache do not affect the returned
+    /// snapshot.
+    pub fn source_snapshot(&self) -> SourceSnapshot {
+        self.source_cache.snapshot()
     }
 
     /// Inserts or replaces an in-memory source available to terminal rendering.
@@ -100,6 +108,34 @@ impl Reporter {
             self.terminal
                 .render_with_sources(diagnostic, &self.source_cache)
         );
+        io::stdout().flush()?;
+
+        if let Some(path) = &self.file {
+            self.write(path, &PlainRenderer.render(diagnostic))?;
+        }
+
+        Ok(true)
+    }
+
+    /// Emits a diagnostic against an immutable source snapshot.
+    ///
+    /// This is useful for diagnostics created from editor buffers or other
+    /// mutable in-memory sources whose live contents may have changed since
+    /// the diagnostic was produced.
+    pub fn emit_with_snapshot(
+        &self,
+        diagnostic: &Diagnostic,
+        sources: &SourceSnapshot,
+    ) -> io::Result<bool> {
+        if diagnostic.severity < self.min_severity {
+            return Ok(false);
+        }
+
+        print!(
+            "{}",
+            self.terminal.render_with_snapshot(diagnostic, sources)
+        );
+
         io::stdout().flush()?;
 
         if let Some(path) = &self.file {

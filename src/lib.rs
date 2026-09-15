@@ -48,6 +48,8 @@
 //! [`SourceCache`] stores named source text independently from diagnostics.
 //! [`SourceProvider`] lets parsers, bridges, and other integrations populate
 //! that cache without coupling the renderer to a specific ecosystem.
+//! [`SourceSnapshot`] captures an immutable point-in-time source view so old
+//! diagnostics can render against the exact text they were created from.
 //! [`SourceProvider`] lets parsers, bridges, and other integrations populate
 //! that cache without coupling the renderer to a specific ecosystem.
 //! Terminal rendering can prefer cached source and fall back to filesystem
@@ -232,7 +234,7 @@ pub use rotation::{RotationCadence, RotationPolicy, RotationState};
 
 pub use severity::Severity;
 
-pub use source::{SourceCache, SourceProvider};
+pub use source::{SourceCache, SourceProvider, SourceSnapshot};
 
 pub use suggestion::{
     Applicability, DocumentationLink, Edit, SuggestedCommand, Suggestion, TextRange,

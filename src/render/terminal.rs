@@ -1,5 +1,5 @@
 use super::{Renderer, Style, Theme};
-use crate::{Diagnostic, LabelKind, Severity, SourceCache, Suggestion};
+use crate::{Diagnostic, LabelKind, Severity, SourceCache, SourceSnapshot, Suggestion};
 use std::{fs, sync::Arc};
 use terminal_size::{Width, terminal_size};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
@@ -50,7 +50,22 @@ impl SourceText {
     }
 }
 
-fn load_source_text(sources: Option<&SourceCache>, name: &str) -> Option<SourceText> {
+#[derive(Clone, Copy)]
+enum SourceStore<'a> {
+    Cache(&'a SourceCache),
+    Snapshot(&'a SourceSnapshot),
+}
+
+impl SourceStore<'_> {
+    fn get(self, name: &str) -> Option<Arc<str>> {
+        match self {
+            Self::Cache(cache) => cache.get(name),
+            Self::Snapshot(snapshot) => snapshot.get(name),
+        }
+    }
+}
+
+fn load_source_text(sources: Option<SourceStore<'_>>, name: &str) -> Option<SourceText> {
     if let Some(sources) = sources {
         if let Some(source) = sources.get(name) {
             return Some(SourceText::Cached(source));
@@ -503,7 +518,7 @@ impl TerminalRenderer {
         &self,
         diagnostic: &Diagnostic,
         terminal_width: usize,
-        sources: Option<&SourceCache>,
+        sources: Option<SourceStore<'_>>,
     ) -> Vec<String> {
         let mut output = Vec::new();
         let content_width = terminal_width.saturating_sub(4);
@@ -787,10 +802,22 @@ impl TerminalRenderer {
     /// is not present in the cache, rendering falls back to reading that name
     /// as a filesystem path, preserving the behavior of [`Renderer::render`].
     pub fn render_with_sources(&self, diagnostic: &Diagnostic, sources: &SourceCache) -> String {
-        self.render_inner(diagnostic, Some(sources))
+        self.render_inner(diagnostic, Some(SourceStore::Cache(sources)))
     }
 
-    fn render_inner(&self, diagnostic: &Diagnostic, sources: Option<&SourceCache>) -> String {
+    /// Renders against an immutable point-in-time source snapshot.
+    ///
+    /// Snapshot contents take precedence over filesystem contents just like
+    /// the live source cache, but cannot change after capture.
+    pub fn render_with_snapshot(
+        &self,
+        diagnostic: &Diagnostic,
+        sources: &SourceSnapshot,
+    ) -> String {
+        self.render_inner(diagnostic, Some(SourceStore::Snapshot(sources)))
+    }
+
+    fn render_inner(&self, diagnostic: &Diagnostic, sources: Option<SourceStore<'_>>) -> String {
         let width = self.effective_width();
 
         let icon = match diagnostic.severity {

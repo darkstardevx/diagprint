@@ -17,6 +17,9 @@ The project follows Semantic Versioning.
 
 ### Added
 
+- Immutable `SourceSnapshot` views for rendering diagnostics against the
+  exact in-memory source text that existed when the snapshot was captured.
+
 - Generic `SourceProvider` handoff for integrations which own in-memory
   sources, with Ariadne and annotate-snippets bridges implementing it.
 

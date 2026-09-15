@@ -38,6 +38,42 @@ pub trait SourceProvider {
     }
 }
 
+/// Immutable point-in-time view of a [`SourceCache`].
+///
+/// A snapshot keeps the source text that existed when [`SourceCache::snapshot`]
+/// was called, even if the live cache is subsequently updated, cleared, or
+/// has entries removed.
+///
+/// Source text is reference counted, so creating a snapshot does not duplicate
+/// the underlying strings.
+#[derive(Debug, Clone, Default)]
+pub struct SourceSnapshot {
+    inner: Arc<BTreeMap<String, Arc<str>>>,
+}
+
+impl SourceSnapshot {
+    /// Returns a source captured by this snapshot.
+    pub fn get(&self, name: &str) -> Option<Arc<str>> {
+        self.inner.get(name).cloned()
+    }
+
+    pub fn contains(&self, name: &str) -> bool {
+        self.inner.contains_key(name)
+    }
+
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    pub fn names(&self) -> Vec<String> {
+        self.inner.keys().cloned().collect()
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SourceCache {
     inner: Arc<RwLock<BTreeMap<String, Arc<str>>>>,
@@ -46,6 +82,16 @@ pub struct SourceCache {
 impl SourceCache {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Captures an immutable point-in-time view of the current cache.
+    ///
+    /// The source strings themselves are shared through `Arc`, so snapshotting
+    /// copies the source map but not the source text.
+    pub fn snapshot(&self) -> SourceSnapshot {
+        SourceSnapshot {
+            inner: Arc::new(self.read().clone()),
+        }
     }
 
     /// Inserts or replaces a source.
