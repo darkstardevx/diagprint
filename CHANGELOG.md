@@ -6,6 +6,15 @@ The project follows Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+
+- Distinct terminal rendering for primary and secondary source labels.
+- Plain-text source-label rendering with explicit label roles.
+- Markdown source-label rendering with explicit label roles.
+- Secondary source locations remain explicit in JSON while primary labels
+  retain the backward-compatible default representation.
+
+
 ### Planned
 
 - Nonblocking and asynchronous report output.

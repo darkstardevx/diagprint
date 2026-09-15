@@ -1,5 +1,5 @@
 use super::{Renderer, Style, Theme};
-use crate::{Diagnostic, Severity, Suggestion};
+use crate::{Diagnostic, LabelKind, Severity, Suggestion};
 use std::fs;
 use terminal_size::{Width, terminal_size};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
@@ -481,9 +481,40 @@ impl TerminalRenderer {
 
         for label in &diagnostic.labels {
             let location = &label.location;
+            let primary = label.kind == LabelKind::Primary;
+
+            let kind_name = if primary { "primary" } else { "secondary" };
+            let location_marker = if primary { "-->" } else { ":::" };
+            let target_marker = if primary { ">" } else { ":" };
+            let caret_marker = if primary { "^" } else { "-" };
+            let label_marker = if primary { "└─ " } else { "└· " };
+
+            let path_style = if primary {
+                &self.theme.source_path
+            } else {
+                &self.theme.source_gutter
+            };
+
+            let target_style = if primary {
+                &self.theme.source_target
+            } else {
+                &self.theme.source_gutter
+            };
+
+            let caret_style = if primary {
+                &self.theme.source_caret
+            } else {
+                &self.theme.source_gutter
+            };
+
+            let label_style = if primary {
+                &self.theme.source_label
+            } else {
+                &self.theme.source_gutter
+            };
 
             let location_text = format!(
-                "--> {}:{}{}",
+                "{location_marker} {kind_name} {}:{}{}",
                 location.file,
                 location.line,
                 location
@@ -492,7 +523,7 @@ impl TerminalRenderer {
                     .unwrap_or_default()
             );
 
-            output.push(self.paint(&self.theme.source_path, &location_text));
+            output.push(self.paint(path_style, &location_text));
 
             if let Ok(source) = fs::read_to_string(&location.file) {
                 let lines: Vec<_> = source.lines().collect();
@@ -516,7 +547,7 @@ impl TerminalRenderer {
                     let window = source_window(line, column, highlight_length, source_width);
 
                     let marker = if index == target {
-                        self.paint(&self.theme.source_target, ">")
+                        self.paint(target_style, target_marker)
                     } else {
                         " ".into()
                     };
@@ -541,19 +572,17 @@ impl TerminalRenderer {
                     );
 
                     let caret_indent = " ".repeat(window.caret_offset);
-                    let carets =
-                        self.paint(&self.theme.source_caret, &"^".repeat(window.caret_width));
+
+                    let carets = self.paint(caret_style, &caret_marker.repeat(window.caret_width));
 
                     output.push(format!("{annotation_gutter}{caret_indent}{carets}"));
 
                     if let Some(message) = &label.message {
-                        let plain_label_marker = "└─ ";
-                        let painted_label_marker =
-                            self.paint(&self.theme.source_label, plain_label_marker);
+                        let painted_label_marker = self.paint(label_style, label_marker);
 
                         let plain_prefix_width = visible_len(&annotation_gutter)
                             + window.caret_offset
-                            + visible_len(plain_label_marker);
+                            + visible_len(label_marker);
 
                         let available = content_width.saturating_sub(plain_prefix_width).max(1);
 
@@ -564,13 +593,13 @@ impl TerminalRenderer {
                                 output.push(format!(
                                     "{annotation_gutter}{caret_indent}{}{}",
                                     painted_label_marker,
-                                    self.paint(&self.theme.source_label, message_line)
+                                    self.paint(label_style, message_line)
                                 ));
                             } else {
                                 output.push(format!(
                                     "{}{}",
                                     " ".repeat(plain_prefix_width),
-                                    self.paint(&self.theme.source_label, message_line)
+                                    self.paint(label_style, message_line)
                                 ));
                             }
                         }

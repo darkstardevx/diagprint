@@ -3,9 +3,7 @@ name: CI
 on:
   push:
     branches:
-      - main
-      - "diagnostic-intelligence-*"
-      - "integrations-*"
+      - "**"
   pull_request:
     branches:
       - main
