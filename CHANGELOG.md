@@ -17,6 +17,10 @@ The project follows Semantic Versioning.
 
 ### Added
 
+- SARIF 2.1.0 rendering for GitHub Code Scanning and other SARIF consumers,
+  including deterministic rules, primary and related locations, exclusive
+  source ranges, severity mapping, source revisions, notes, help, and causes.
+
 - Dependency-free `GithubActionsRenderer` for native GitHub Actions
   `notice`, `warning`, and `error` annotations with source ranges, command
   escaping, diagnostic codes, help, notes, and secondary related locations.
