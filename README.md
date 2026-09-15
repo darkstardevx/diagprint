@@ -1,79 +1,98 @@
 # diagprint
 
+[![CI](https://github.com/darkstardevx/diagprint/actions/workflows/ci.yml/badge.svg)](https://github.com/darkstardevx/diagprint/actions/workflows/ci.yml)
+[![GitHub Release](https://img.shields.io/github/v/release/darkstardevx/diagprint)](https://github.com/darkstardevx/diagprint/releases)
+[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
+
 Pretty, structured diagnostics and reports for Rust applications.
 
-[![CI](https://github.com/darkstardevx/diagprint/actions/workflows/ci.yml/badge.svg)](https://github.com/darkstardevx/diagprint/actions/workflows/ci.yml)
-[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
-[![Rust](https://img.shields.io/badge/rust-2021-orange.svg)](https://www.rust-lang.org/)
+`diagprint` turns application failures into structured diagnostics that can be
+rendered for terminals, files, JSON, Markdown, or plain text.
 
-> **Current version:** `0.3.1`
+v0.4 adds **Diagnostic Intelligence**: structured suggestions, documentation
+links, guarded text edits, dry-run validation, interactive fixes, and
+documentation that can be viewed directly in the terminal with syntax
+highlighting.
 
-`diagprint` is a structured diagnostic and reporting library for Rust applications and command-line tools.
-
-It combines rich terminal diagnostics with machine-readable output, source-code context, error chains, log rotation, compression, customizable themes, and per-session diagnostic metadata.
-
-## Features
+## Highlights
 
 - Rich boxed terminal diagnostics
-- Unicode-aware display width
-- Automatic terminal-width detection
-- Line wrapping instead of blind truncation
-- Source snippets with line numbers and caret highlighting
-- Intelligent source clipping around the highlighted range
-- Target-line source gutter markers
-- Wrapped multiline source labels
-- Hierarchical error causes
-- Automatic `std::error::Error::source()` chain capture
-- Severity levels:
-  - `TRACE`
-  - `DEBUG`
-  - `INFO`
-  - `WARNING`
-  - `ERROR`
-  - `FATAL`
-- JSON output
-- Markdown output
-- Plain-text output
-- Severity filtering
-- File-based diagnostic reporting
-- Size-based log rotation
-- Hourly and daily rotation
-- Rotated-file retention
+- Unicode-aware display widths
+- Automatic terminal sizing
+- Source snippets with highlighted ranges
+- Intelligent source clipping around the actual error
+- Hierarchical error chains
+- Notes and help text
+- JSON, Markdown, plain-text, and terminal renderers
+- UUIDv7 session and report identifiers
+- File rotation and retention
 - Optional gzip and Zstandard compression
-- Thread-safe file writes
-- UUIDv7 session IDs
-- UUIDv7 report IDs
-- Application, timestamp, PID, and hostname metadata
 - Custom terminal themes
-- True-color RGB styles
-- ANSI-256 styles
-- Foreground and background colors
-- Bold, dim, italic, and underline modifiers
 - Optional Cybercore theme integration
-- Renderer regression and golden-output tests
+- Structured diagnostic suggestions
+- Documentation links
+- Machine-applicable text edits
+- Stale-edit protection
+- UTF-8 boundary validation
+- Overlapping-edit rejection
+- Dry-run fix validation
+- Optional backups
+- Interactive fix workflow
+- Optional terminal documentation viewer
+- Syntax-highlighted documentation examples
+- Remote terminal-control sanitization
+- Remote document size limits
+
+## Installation
+
+Until the crate is published to a registry, use the GitHub repository.
+
+```toml
+[dependencies]
+diagprint = {
+    git = "https://github.com/darkstardevx/diagprint.git",
+    tag = "v0.4.0"
+}
+```
+
+Enable optional features as needed:
+
+```toml
+[dependencies]
+diagprint = {
+    git = "https://github.com/darkstardevx/diagprint.git",
+    tag = "v0.4.0",
+    features = ["compression", "terminal-docs"]
+}
+```
+
+Cybercore integration is available separately:
+
+```toml
+[dependencies]
+diagprint = {
+    git = "https://github.com/darkstardevx/diagprint.git",
+    tag = "v0.4.0",
+    features = ["cybercore"]
+}
+```
 
 ## Quick Start
 
 ```rust
-use diagprint::{Reporter, RotationCadence, Severity};
+use diagprint::{Reporter, Severity};
 
 fn main() -> diagprint::Result<()> {
     let reporter = Reporter::builder()
         .application("myapp")
         .min_severity(Severity::Info)
-        .file("reports/myapp.log")
-        .max_file_size(10 * 1024 * 1024)
-        .rotation_count(5)
-        .rotation_cadence(RotationCadence::Daily)
-        .show_metadata(true)
         .build()?;
 
     let diagnostic = reporter
         .error("Network initialization failed")
         .code("NET-001")
         .cause("failed to open network interface")
-        .cause("permission denied")
-        .note("Fallback interface was not selected")
+        .note("Fallback networking is unavailable")
         .help("Check interface permissions and driver state");
 
     reporter.emit(&diagnostic)?;
@@ -84,150 +103,377 @@ fn main() -> diagprint::Result<()> {
 
 ## Source Diagnostics
 
-Attach source locations directly to a diagnostic:
+Diagnostics can point directly at source locations.
 
 ```rust
 let diagnostic = reporter
     .error("Invalid configuration value")
     .code("CFG-001")
     .label(
-        "src/config.rs",
-        42,
-        Some(18),
-        Some(8),
-        Some("invalid configuration value"),
+        "config.toml",
+        12,
+        Some(9),
+        Some(5),
+        Some("unsupported value"),
     );
 ```
 
-When the source file is available, `diagprint` displays surrounding context and follows the highlighted region even when it occurs far into a long source line.
-
-Example:
-
-```text
-│ --> src/config.rs:42:18                                      │
-│   41 │ let mode = read_mode();                               │
-│ > 42 │ …configuration.set_mode(invalid_mode);                │
-│      │                   ^^^^^^^^                             │
-│      │                   └─ invalid configuration value      │
-│   43 │ start_runtime();                                      │
-```
+The terminal renderer follows the highlighted range rather than blindly
+truncating long source lines from the beginning.
 
 ## Error Chains
 
-Existing Rust error chains can be captured through `std::error::Error`:
+`diagprint` supports hierarchical causes:
+
+```rust
+let diagnostic = reporter
+    .error("Request failed")
+    .cause("connection failed")
+    .cause("DNS lookup failed");
+```
+
+Existing `std::error::Error` chains can also be captured:
 
 ```rust
 let diagnostic = reporter
     .error("Operation failed")
-    .code("APP-001")
     .from_error(&error);
-
-reporter.emit(&diagnostic)?;
 ```
 
-`Error::source()` is followed automatically.
+## Diagnostic Intelligence
 
-## Output Formats
-
-### Terminal
+v0.4 introduces structured suggestions.
 
 ```rust
-reporter.emit(&diagnostic)?;
+use diagprint::{
+    Applicability, DocumentationLink, Edit, Suggestion, TextRange,
+};
+
+let original =
+    r#"chrono = { version = "0.4", features = ["clock"] }"#;
+
+let replacement =
+    r#"chrono = { version = "0.4", features = ["clock", "serde"] }"#;
+
+let diagnostic = reporter
+    .error("chrono::DateTime cannot be serialized")
+    .code("CARGO-001")
+    .suggestion(
+        Suggestion::new("Enable chrono's serde feature")
+            .explanation(
+                "chrono only provides serde implementations when its \
+                 `serde` feature is enabled",
+            )
+            .applicability(Applicability::MachineApplicable)
+            .documentation(
+                DocumentationLink::docs_rs(
+                    "chrono",
+                    "latest",
+                    "",
+                ),
+            )
+            .edit(Edit::replace(
+                "Cargo.toml",
+                TextRange::new(0, original.len()),
+                original,
+                replacement,
+            )),
+    );
 ```
 
-### JSON
+Terminal output includes the proposed change:
+
+```text
+SUGGESTION
+TITLE  Enable chrono's serde feature
+WHY    chrono only provides serde implementations when its `serde`
+       feature is enabled
+
+PATCH  Cargo.toml
+- chrono = { version = "0.4", features = ["clock"] }
++ chrono = { version = "0.4", features = ["clock", "serde"] }
+
+DOCS   chrono documentation
+       https://docs.rs/chrono/latest/chrono/
+
+APPLY  machine-applicable
+FIX    automatic fix available
+```
+
+## Applicability
+
+Every suggestion has an applicability level:
 
 ```rust
-reporter.emit_json(&diagnostic)?;
+pub enum Applicability {
+    MachineApplicable,
+    MaybeIncorrect,
+    HasPlaceholders,
+    Manual,
+}
 ```
 
-### Markdown
+Only `MachineApplicable` suggestions containing structured edits are eligible
+for automatic application.
+
+The classification alone is not enough. `diagprint` validates the current
+filesystem again before writing.
+
+## Validate Without Changing Files
+
+Use `Fixer::check()` as a dry-run:
 
 ```rust
-reporter.emit_markdown(&diagnostic)?;
+use diagprint::Fixer;
+
+let fixer = Fixer::new();
+
+let check = fixer.check(&diagnostic)?;
+
+println!(
+    "{} applicable suggestion(s)",
+    check.applicable_suggestions
+);
+
+for file in check.affected_files {
+    println!("would change: {}", file.display());
+}
 ```
 
-The structured diagnostic model remains independent from the renderer.
+No files are modified.
+
+## Apply Fixes
+
+```rust
+let report = Fixer::new()
+    .backups(true)
+    .apply(&diagnostic)?;
+
+println!(
+    "{} suggestion(s) applied",
+    report.applied_suggestions
+);
+```
+
+Before changing a file, `diagprint` verifies:
+
+- the edit is machine-applicable;
+- the byte range is valid;
+- edit offsets are UTF-8 boundaries;
+- edits do not overlap;
+- the current file still contains the exact expected text.
+
+If the source changed after the diagnostic was generated, the edit is rejected
+instead of guessing.
+
+## Interactive Fixes
+
+```rust
+Fixer::new()
+    .backups(true)
+    .apply_interactive(&diagnostic)?;
+```
+
+The terminal workflow exposes only actions that are actually available:
+
+```text
+FIX  Enable chrono's serde feature
+APPLICABILITY  machine-applicable
+VERIFY  current file contents match the proposed edit
+[A]pply  [S]kip  [D]ocs  [Q]uit >
+```
+
+If validation fails, `[A]pply` disappears:
+
+```text
+VERIFY  blocked: refusing stale edit in Cargo.toml ...
+[S]kip  [D]ocs  [Q]uit >
+```
+
+## Suggested Commands
+
+Suggestions may include follow-up commands:
+
+```rust
+use diagprint::SuggestedCommand;
+
+let suggestion = Suggestion::new("Enable serde")
+    .command(
+        SuggestedCommand::new("cargo check")
+            .explanation(
+                "Verify the project after applying the edit",
+            ),
+    );
+```
+
+Commands are **never executed automatically**.
+
+They are advisory information only.
+
+## Documentation Links
+
+Documentation links are structured data:
+
+```rust
+let rust = DocumentationLink::rust_error("E0277");
+
+let cargo = DocumentationLink::cargo_book(
+    "reference/features.html",
+);
+
+let chrono = DocumentationLink::docs_rs(
+    "chrono",
+    "latest",
+    "",
+);
+```
+
+Custom links are also supported:
+
+```rust
+let link = DocumentationLink::new(
+    "Project troubleshooting guide",
+    "https://example.com/docs/troubleshooting",
+);
+```
+
+## Terminal Documentation
+
+Enable:
+
+```toml
+diagprint = {
+    git = "https://github.com/darkstardevx/diagprint.git",
+    tag = "v0.4.0",
+    features = ["terminal-docs"]
+}
+```
+
+Then:
+
+```rust
+use diagprint::{
+    DocumentationLink,
+    TerminalDocViewer,
+};
+
+let link = DocumentationLink::rust_error("E0277");
+
+TerminalDocViewer::new()
+    .width(96)
+    .open_and_print(&link)?;
+```
+
+The viewer:
+
+- accepts HTTP and HTTPS documentation URLs;
+- retrieves the document synchronously;
+- limits remote document size;
+- sanitizes terminal control characters;
+- converts HTML to readable terminal text;
+- extracts code examples;
+- syntax-highlights code with 24-bit ANSI output.
+
+The default maximum remote document size is 2 MiB.
+
+Because the current viewer uses a blocking HTTP client, applications already
+inside an async runtime should call it from an appropriate blocking worker.
+
+### Demo
+
+```bash
+cargo run --features terminal-docs --example terminal_docs
+```
+
+Or:
+
+```bash
+cargo run \
+    --features terminal-docs \
+    --example terminal_docs -- \
+    https://docs.rs/chrono/latest/chrono/
+```
+
+## Intelligence Demo
+
+Preview:
+
+```bash
+cargo run --example intelligence
+```
+
+Validate without writing:
+
+```bash
+cargo run --example intelligence -- --check
+```
+
+Apply:
+
+```bash
+cargo run --example intelligence -- --apply
+```
+
+Interactive mode with terminal docs:
+
+```bash
+cargo run \
+    --features terminal-docs \
+    --example intelligence \
+    -- --interactive
+```
+
+The demo operates on:
+
+```text
+target/diagprint-demo/Cargo.toml
+```
+
+rather than your project's real manifest.
 
 ## Themes
 
-`diagprint` includes a customizable terminal theme system.
+Terminal presentation is controlled by:
 
 ```rust
-use diagprint::{Reporter, Style, Theme};
+use diagprint::{SeverityTheme, Style, Theme};
+```
 
+Create a custom theme:
+
+```rust
 let theme = Theme {
-    border: Style::rgb(0, 255, 255).dim(),
-    source_caret: Style::rgb(255, 0, 128).bold(),
-    note: Style::rgb(255, 180, 0).bold(),
-    help: Style::rgb(120, 255, 120).bold(),
+    border: Style::rgb(20, 185, 181),
+    patch_add: Style::rgb(100, 255, 100),
+    patch_remove: Style::rgb(255, 80, 100),
     ..Theme::default()
 };
-
-let reporter = Reporter::builder()
-    .application("myapp")
-    .theme(theme)
-    .build()?;
 ```
 
-### Style API
+Styles support:
 
-True-color foreground:
+- standard ANSI foregrounds;
+- ANSI-256 foregrounds and backgrounds;
+- 24-bit RGB foregrounds and backgrounds;
+- hex colors;
+- bold;
+- dim;
+- italic;
+- underline.
 
-```rust
-Style::rgb(20, 185, 181)
-```
-
-True-color background:
-
-```rust
-Style::rgb(255, 255, 255)
-    .on_rgb(14, 9, 29)
-```
-
-Hex colors:
-
-```rust
-Style::from_hex("#14B9B5")
-```
-
-ANSI-256:
-
-```rust
-Style::ansi256(51)
-```
-
-Modifiers:
-
-```rust
-Style::rgb(253, 62, 106)
-    .bold()
-    .underline()
-```
-
-Available modifiers:
-
-- `.bold()`
-- `.dim()`
-- `.italic()`
-- `.underline()`
-
-Setting:
-
-```rust
-.color(false)
-```
-
-on `ReporterBuilder` suppresses all ANSI styling regardless of theme.
+`color(false)` remains authoritative and disables ANSI styling regardless of
+the selected theme.
 
 ## Cybercore Integration
 
-Cybercore integration is optional.
+Enable:
 
-Enable it with:
-
-```bash
-cargo run --features cybercore --example cybercore
+```toml
+diagprint = {
+    git = "https://github.com/darkstardevx/diagprint.git",
+    tag = "v0.4.0",
+    features = ["cybercore"]
+}
 ```
 
 Use the active Cybercore theme:
@@ -238,232 +484,205 @@ use diagprint::Theme;
 let theme = Theme::cybercore();
 ```
 
-Use a named theme:
+Or select a named theme:
 
 ```rust
-let theme = Theme::cybercore_named("neon-night")
-    .expect("Cybercore theme exists");
+let theme = Theme::cybercore_or_default("neon-night");
 ```
 
-Safely fall back to the active theme:
+Useful helpers:
 
 ```rust
-let theme = Theme::cybercore_or_default("possibly-missing-theme");
+Theme::cybercore_theme_names();
+Theme::cybercore_active_theme_name();
+Theme::cybercore_theme_exists("neon-night");
+Theme::cybercore_named("neon-night");
 ```
 
-List available Cybercore themes:
+`diagprint` consumes Cybercore's semantic palette rather than duplicating its
+hex values.
 
-```rust
-let themes = Theme::cybercore_theme_names();
-```
-
-Check whether a theme exists:
-
-```rust
-if Theme::cybercore_theme_exists("neon-night") {
-    println!("theme available");
-}
-```
-
-Read the active theme name:
-
-```rust
-let active = Theme::cybercore_active_theme_name();
-```
-
-The Cybercore schema remains the source of truth. `diagprint` does not maintain a duplicate palette registry.
-
-### Cybercore Showcase
-
-List embedded Cybercore themes:
+### Showcase
 
 ```bash
-cargo run --features cybercore --example cybercore -- --list
+cargo run \
+    --features cybercore \
+    --example cybercore
 ```
 
-Render the active theme:
+List Cybercore themes:
 
 ```bash
-cargo run --features cybercore --example cybercore
+cargo run \
+    --features cybercore \
+    --example cybercore -- \
+    --list
 ```
 
-Render a specific theme:
+Choose one:
 
 ```bash
-cargo run --features cybercore --example cybercore -- neon-night
+cargo run \
+    --features cybercore \
+    --example cybercore -- \
+    neon-night
 ```
 
-Use Cybercore's environment override:
+## Output Formats
 
-```bash
-CYBERGRID_THEME=neon-night \
-cargo run --features cybercore --example cybercore
-```
+The same diagnostic data can be rendered as:
 
-The showcase renders every severity from `TRACE` through `FATAL`, making it useful as a quick visual palette audit.
+- terminal output;
+- plain text;
+- JSON;
+- Markdown.
 
-## Log Rotation
+This keeps diagnostic construction independent from presentation.
+
+## Rotation
+
+File reports support:
+
+- size-based rotation;
+- hourly rotation;
+- daily rotation;
+- retention cleanup.
 
 ```rust
-use diagprint::RotationCadence;
+use diagprint::{RotationCadence, RotationPolicy};
 
-let reporter = Reporter::builder()
-    .application("myapp")
-    .file("reports/myapp.log")
-    .max_file_size(10 * 1024 * 1024)
-    .rotation_count(10)
-    .rotation_cadence(RotationCadence::Daily)
-    .build()?;
+let policy = RotationPolicy {
+    cadence: RotationCadence::Daily,
+    ..Default::default()
+};
 ```
-
-Available cadences:
-
-- `RotationCadence::Never`
-- `RotationCadence::Hourly`
-- `RotationCadence::Daily`
 
 ## Compression
 
-Compression support is optional.
+Enable:
 
-Build with:
-
-```bash
-cargo build --features compression
+```toml
+features = ["compression"]
 ```
 
-Configure it with:
+Supported formats:
 
 ```rust
 use diagprint::Compression;
 
-let reporter = Reporter::builder()
-    .application("myapp")
-    .file("reports/myapp.log")
-    .compression(Compression::Zstd)
-    .build()?;
-```
-
-Available modes:
-
-```rust
-Compression::None
-Compression::Gzip
-Compression::Zstd
+// Compression::Gzip
+// Compression::Zstd
 ```
 
 ## Feature Flags
 
-### `compression`
+| Feature | Purpose |
+| --- | --- |
+| `compression` | gzip and Zstandard report compression |
+| `cybercore` | Cybercore theme-schema integration |
+| `terminal-docs` | documentation retrieval and terminal syntax highlighting |
 
-Enables:
+All optional features are disabled by default.
 
-- gzip
-- Zstandard
+## Safety Model
 
-```bash
-cargo test --features compression
-```
+`diagprint` intentionally separates presentation from mutation.
 
-### `cybercore`
+Rendering a diagnostic does not modify files.
 
-Enables Cybercore schema and theme integration.
+`Fixer` only applies structured text edits that:
 
-```bash
-cargo test --features cybercore
-```
+1. are marked `MachineApplicable`;
+2. still match the expected source content;
+3. use valid UTF-8 boundaries;
+4. do not overlap.
 
-### All Features
+Suggested shell commands are never automatically executed.
 
-```bash
-cargo test --all-features
-```
+Terminal documentation also sanitizes remote control characters before
+display and limits the amount of remote content accepted.
 
 ## Development
 
-Format:
+Default feature gate:
 
 ```bash
 cargo fmt --all -- --check
-```
-
-Check:
-
-```bash
 cargo check --all-targets
+cargo clippy --all-targets -- -D warnings
+cargo test --all-targets
+cargo test --doc
 ```
 
-Clippy:
+Full feature gate:
 
 ```bash
+cargo check --all-targets --all-features
 cargo clippy --all-targets --all-features -- -D warnings
-```
-
-Tests:
-
-```bash
 cargo test --all-targets --all-features
+cargo test --doc --all-features
 ```
 
-Run the standard example:
+Examples:
 
 ```bash
 cargo run --example basic
-```
-
-Run the error-chain example:
-
-```bash
 cargo run --example error_chain
-```
+cargo run --example intelligence
 
-Run the Cybercore showcase:
+cargo run \
+    --features cybercore \
+    --example cybercore
 
-```bash
-cargo run --features cybercore --example cybercore
+cargo run \
+    --features terminal-docs \
+    --example terminal_docs
 ```
 
 ## Project Status
 
-`diagprint` is under active development.
+### v0.4.0 — Diagnostic Intelligence
 
-Version `0.3.1` focuses on terminal rendering quality and theme infrastructure.
+v0.4 expands `diagprint` from a diagnostic presentation engine into a
+structured diagnostic assistance system.
 
-The API may continue to evolve before `1.0`.
+The guiding rule remains:
+
+> A diagnostic may explain and propose. Mutation must be explicit, structured,
+> validated, and reject uncertainty.
 
 ## Roadmap
 
-### v0.4 — Integrations
+Potential future work includes:
 
-- Dedicated `anyhow` integration
-- `thiserror` integration tests and examples
-- `tracing` integration
-- Improved `std::error::Error` adapters
-- Custom diagnostic metadata
+- `anyhow` integration;
+- expanded `thiserror` integration;
+- `tracing` integration;
+- asynchronous/nonblocking report output;
+- async terminal documentation retrieval;
+- richer unified diff rendering;
+- additional renderers;
+- additional structured fix sources.
 
-### Future
+## Registry Publication
 
-- Nonblocking output
-- Async writer backend
-- HTML renderer
-- Custom renderer registration
-- Improved rotation collision handling
-- Compressed archive retention awareness
-- Machine-readable diagnostic protocol
+Registry publication is intentionally disabled in v0.4 release preparation
+while the optional Cybercore dependency is sourced from GitHub.
+
+GitHub releases remain fully supported.
+
+Once Cybercore is available from the target registry, the publishing guard can
+be removed and the registry package verified independently.
 
 ## Repository
 
 https://github.com/darkstardevx/diagprint
 
-Bug reports, feature requests, and contributions are welcome.
-
 ## License
 
-`diagprint` is dual-licensed under either:
+Licensed under either of:
 
 - Apache License, Version 2.0
 - MIT License
 
 at your option.
-
-See `LICENSE-APACHE` and `LICENSE-MIT`.

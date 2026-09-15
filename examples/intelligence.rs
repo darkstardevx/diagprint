@@ -51,14 +51,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let fixer = Fixer::new().backups(true);
 
     match env::args().nth(1).as_deref() {
+        Some("--check") => {
+            let check = fixer.check(&diagnostic)?;
+
+            println!();
+            println!(
+                "{} machine-applicable suggestion(s) validated.",
+                check.applicable_suggestions
+            );
+
+            if check.affected_files.is_empty() {
+                println!("No files would change.");
+            } else {
+                println!("Files that would change:");
+
+                for file in check.affected_files {
+                    println!("  {}", file.display());
+                }
+            }
+
+            println!();
+            println!("No files were modified.");
+        }
+
         Some("--apply") => {
             let report = fixer.apply(&diagnostic)?;
 
             println!();
             println!("Applied {} suggestion(s).", report.applied_suggestions);
 
-            for file in report.changed_files {
-                println!("Changed: {}", file.display());
+            if report.changed_files.is_empty() {
+                println!("No files changed.");
+            } else {
+                for file in report.changed_files {
+                    println!("Changed: {}", file.display());
+                }
             }
         }
 
@@ -66,18 +93,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             fixer.apply_interactive(&diagnostic)?;
         }
 
-        _ => {
+        Some(argument) => {
+            eprintln!("Unknown argument: {argument}");
+            eprintln!();
+            print_usage();
+            std::process::exit(2);
+        }
+
+        None => {
             println!();
             println!("Preview only. No files were changed.");
             println!();
-            println!("Try:");
-            println!("  cargo run --example intelligence -- --apply");
-            println!(
-                "  cargo run --features terminal-docs \
-                 --example intelligence -- --interactive"
-            );
+            print_usage();
         }
     }
 
     Ok(())
+}
+
+fn print_usage() {
+    println!("Try:");
+    println!("  cargo run --example intelligence");
+    println!("  cargo run --example intelligence -- --check");
+    println!("  cargo run --example intelligence -- --apply");
+    println!(
+        "  cargo run --features terminal-docs \
+         --example intelligence -- --interactive"
+    );
 }

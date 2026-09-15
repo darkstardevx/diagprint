@@ -2,22 +2,24 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - "diagnostic-intelligence-*"
   pull_request:
-    branches: [main]
+    branches:
+      - main
+
+permissions:
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
 
 jobs:
-  test:
-    name: Test
+  quality:
+    name: Format and Clippy
     runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        rust:
-          - stable
 
     steps:
       - name: Checkout
@@ -28,20 +30,49 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Cache Cargo
+      - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
       - name: Check formatting
         run: cargo fmt --all -- --check
 
-      - name: Check
-        run: cargo check --all-targets
-
       - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Clippy all features
         run: cargo clippy --all-targets --all-features -- -D warnings
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check default features
+        run: cargo check --all-targets
 
       - name: Test default features
         run: cargo test --all-targets
 
+      - name: Test default rustdoc
+        run: cargo test --doc
+
+      - name: Check all features
+        run: cargo check --all-targets --all-features
+
       - name: Test all features
         run: cargo test --all-targets --all-features
+
+      - name: Test all-feature rustdoc
+        run: cargo test --doc --all-features
+
+      - name: Inspect package contents
+        run: cargo package --list
