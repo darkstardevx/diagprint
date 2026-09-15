@@ -17,6 +17,9 @@ The project follows Semantic Versioning.
 
 ### Added
 
+- Per-source `SourceRevision` tracking with immutable revision-aware
+  snapshots and stale/current detection for mutable editor buffers.
+
 - Immutable `SourceSnapshot` views for rendering diagnostics against the
   exact in-memory source text that existed when the snapshot was captured.
 

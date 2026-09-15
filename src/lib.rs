@@ -50,8 +50,8 @@
 //! that cache without coupling the renderer to a specific ecosystem.
 //! [`SourceSnapshot`] captures an immutable point-in-time source view so old
 //! diagnostics can render against the exact text they were created from.
-//! [`SourceProvider`] lets parsers, bridges, and other integrations populate
-//! that cache without coupling the renderer to a specific ecosystem.
+//! [`SourceRevision`] identifies successive versions of one named source and
+//! allows snapshots to detect whether a diagnostic-time buffer is still current.
 //! Terminal rendering can prefer cached source and fall back to filesystem
 //! reads when no cached source exists.
 //!
@@ -234,7 +234,7 @@ pub use rotation::{RotationCadence, RotationPolicy, RotationState};
 
 pub use severity::Severity;
 
-pub use source::{SourceCache, SourceProvider, SourceSnapshot};
+pub use source::{SourceCache, SourceEntry, SourceProvider, SourceRevision, SourceSnapshot};
 
 pub use suggestion::{
     Applicability, DocumentationLink, Edit, SuggestedCommand, Suggestion, TextRange,
