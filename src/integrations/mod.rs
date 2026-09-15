@@ -10,6 +10,9 @@ mod anyhow;
 #[cfg(feature = "ariadne")]
 mod ariadne;
 
+#[cfg(feature = "annotate-snippets")]
+mod annotate_snippets;
+
 #[cfg(feature = "codespan-reporting")]
 mod codespan;
 
@@ -25,6 +28,11 @@ pub use self::anyhow::AnyhowDiagnosticExt;
 #[cfg(feature = "ariadne")]
 pub use self::ariadne::{
     AriadneBridge, AriadneBridgeError, AriadneBridgeLabel, AriadneOwnedSpan, AriadneSpan,
+};
+
+#[cfg(feature = "annotate-snippets")]
+pub use self::annotate_snippets::{
+    AnnotateSnippetsBridge, AnnotateSnippetsBridgeError, AnnotateSnippetsLabel,
 };
 
 #[cfg(feature = "codespan-reporting")]

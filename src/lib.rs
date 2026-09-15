@@ -97,6 +97,9 @@
 //! Ariadne report and a diagprint [`InteropDiagnostic`] from the same source
 //! metadata without parsing rendered terminal output.
 //!
+//! The `annotate-snippets` feature provides the same dual-output model for
+//! annotate-snippets reports while validating its byte-oriented source spans.
+//!
 //! The `anyhow` feature preserves Anyhow context/source chains.
 //!
 //! The `tracing` feature turns significant tracing events into structured
@@ -136,6 +139,7 @@
 //!
 //! - `anyhow` — Anyhow context-chain integration.
 //! - `ariadne` — structured Ariadne/diagprint bridge.
+//! - `annotate-snippets` — structured annotate-snippets/diagprint bridge.
 //! - `miette` — miette diagnostic-protocol integration.
 //! - `codespan-reporting` — codespan-reporting diagnostic integration.
 //! - `tracing` — structured tracing-event integration.
@@ -167,6 +171,7 @@ mod typed;
 #[cfg(any(
     feature = "anyhow",
     feature = "ariadne",
+    feature = "annotate-snippets",
     feature = "codespan-reporting",
     feature = "miette",
     feature = "tracing"
@@ -219,6 +224,11 @@ pub use typed::{DiagnosticErrorExt, DiagnosticMetadata};
 #[cfg(feature = "ariadne")]
 pub use integrations::{
     AriadneBridge, AriadneBridgeError, AriadneBridgeLabel, AriadneOwnedSpan, AriadneSpan,
+};
+
+#[cfg(feature = "annotate-snippets")]
+pub use integrations::{
+    AnnotateSnippetsBridge, AnnotateSnippetsBridgeError, AnnotateSnippetsLabel,
 };
 
 #[cfg(feature = "anyhow")]

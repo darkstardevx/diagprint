@@ -302,13 +302,13 @@ fn validate_edits(file: &Path, content: &str, edits: &[&Edit]) -> Result<(), Fix
                     });
                 }
 
-                if let Some(expected_before) = expected_before
-                    && !content[..*offset].ends_with(expected_before)
-                {
-                    return Err(FixError::StaleInsert {
-                        file: file.to_path_buf(),
-                        expected_before: expected_before.clone(),
-                    });
+                if let Some(expected_before) = expected_before {
+                    if !content[..*offset].ends_with(expected_before) {
+                        return Err(FixError::StaleInsert {
+                            file: file.to_path_buf(),
+                            expected_before: expected_before.clone(),
+                        });
+                    }
                 }
 
                 spans.push((*offset, *offset));

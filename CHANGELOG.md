@@ -6,10 +6,21 @@ The project follows Semantic Versioning.
 
 ## [Unreleased]
 
+### Changed
+
+- Enforced the declared Rust 1.85 MSRV across all targets and optional
+  features using MSRV-aware dependency resolution.
+- Kept terminal documentation compatible with Rust 1.85 by using
+  `scraper` 0.25.x.
+- Reworked internal let-chain expressions into Rust 1.85-compatible
+  control flow without changing behavior.
+
 ### Added
 
 - Structured Ariadne bridge producing both Ariadne reports and diagprint
   interoperability diagnostics without rendered-output parsing.
+- Structured annotate-snippets bridge with validated byte spans, Unicode-safe
+  location conversion, and primary/context label preservation.
 - Distinct terminal rendering for primary and secondary source labels.
 - Plain-text source-label rendering with explicit label roles.
 - Markdown source-label rendering with explicit label roles.

@@ -130,10 +130,10 @@ impl CompilerImporter {
             diagnostic = diagnostic.note(format!("cargo package: {package_id}"));
         }
 
-        if let Some(target) = target
-            && let Some(name) = target.name
-        {
-            diagnostic = diagnostic.note(format!("cargo target: {name}"));
+        if let Some(target) = target {
+            if let Some(name) = target.name {
+                diagnostic = diagnostic.note(format!("cargo target: {name}"));
+            }
         }
 
         if let Some(manifest_path) = manifest_path {
@@ -191,18 +191,18 @@ impl CompilerImporter {
             }
         }
 
-        if let Some(code) = code
-            && is_rust_error_code(&code.code)
-        {
-            diagnostic = diagnostic.suggestion(
-                Suggestion::new(format!(
-                    "Read Rust compiler documentation for {}",
-                    code.code
-                ))
-                .explanation("The compiler supplied a documented Rust error code.")
-                .applicability(Applicability::Manual)
-                .documentation(self.documentation.rust_error(&code.code)),
-            );
+        if let Some(code) = code {
+            if is_rust_error_code(&code.code) {
+                diagnostic = diagnostic.suggestion(
+                    Suggestion::new(format!(
+                        "Read Rust compiler documentation for {}",
+                        code.code
+                    ))
+                    .explanation("The compiler supplied a documented Rust error code.")
+                    .applicability(Applicability::Manual)
+                    .documentation(self.documentation.rust_error(&code.code)),
+                );
+            }
         }
 
         diagnostic

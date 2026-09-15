@@ -514,15 +514,17 @@ impl FixPlan {
                 expected_before,
                 ..
             } = edit
-                && !expected_before
+            {
+                if !expected_before
                     .as_ref()
                     .is_some_and(|expected| !expected.is_empty())
-            {
-                return Err(FixPlanError::UnguardedInsert {
-                    file: file.clone(),
+                {
+                    return Err(FixPlanError::UnguardedInsert {
+                        file: file.clone(),
 
-                    offset: *offset,
-                });
+                        offset: *offset,
+                    });
+                }
             }
         }
 
