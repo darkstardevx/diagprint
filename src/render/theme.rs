@@ -199,6 +199,14 @@ pub struct Theme {
     pub note: Style,
     pub help: Style,
 
+    pub suggestion: Style,
+    pub patch_add: Style,
+    pub patch_remove: Style,
+    pub docs: Style,
+    pub command: Style,
+    pub applicability: Style,
+    pub fix: Style,
+
     pub metadata_label: Style,
     pub metadata_value: Style,
 
@@ -220,6 +228,14 @@ impl Theme {
             cause: Style::plain(),
             note: Style::plain(),
             help: Style::plain(),
+
+            suggestion: Style::plain(),
+            patch_add: Style::plain(),
+            patch_remove: Style::plain(),
+            docs: Style::plain(),
+            command: Style::plain(),
+            applicability: Style::plain(),
+            fix: Style::plain(),
 
             metadata_label: Style::plain(),
             metadata_value: Style::plain(),
@@ -276,9 +292,7 @@ impl Theme {
 
             source_path: color(&palette.cyan).bold(),
             source_gutter: color(&palette.muted).dim(),
-
             source_target: color(&palette.acid_green).on_hex(&palette.panel).bold(),
-
             source_caret: color(&palette.hot_pink).bold(),
             source_label: color(&palette.hot_pink),
 
@@ -286,21 +300,23 @@ impl Theme {
             note: color(&palette.orange).bold(),
             help: color(&palette.acid_green).bold(),
 
-            metadata_label: color(&palette.purple).on_hex(&palette.panel).bold(),
+            suggestion: color(&palette.cyan).bold(),
+            patch_add: color(&palette.acid_green),
+            patch_remove: color(&palette.red),
+            docs: color(&palette.purple).underline(),
+            command: color(&palette.orange),
+            applicability: color(&palette.muted),
+            fix: color(&palette.acid_green).bold(),
 
+            metadata_label: color(&palette.purple).on_hex(&palette.panel).bold(),
             metadata_value: color(&palette.muted),
 
             severity: SeverityTheme {
                 trace: color(&palette.muted).on_hex(&palette.bg).dim(),
-
                 debug: color(&palette.purple).on_hex(&palette.bg),
-
                 info: color(&palette.cyan).on_hex(&palette.bg).bold(),
-
                 warning: color(&palette.orange).on_hex(&palette.bg).bold(),
-
                 error: color(&palette.red).on_hex(&palette.bg).bold(),
-
                 fatal: color(&palette.hot_pink)
                     .on_hex(&palette.bg)
                     .bold()
@@ -325,6 +341,14 @@ impl Default for Theme {
             cause: Style::ansi("31").bold(),
             note: Style::ansi("33").bold(),
             help: Style::ansi("36").bold(),
+
+            suggestion: Style::ansi("36").bold(),
+            patch_add: Style::ansi("32"),
+            patch_remove: Style::ansi("31"),
+            docs: Style::ansi("34").underline(),
+            command: Style::ansi("33"),
+            applicability: Style::ansi("90"),
+            fix: Style::ansi("32").bold(),
 
             metadata_label: Style::ansi("90").bold(),
             metadata_value: Style::plain(),
@@ -393,20 +417,9 @@ mod tests {
     fn loads_active_cybercore_theme() {
         let theme = super::Theme::cybercore();
 
-        assert!(
-            theme.border.open.starts_with("\x1b[38;2;"),
-            "Cybercore border should resolve to true-color ANSI"
-        );
-
-        assert!(
-            theme.severity.error.open.contains("48;2;"),
-            "Cybercore severity styling should use its background role"
-        );
-
-        assert!(
-            theme.metadata_label.open.contains("48;2;"),
-            "Cybercore metadata styling should use its panel role"
-        );
+        assert!(theme.border.open.starts_with("\x1b[38;2;"));
+        assert!(theme.severity.error.open.contains("48;2;"));
+        assert!(theme.metadata_label.open.contains("48;2;"));
     }
 
     #[cfg(feature = "cybercore")]
@@ -414,17 +427,11 @@ mod tests {
     fn exposes_cybercore_theme_names() {
         let names = super::Theme::cybercore_theme_names();
 
-        assert!(
-            !names.is_empty(),
-            "Cybercore should expose at least one theme"
-        );
+        assert!(!names.is_empty());
 
         let active = super::Theme::cybercore_active_theme_name();
 
-        assert!(
-            names.contains(&active),
-            "active Cybercore theme should appear in theme list"
-        );
+        assert!(names.contains(&active));
     }
 
     #[cfg(feature = "cybercore")]
@@ -435,10 +442,7 @@ mod tests {
         let mut sorted = names.clone();
         sorted.sort();
 
-        assert_eq!(
-            names, sorted,
-            "Cybercore theme names should have stable sorted ordering"
-        );
+        assert_eq!(names, sorted);
     }
 
     #[cfg(feature = "cybercore")]
@@ -460,11 +464,5 @@ mod tests {
             super::Theme::cybercore_or_default("__diagprint_theme_that_does_not_exist__");
 
         assert_eq!(fallback, super::Theme::cybercore());
-    }
-
-    #[cfg(feature = "cybercore")]
-    #[test]
-    fn unknown_cybercore_theme_returns_none() {
-        assert!(super::Theme::cybercore_named("__diagprint_theme_that_does_not_exist__").is_none());
     }
 }

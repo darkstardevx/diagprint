@@ -1,6 +1,6 @@
 [package]
 name = "diagprint"
-version = "0.3.1"
+version = "0.4.0"
 edition = "2021"
 description = "Pretty, structured diagnostics and reports for Rust applications."
 license = "MIT OR Apache-2.0"
@@ -11,10 +11,35 @@ readme = "README.md"
 keywords = ["diagnostics", "errors", "logging", "terminal", "reporting"]
 categories = ["command-line-utilities", "development-tools::debugging"]
 
+# crates.io publishing remains intentionally disabled while the optional
+# Cybercore integration depends on a Git source. Remove this only after
+# Cybercore is available from the target registry.
+publish = false
+
+exclude = [
+    "/.github/",
+    "/.gitignore",
+    "/reports/",
+]
+
 [features]
 default = []
-compression = ["dep:flate2", "dep:zstd"]
-cybercore = ["dep:cybercore"]
+
+compression = [
+    "dep:flate2",
+    "dep:zstd",
+]
+
+cybercore = [
+    "dep:cybercore",
+]
+
+terminal-docs = [
+    "dep:reqwest",
+    "dep:html2text",
+    "dep:scraper",
+    "dep:syntect",
+]
 
 [dependencies]
 chrono = { version = "0.4", features = ["clock", "serde"] }
@@ -25,8 +50,15 @@ uuid = { version = "1", features = ["v7", "serde"] }
 unicode-width = "0.2"
 terminal_size = "0.4"
 
-flate2 = { version = "1", optional = true }
-zstd = { version = "0.13", optional = true }
+flate2 = {
+    version = "1",
+    optional = true
+}
+
+zstd = {
+    version = "0.13",
+    optional = true
+}
 
 cybercore = {
     version = "0.4.0",
@@ -34,6 +66,34 @@ cybercore = {
     optional = true
 }
 
+reqwest = {
+    version = "0.13",
+    optional = true,
+    default-features = false,
+    features = ["blocking", "rustls", "charset"]
+}
+
+html2text = {
+    version = "0.17",
+    optional = true
+}
+
+scraper = {
+    version = "0.27",
+    optional = true
+}
+
+syntect = {
+    version = "5.3",
+    optional = true,
+    default-features = false,
+    features = ["default-fancy"]
+}
+
 [[example]]
 name = "cybercore"
 required-features = ["cybercore"]
+
+[[example]]
+name = "terminal_docs"
+required-features = ["terminal-docs"]
