@@ -4,6 +4,20 @@ use serde::Serialize;
 use std::error::Error;
 use uuid::Uuid;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LabelKind {
+    #[default]
+    Primary,
+    Secondary,
+}
+
+impl LabelKind {
+    fn is_primary(&self) -> bool {
+        *self == Self::Primary
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct SourceLocation {
     pub file: String,
@@ -13,6 +27,9 @@ pub struct SourceLocation {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Label {
+    #[serde(skip_serializing_if = "LabelKind::is_primary")]
+    pub kind: LabelKind,
+
     pub location: SourceLocation,
     pub length: Option<usize>,
     pub message: Option<String>,
@@ -44,6 +61,7 @@ impl Cause {
 
         while let Some(error) = next {
             tail.source = Some(Box::new(Cause::new(error.to_string())));
+
             tail = tail
                 .source
                 .as_mut()
@@ -69,7 +87,9 @@ impl<'a> Iterator for CauseIter<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let cause = self.next?;
+
         self.next = cause.source.as_deref();
+
         Some(cause)
     }
 }
@@ -108,6 +128,7 @@ impl Diagnostic {
             timestamp: Local::now(),
             application,
             pid: std::process::id(),
+
             hostname: hostname::get()
                 .ok()
                 .and_then(|hostname| hostname.into_string().ok())
@@ -161,7 +182,30 @@ impl Diagnostic {
     }
 
     pub fn label(
+        self,
+        file: impl Into<String>,
+        line: u32,
+        column: Option<u32>,
+        length: Option<usize>,
+        message: Option<impl Into<String>>,
+    ) -> Self {
+        self.label_with_kind(LabelKind::Primary, file, line, column, length, message)
+    }
+
+    pub fn secondary_label(
+        self,
+        file: impl Into<String>,
+        line: u32,
+        column: Option<u32>,
+        length: Option<usize>,
+        message: Option<impl Into<String>>,
+    ) -> Self {
+        self.label_with_kind(LabelKind::Secondary, file, line, column, length, message)
+    }
+
+    pub fn label_with_kind(
         mut self,
+        kind: LabelKind,
         file: impl Into<String>,
         line: u32,
         column: Option<u32>,
@@ -169,11 +213,14 @@ impl Diagnostic {
         message: Option<impl Into<String>>,
     ) -> Self {
         self.labels.push(Label {
+            kind,
+
             location: SourceLocation {
                 file: file.into(),
                 line,
                 column,
             },
+
             length,
             message: message.map(Into::into),
         });

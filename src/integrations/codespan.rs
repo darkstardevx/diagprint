@@ -5,13 +5,13 @@
 //! - `Diagnostic<FileId>` owns severity, code, message, labels, and notes.
 //! - `Files` resolves a `FileId` into source names and locations.
 //!
-//! This adapter consumes both structures directly. It does not render a
-//! codespan diagnostic and then parse the resulting terminal text.
+//! This adapter resolves that ecosystem-specific structure into diagprint's
+//! dependency-free [`crate::InteropDiagnostic`] protocol.
 //!
-//! No `diagprint` suggestions, edits, or commands are fabricated from
-//! codespan diagnostics.
+//! No suggestions, edits, or commands are fabricated from codespan
+//! diagnostics.
 
-use crate::{Diagnostic, Reporter, Severity};
+use crate::{Diagnostic, InteropDiagnostic, InteropLabel, LabelKind, Reporter, Severity};
 use ::codespan_reporting::{
     diagnostic::{
         Diagnostic as CodespanDiagnostic, Label as CodespanLabel, LabelStyle,
@@ -23,39 +23,42 @@ use unicode_width::UnicodeWidthStr;
 
 /// Extension methods for `codespan-reporting` diagnostics.
 pub trait CodespanDiagnosticExt<FileId> {
-    /// Converts a codespan diagnostic using its associated source-file
-    /// database to resolve file names and byte positions.
-    ///
-    /// Labels which cannot be resolved safely are retained as diagnostic
-    /// notes instead of causing the entire conversion to fail.
-    fn to_diagprint<'a, F>(&self, reporter: &Reporter, files: &'a F) -> Diagnostic
+    /// Resolves the codespan diagnostic into diagprint's generic interop
+    /// protocol.
+    fn to_interop_diagnostic<'a, F>(&self, files: &'a F) -> InteropDiagnostic
     where
         FileId: 'a + Copy + PartialEq,
         F: Files<'a, FileId = FileId>;
-}
 
-impl<FileId> CodespanDiagnosticExt<FileId> for CodespanDiagnostic<FileId> {
+    /// Converts the diagnostic directly into diagprint.
     fn to_diagprint<'a, F>(&self, reporter: &Reporter, files: &'a F) -> Diagnostic
     where
         FileId: 'a + Copy + PartialEq,
         F: Files<'a, FileId = FileId>,
     {
-        convert_diagnostic(reporter, files, self)
+        self.to_interop_diagnostic(files).to_diagprint(reporter)
+    }
+}
+
+impl<FileId> CodespanDiagnosticExt<FileId> for CodespanDiagnostic<FileId> {
+    fn to_interop_diagnostic<'a, F>(&self, files: &'a F) -> InteropDiagnostic
+    where
+        FileId: 'a + Copy + PartialEq,
+        F: Files<'a, FileId = FileId>,
+    {
+        convert_diagnostic(files, self)
     }
 }
 
 fn convert_diagnostic<'a, F>(
-    reporter: &Reporter,
     files: &'a F,
     source: &CodespanDiagnostic<F::FileId>,
-) -> Diagnostic
+) -> InteropDiagnostic
 where
     F: Files<'a>,
 {
-    let mut diagnostic = reporter.diagnostic(
-        severity_from_codespan(source.severity),
-        source.message.clone(),
-    );
+    let mut diagnostic = InteropDiagnostic::new(source.message.clone())
+        .severity(severity_from_codespan(source.severity));
 
     if let Some(code) = &source.code {
         diagnostic = diagnostic.code(code.clone());
@@ -74,13 +77,19 @@ where
 
         match resolve_label(files, label) {
             Ok(resolved) => {
-                diagnostic = diagnostic.label(
-                    resolved.file,
-                    resolved.line,
-                    Some(resolved.column),
-                    resolved.width,
-                    resolved.message,
-                );
+                let mut interop_label =
+                    InteropLabel::new(resolved.kind, resolved.file, resolved.line)
+                        .column(resolved.column);
+
+                if let Some(width) = resolved.width {
+                    interop_label = interop_label.length(width);
+                }
+
+                if let Some(message) = resolved.message {
+                    interop_label = interop_label.message(message);
+                }
+
+                diagnostic = diagnostic.label(interop_label);
             }
 
             Err(reason) => {
@@ -90,9 +99,8 @@ where
     }
 
     /*
-     * diagprint's current core Label type does not distinguish primary and
-     * secondary source labels. Preserve that information explicitly rather
-     * than silently discarding it.
+     * Retain the compatibility note from the original codespan adapter while
+     * also preserving secondary-ness structurally through LabelKind.
      */
     if secondary_labels > 0 {
         diagnostic = diagnostic.note(format!(
@@ -105,9 +113,12 @@ where
 
 #[derive(Debug)]
 struct ResolvedLabel {
+    kind: LabelKind,
+
     file: String,
     line: u32,
     column: u32,
+
     width: Option<usize>,
     message: Option<String>,
 }
@@ -176,7 +187,15 @@ where
 
     let message = (!label.message.is_empty()).then(|| label.message.clone());
 
+    let kind = match label.style {
+        LabelStyle::Primary => LabelKind::Primary,
+
+        LabelStyle::Secondary => LabelKind::Secondary,
+    };
+
     Ok(ResolvedLabel {
+        kind,
+
         file: name.to_string(),
 
         line: saturating_u32(line_number),

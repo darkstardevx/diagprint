@@ -28,28 +28,9 @@ const MAX_RELATED_DEPTH: usize = 64;
 
 /// A recursively preserved miette diagnostic plus its related diagnostics.
 ///
-/// `diagprint::Diagnostic` intentionally remains a single diagnostic object.
-/// Miette's separate `related()` relationship is therefore represented by
-/// this adapter-level tree instead of being flattened into notes.
-#[derive(Debug, Clone)]
-pub struct MietteDiagnosticTree {
-    pub diagnostic: Diagnostic,
-    pub related: Vec<MietteDiagnosticTree>,
-}
-
-impl MietteDiagnosticTree {
-    pub fn related_count(&self) -> usize {
-        self.related.len()
-    }
-
-    pub fn total_diagnostics(&self) -> usize {
-        1 + self
-            .related
-            .iter()
-            .map(Self::total_diagnostics)
-            .sum::<usize>()
-    }
-}
+/// This remains as a compatibility alias while the actual tree representation
+/// now lives in diagprint's core interoperability layer.
+pub type MietteDiagnosticTree = crate::DiagnosticTree;
 
 /// Extension methods for types implementing [`miette::Diagnostic`].
 pub trait MietteDiagnosticExt: MietteDiagnostic {

@@ -11,6 +11,7 @@
 //! - [`Suggestion`] describes a possible resolution.
 //! - [`Fixer`] validates and applies guarded structured edits.
 //! - [`FixPlan`] coordinates transactional multi-file remediation.
+//! - [`InteropDiagnostic`] is the dependency-free interoperability boundary.
 //! - [`DocumentationResolver`] resolves documentation without guessing package
 //!   versions.
 //! - [`DiagnosticMetadata`] lets typed errors supply semantic metadata.
@@ -41,6 +42,29 @@
 //!
 //! Verification is declarative and does not execute shell commands.
 //!
+//! ## Generic interoperability
+//!
+//! [`InteropDiagnostic`] is a dependency-free, owned diagnostic protocol for
+//! compilers, linters, parsers, language tools, and third-party adapters.
+//!
+//! It preserves:
+//!
+//! - severity;
+//! - diagnostic code;
+//! - message and help;
+//! - notes;
+//! - primary and secondary source labels;
+//! - cause chains;
+//! - documentation links;
+//! - related diagnostics.
+//!
+//! Custom producers can implement [`InteropDiagnosticSource`] and gain direct
+//! conversion through [`InteropDiagnosticSourceExt`].
+//!
+//! Automatic edits and executable commands are deliberately excluded from the
+//! generic protocol. Remediation requires stronger ecosystem-specific safety
+//! guarantees.
+//!
 //! ## Cargo intelligence
 //!
 //! [`CargoWorkspace`] consumes `cargo metadata --format-version=1` output and
@@ -63,30 +87,19 @@
 //!
 //! ## Ecosystem interoperability
 //!
-//! Optional adapters allow existing Rust diagnostic ecosystems to feed
-//! structured data into `diagprint`.
+//! The `miette` feature consumes miette's structured diagnostic protocol,
+//! including source labels, causes, and related diagnostics.
 //!
-//! The `miette` feature consumes `miette::Diagnostic` metadata directly,
-//! including severity, code, help, documentation URLs, source labels,
-//! diagnostic/source chains, and related diagnostics.
+//! The `codespan-reporting` feature resolves codespan's file IDs and byte
+//! ranges into [`InteropDiagnostic`] before conversion to diagprint.
 //!
-//! Miette's `related()` relationship is preserved by
-//! [`MietteDiagnosticTree`] rather than flattened into strings.
+//! The `anyhow` feature preserves Anyhow context/source chains.
 //!
-//! The `codespan-reporting` feature consumes
-//! `codespan_reporting::diagnostic::Diagnostic` together with the producer's
-//! `codespan_reporting::files::Files` source database.
+//! The `tracing` feature turns significant tracing events into structured
+//! diagnostics.
 //!
-//! It preserves severity, diagnostic code, message, source positions,
-//! label messages, and notes without invoking codespan's terminal renderer.
-//!
-//! Neither adapter manufactures machine-applicable fixes.
-//!
-//! The `anyhow` feature preserves Anyhow context/source chains and enriches
-//! recognized standard-library failures.
-//!
-//! The `tracing` feature provides a composable tracing-subscriber layer that
-//! turns significant runtime events into structured diagnostics.
+//! External adapters never need to parse another library's pretty terminal
+//! rendering.
 //!
 //! ## Compiler diagnostics
 //!
@@ -126,8 +139,8 @@
 //! - `terminal-docs` — terminal documentation retrieval and syntax
 //!   highlighting.
 //!
-//! Typed errors, compiler/Cargo ingestion, documentation resolution, and
-//! `FixPlan` are core features.
+//! Generic interoperability, typed errors, compiler/Cargo ingestion,
+//! documentation resolution, and `FixPlan` are core features.
 //!
 //! All optional features are disabled by default.
 
@@ -138,6 +151,7 @@ mod documentation;
 mod fixer;
 mod fixplan;
 mod intelligence;
+pub mod interop;
 mod remediation;
 mod reporter;
 mod rotation;
@@ -167,7 +181,7 @@ pub use cargo::{
 
 pub use compiler::{CompilerImportError, CompilerImporter};
 
-pub use diagnostic::{Cause, Diagnostic, Label, SourceLocation};
+pub use diagnostic::{Cause, Diagnostic, Label, LabelKind, SourceLocation};
 
 pub use documentation::{DocumentationError, DocumentationResolver};
 
@@ -175,6 +189,11 @@ pub use fixer::{FixCheck, FixError, FixPreview, FixReport, Fixer, RollbackFailur
 
 pub use fixplan::{
     FileCheck, FileCheckFailure, FixPlan, FixPlanCheck, FixPlanError, FixPlanPreview, FixPlanReport,
+};
+
+pub use interop::{
+    DiagnosticTree, InteropDiagnostic, InteropDiagnosticSource, InteropDiagnosticSourceExt,
+    InteropLabel,
 };
 
 pub use render::{SeverityTheme, Style, Theme};
