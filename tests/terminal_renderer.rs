@@ -44,9 +44,8 @@ impl Drop for TempSource {
 fn renderer(width: usize) -> TerminalRenderer {
     TerminalRenderer {
         color: false,
-        show_metadata: false,
-        source_context_lines: 1,
         width,
+        ..Default::default()
     }
 }
 
@@ -281,5 +280,81 @@ fn long_unbroken_word_wraps_instead_of_disappearing() {
     assert_eq!(
         reconstructed, token,
         "long unbroken token should survive wrapping"
+    );
+}
+
+#[test]
+fn custom_theme_emits_ansi_when_color_is_enabled() {
+    use diagprint::{SeverityTheme, Style, Theme};
+
+    let reporter = Reporter::builder()
+        .application("theme-test")
+        .build()
+        .unwrap();
+
+    let diagnostic = reporter.error("themed diagnostic");
+
+    let theme = Theme {
+        border: Style::rgb(0, 255, 255),
+        severity: SeverityTheme {
+            error: Style::rgb(255, 0, 128),
+            ..SeverityTheme::minimal()
+        },
+        ..Theme::minimal()
+    };
+
+    let renderer = TerminalRenderer {
+        width: 52,
+        color: true,
+        theme,
+        ..Default::default()
+    };
+
+    let rendered = renderer.render(&diagnostic);
+
+    assert!(
+        rendered.contains("\x1b[38;2;0;255;255m"),
+        "custom border RGB color was not rendered"
+    );
+
+    assert!(
+        rendered.contains("\x1b[38;2;255;0;128m"),
+        "custom error RGB color was not rendered"
+    );
+}
+
+#[test]
+fn color_false_suppresses_all_theme_ansi() {
+    use diagprint::{Style, Theme};
+
+    let reporter = Reporter::builder()
+        .application("theme-test")
+        .build()
+        .unwrap();
+
+    let diagnostic = reporter
+        .error("themed diagnostic")
+        .note("important note")
+        .help("helpful advice");
+
+    let theme = Theme {
+        border: Style::rgb(0, 255, 255),
+        note: Style::rgb(255, 255, 0),
+        help: Style::rgb(0, 255, 128),
+        ..Theme::default()
+    };
+
+    let renderer = TerminalRenderer {
+        width: 52,
+        color: false,
+        theme,
+        ..Default::default()
+    };
+
+    let rendered = renderer.render(&diagnostic);
+
+    assert!(
+        !rendered.contains("\x1b["),
+        "color(false) must suppress every ANSI escape sequence"
     );
 }

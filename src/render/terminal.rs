@@ -1,4 +1,4 @@
-use super::Renderer;
+use super::{Renderer, Style, Theme};
 use crate::{Diagnostic, Severity};
 use std::fs;
 use terminal_size::{terminal_size, Width};
@@ -14,6 +14,7 @@ pub struct TerminalRenderer {
     pub show_metadata: bool,
     pub source_context_lines: usize,
     pub width: usize,
+    pub theme: Theme,
 }
 
 impl Default for TerminalRenderer {
@@ -23,6 +24,7 @@ impl Default for TerminalRenderer {
             show_metadata: false,
             source_context_lines: 1,
             width: DEFAULT_WIDTH,
+            theme: Theme::default(),
         }
     }
 }
@@ -69,6 +71,7 @@ fn truncate_visible(s: &str, max_width: usize) -> String {
     let mut output = String::new();
     let mut width = 0;
     let mut chars = s.chars().peekable();
+    let contains_ansi = s.contains('\x1b');
 
     while let Some(ch) = chars.next() {
         if ch == '\x1b' && chars.peek() == Some(&'[') {
@@ -96,15 +99,15 @@ fn truncate_visible(s: &str, max_width: usize) -> String {
         width += char_width;
     }
 
+    if contains_ansi {
+        output.push_str("\x1b[0m");
+    }
+
     output
 }
 
 fn wrap_visible(s: &str, max_width: usize) -> Vec<String> {
-    if max_width == 0 {
-        return vec![String::new()];
-    }
-
-    if s.is_empty() {
+    if max_width == 0 || s.is_empty() {
         return vec![String::new()];
     }
 
@@ -191,47 +194,6 @@ fn wrap_visible(s: &str, max_width: usize) -> Vec<String> {
 
     if output.is_empty() {
         output.push(String::new());
-    }
-
-    output
-}
-
-fn row(s: &str, width: usize) -> String {
-    let content_width = width.saturating_sub(4);
-    let text = truncate_visible(s, content_width);
-    let padding = content_width.saturating_sub(visible_len(&text));
-
-    format!("│ {text}{} │\n", " ".repeat(padding))
-}
-
-fn wrapped_rows(s: &str, width: usize) -> String {
-    let content_width = width.saturating_sub(4);
-    let mut output = String::new();
-
-    for line in wrap_visible(s, content_width) {
-        output.push_str(&row(&line, width));
-    }
-
-    output
-}
-
-fn prefixed_rows(prefix: &str, text: &str, width: usize) -> String {
-    let content_width = width.saturating_sub(4);
-    let prefix_width = visible_len(prefix);
-    let available = content_width.saturating_sub(prefix_width).max(1);
-
-    let lines = wrap_visible(text, available);
-    let mut output = String::new();
-
-    for (index, line) in lines.iter().enumerate() {
-        if index == 0 {
-            output.push_str(&row(&format!("{prefix}{line}"), width));
-        } else {
-            output.push_str(&row(
-                &format!("{}{}", " ".repeat(prefix_width), line),
-                width,
-            ));
-        }
     }
 
     output
@@ -358,11 +320,9 @@ fn source_window(
         text.push('…');
     }
 
-    let left_marker_width = usize::from(left_clipped);
-
     let caret_offset = focus_start
         .saturating_sub(actual_start)
-        .saturating_add(left_marker_width);
+        .saturating_add(usize::from(left_clipped));
 
     let available_highlight = max_width.saturating_sub(caret_offset).max(1);
 
@@ -374,6 +334,10 @@ fn source_window(
 }
 
 impl TerminalRenderer {
+    fn paint(&self, style: &Style, text: &str) -> String {
+        style.paint(self.color, text)
+    }
+
     fn effective_width(&self) -> usize {
         if self.width != DEFAULT_WIDTH {
             return self.width.max(MIN_WIDTH);
@@ -385,48 +349,72 @@ impl TerminalRenderer {
             .max(MIN_WIDTH)
     }
 
-    fn title(&self, d: &Diagnostic) -> String {
-        let icon = match d.severity {
-            Severity::Trace => "·",
-            Severity::Debug => "◆",
-            Severity::Info => "ℹ",
-            Severity::Warning => "⚠",
-            Severity::Error => "✖",
-            Severity::Fatal => "☠",
-        };
+    fn row(&self, text: &str, width: usize) -> String {
+        let content_width = width.saturating_sub(4);
+        let text = truncate_visible(text, content_width);
+        let padding = content_width.saturating_sub(visible_len(&text));
 
-        let raw = format!(
-            "{icon} {}{}",
-            d.severity,
-            d.code
-                .as_ref()
-                .map(|code| format!(" [{code}]"))
-                .unwrap_or_default()
-        );
-
-        if !self.color {
-            return raw;
-        }
-
-        let ansi = match d.severity {
-            Severity::Trace | Severity::Debug => "\x1b[90m",
-            Severity::Info => "\x1b[36m",
-            Severity::Warning => "\x1b[33m",
-            Severity::Error => "\x1b[31m",
-            Severity::Fatal => "\x1b[35;1m",
-        };
-
-        format!("{ansi}{raw}\x1b[0m")
+        format!(
+            "{} {text}{} {}\n",
+            self.paint(&self.theme.border, "│"),
+            " ".repeat(padding),
+            self.paint(&self.theme.border, "│")
+        )
     }
 
-    fn source(&self, d: &Diagnostic, terminal_width: usize) -> Vec<String> {
+    fn wrapped_rows(&self, text: &str, style: &Style, width: usize) -> String {
+        let content_width = width.saturating_sub(4);
+        let mut output = String::new();
+
+        for line in wrap_visible(text, content_width) {
+            output.push_str(&self.row(&self.paint(style, &line), width));
+        }
+
+        output
+    }
+
+    fn prefixed_rows(
+        &self,
+        prefix: &str,
+        prefix_style: &Style,
+        text: &str,
+        text_style: &Style,
+        width: usize,
+    ) -> String {
+        let content_width = width.saturating_sub(4);
+        let prefix_width = visible_len(prefix);
+        let available = content_width.saturating_sub(prefix_width).max(1);
+
+        let lines = wrap_visible(text, available);
+        let mut output = String::new();
+
+        for (index, line) in lines.iter().enumerate() {
+            let painted_line = self.paint(text_style, line);
+
+            if index == 0 {
+                output.push_str(&self.row(
+                    &format!("{}{}", self.paint(prefix_style, prefix), painted_line),
+                    width,
+                ));
+            } else {
+                output.push_str(&self.row(
+                    &format!("{}{}", " ".repeat(prefix_width), painted_line),
+                    width,
+                ));
+            }
+        }
+
+        output
+    }
+
+    fn source(&self, diagnostic: &Diagnostic, terminal_width: usize) -> Vec<String> {
         let mut output = Vec::new();
         let content_width = terminal_width.saturating_sub(4);
 
-        for label in &d.labels {
+        for label in &diagnostic.labels {
             let location = &label.location;
 
-            output.push(format!(
+            let location_text = format!(
                 "--> {}:{}{}",
                 location.file,
                 location.line,
@@ -434,7 +422,9 @@ impl TerminalRenderer {
                     .column
                     .map(|column| format!(":{column}"))
                     .unwrap_or_default()
-            ));
+            );
+
+            output.push(self.paint(&self.theme.source_path, &location_text));
 
             if let Ok(source) = fs::read_to_string(&location.file) {
                 let lines: Vec<_> = source.lines().collect();
@@ -457,46 +447,62 @@ impl TerminalRenderer {
                 for (index, line) in lines.iter().enumerate().take(end).skip(start) {
                     let window = source_window(line, column, highlight_length, source_width);
 
-                    let target_marker = if index == target { ">" } else { " " };
+                    let marker = if index == target {
+                        self.paint(&self.theme.source_target, ">")
+                    } else {
+                        " ".into()
+                    };
 
-                    output.push(format!(
-                        "{target_marker} {:>width$} │ {}",
-                        index + 1,
-                        window.text,
-                        width = gutter_width
-                    ));
+                    let line_number = self.paint(
+                        &self.theme.source_gutter,
+                        &format!("{:>width$}", index + 1, width = gutter_width),
+                    );
+
+                    let gutter = self.paint(&self.theme.source_gutter, "│");
+
+                    output.push(format!("{marker} {line_number} {gutter} {}", window.text));
 
                     if index != target {
                         continue;
                     }
 
-                    let annotation_gutter = format!("  {:>width$} │ ", "", width = gutter_width);
+                    let annotation_gutter = format!(
+                        "  {} {} ",
+                        " ".repeat(gutter_width),
+                        self.paint(&self.theme.source_gutter, "│")
+                    );
 
                     let caret_indent = " ".repeat(window.caret_offset);
-                    let carets = "^".repeat(window.caret_width);
+                    let carets =
+                        self.paint(&self.theme.source_caret, &"^".repeat(window.caret_width));
 
                     output.push(format!("{annotation_gutter}{caret_indent}{carets}"));
 
                     if let Some(message) = &label.message {
-                        let label_marker = "└─ ";
+                        let plain_label_marker = "└─ ";
+                        let painted_label_marker =
+                            self.paint(&self.theme.source_label, plain_label_marker);
 
-                        let label_prefix =
-                            format!("{annotation_gutter}{caret_indent}{label_marker}");
+                        let plain_prefix_width = visible_len(&annotation_gutter)
+                            + window.caret_offset
+                            + visible_len(plain_label_marker);
 
-                        let label_prefix_width = visible_len(&label_prefix);
-
-                        let available = content_width.saturating_sub(label_prefix_width).max(1);
+                        let available = content_width.saturating_sub(plain_prefix_width).max(1);
 
                         let wrapped = wrap_visible(message, available);
 
                         for (message_index, message_line) in wrapped.iter().enumerate() {
                             if message_index == 0 {
-                                output.push(format!("{label_prefix}{message_line}"));
+                                output.push(format!(
+                                    "{annotation_gutter}{caret_indent}{}{}",
+                                    painted_label_marker,
+                                    self.paint(&self.theme.source_label, message_line)
+                                ));
                             } else {
                                 output.push(format!(
                                     "{}{}",
-                                    " ".repeat(label_prefix_width),
-                                    message_line
+                                    " ".repeat(plain_prefix_width),
+                                    self.paint(&self.theme.source_label, message_line)
                                 ));
                             }
                         }
@@ -507,71 +513,153 @@ impl TerminalRenderer {
 
         output
     }
+
+    fn metadata_row(&self, label: &str, value: &str, width: usize) -> String {
+        let prefix = format!("{label:<10}");
+
+        self.prefixed_rows(
+            &prefix,
+            &self.theme.metadata_label,
+            value,
+            &self.theme.metadata_value,
+            width,
+        )
+    }
 }
 
 impl Renderer for TerminalRenderer {
-    fn render(&self, d: &Diagnostic) -> String {
+    fn render(&self, diagnostic: &Diagnostic) -> String {
         let width = self.effective_width();
-        let title = self.title(d);
+
+        let raw_title = {
+            let icon = match diagnostic.severity {
+                Severity::Trace => "·",
+                Severity::Debug => "◆",
+                Severity::Info => "ℹ",
+                Severity::Warning => "⚠",
+                Severity::Error => "✖",
+                Severity::Fatal => "☠",
+            };
+
+            format!(
+                "{icon} {}{}",
+                diagnostic.severity,
+                diagnostic
+                    .code
+                    .as_ref()
+                    .map(|code| format!(" [{code}]"))
+                    .unwrap_or_default()
+            )
+        };
+
+        let raw_title = truncate_visible(&raw_title, width.saturating_sub(5));
+        let title = self.paint(self.theme.severity.style(diagnostic.severity), &raw_title);
+
         let title_width = visible_len(&title);
 
         let mut output = format!(
-            "╭─ {title} {}╮\n",
-            "─".repeat(width.saturating_sub(title_width + 5))
+            "{}{title}{}\n",
+            self.paint(&self.theme.border, "╭─ "),
+            self.paint(
+                &self.theme.border,
+                &format!(" {}╮", "─".repeat(width.saturating_sub(title_width + 5)))
+            )
         );
 
-        output.push_str(&wrapped_rows(&d.message, width));
+        output.push_str(&self.wrapped_rows(&diagnostic.message, &self.theme.message, width));
 
-        if !d.labels.is_empty() {
-            output.push_str(&row("", width));
+        if !diagnostic.labels.is_empty() {
+            output.push_str(&self.row("", width));
 
-            for source_line in self.source(d, width) {
-                output.push_str(&row(&source_line, width));
+            for source_line in self.source(diagnostic, width) {
+                output.push_str(&self.row(&source_line, width));
             }
         }
 
-        if let Some(cause) = &d.cause {
-            output.push_str(&row("", width));
-            output.push_str(&row("CAUSE", width));
+        if let Some(cause) = &diagnostic.cause {
+            output.push_str(&self.row("", width));
+            output.push_str(&self.row(&self.paint(&self.theme.cause, "CAUSE"), width));
 
             for (depth, cause) in cause.iter().enumerate() {
                 let prefix = format!("{}└─ ", "   ".repeat(depth));
-                output.push_str(&prefixed_rows(&prefix, &cause.message, width));
+
+                output.push_str(&self.prefixed_rows(
+                    &prefix,
+                    &self.theme.cause,
+                    &cause.message,
+                    &self.theme.message,
+                    width,
+                ));
             }
         }
 
-        if !d.notes.is_empty() {
-            output.push_str(&row("", width));
+        if !diagnostic.notes.is_empty() {
+            output.push_str(&self.row("", width));
 
-            for note in &d.notes {
-                output.push_str(&prefixed_rows("NOTE  ", note, width));
+            for note in &diagnostic.notes {
+                output.push_str(&self.prefixed_rows(
+                    "NOTE  ",
+                    &self.theme.note,
+                    note,
+                    &self.theme.message,
+                    width,
+                ));
             }
         }
 
-        if let Some(help) = &d.help {
-            output.push_str(&row("", width));
-            output.push_str(&prefixed_rows("HELP  ", help, width));
+        if let Some(help) = &diagnostic.help {
+            output.push_str(&self.row("", width));
+
+            output.push_str(&self.prefixed_rows(
+                "HELP  ",
+                &self.theme.help,
+                help,
+                &self.theme.message,
+                width,
+            ));
         }
 
         if self.show_metadata {
+            let label = "Diagnostic";
+
             output.push_str(&format!(
-                "├─ Diagnostic {}┤\n",
-                "─".repeat(width.saturating_sub(15))
+                "{}{}{}\n",
+                self.paint(&self.theme.border, "├─ "),
+                self.paint(&self.theme.metadata_label, label),
+                self.paint(
+                    &self.theme.border,
+                    &format!(" {}┤", "─".repeat(width.saturating_sub(15)))
+                )
             ));
 
-            for metadata in [
-                format!("Timestamp {}", d.timestamp.to_rfc3339()),
-                format!("App       {}", d.application),
-                format!("PID       {}", d.pid),
-                format!("Host      {}", d.hostname),
-                format!("Session   {}", d.session_id),
-                format!("Report    {}", d.report_id),
-            ] {
-                output.push_str(&wrapped_rows(&metadata, width));
-            }
+            output.push_str(&self.metadata_row(
+                "Timestamp",
+                &diagnostic.timestamp.to_rfc3339(),
+                width,
+            ));
+
+            output.push_str(&self.metadata_row("App", &diagnostic.application, width));
+
+            output.push_str(&self.metadata_row("PID", &diagnostic.pid.to_string(), width));
+
+            output.push_str(&self.metadata_row("Host", &diagnostic.hostname, width));
+
+            output.push_str(&self.metadata_row(
+                "Session",
+                &diagnostic.session_id.to_string(),
+                width,
+            ));
+
+            output.push_str(&self.metadata_row("Report", &diagnostic.report_id.to_string(), width));
         }
 
-        output.push_str(&format!("╰{}╯\n", "─".repeat(width.saturating_sub(2))));
+        output.push_str(&format!(
+            "{}\n",
+            self.paint(
+                &self.theme.border,
+                &format!("╰{}╯", "─".repeat(width.saturating_sub(2)))
+            )
+        ));
 
         output
     }
