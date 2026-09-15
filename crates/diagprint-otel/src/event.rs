@@ -1,5 +1,7 @@
-use crate::{LocationExport, TelemetryPolicy, TextExport};
-use diagprint::{Diagnostic, Label, LabelKind, Severity};
+use crate::{AttributeExport, LocationExport, TelemetryPolicy, TextExport};
+use diagprint::{
+    Diagnostic, DiagnosticAttribute, DiagnosticValue, Label, LabelKind, REDACTED, Severity,
+};
 use opentelemetry::KeyValue;
 
 pub const DIAGNOSTIC_EVENT_NAME: &str = "diagprint.diagnostic";
@@ -25,7 +27,7 @@ impl TelemetryEvent {
 }
 
 pub(crate) fn build_event(diagnostic: &Diagnostic, policy: TelemetryPolicy) -> TelemetryEvent {
-    let mut attributes = Vec::with_capacity(24);
+    let mut attributes = Vec::with_capacity(25 + diagnostic.attributes.len());
 
     attributes.push(KeyValue::new(
         "diagprint.report_id",
@@ -108,6 +110,11 @@ pub(crate) fn build_event(diagnostic: &Diagnostic, policy: TelemetryPolicy) -> T
     ));
 
     attributes.push(KeyValue::new(
+        "diagprint.attribute_count",
+        usize_to_i64(diagnostic.attributes.len()),
+    ));
+
+    attributes.push(KeyValue::new(
         "diagprint.suggestion_count",
         usize_to_i64(diagnostic.suggestions.len()),
     ));
@@ -119,6 +126,8 @@ pub(crate) fn build_event(diagnostic: &Diagnostic, policy: TelemetryPolicy) -> T
             .iter()
             .any(|suggestion| suggestion.is_machine_applicable() && suggestion.has_edits()),
     ));
+
+    push_diagnostic_attributes(&mut attributes, &diagnostic.attributes, policy.attributes);
 
     if let Some(label) = primary_label(diagnostic) {
         push_location(
@@ -134,6 +143,68 @@ pub(crate) fn build_event(diagnostic: &Diagnostic, policy: TelemetryPolicy) -> T
 
         mark_span_error: policy.mark_error_status && diagnostic.severity >= Severity::Error,
     }
+}
+
+fn push_diagnostic_attributes(
+    output: &mut Vec<KeyValue>,
+    diagnostic_attributes: &[DiagnosticAttribute],
+    policy: AttributeExport,
+) {
+    match policy {
+        AttributeExport::Omit => {}
+
+        AttributeExport::Redact => {
+            for attribute in diagnostic_attributes {
+                output.push(KeyValue::new(attribute_key(&attribute.name), REDACTED));
+            }
+        }
+
+        AttributeExport::Full => {
+            for attribute in diagnostic_attributes {
+                push_full_attribute(output, attribute);
+            }
+        }
+    }
+}
+
+fn push_full_attribute(output: &mut Vec<KeyValue>, attribute: &DiagnosticAttribute) {
+    let key = attribute_key(&attribute.name);
+
+    let value = &attribute.value;
+
+    let key_value = match value {
+        DiagnosticValue::String(value) => KeyValue::new(key, value.clone()),
+
+        DiagnosticValue::Bool(value) => KeyValue::new(key, *value),
+
+        DiagnosticValue::I64(value) => KeyValue::new(key, *value),
+
+        DiagnosticValue::U64(value) => match i64::try_from(*value) {
+            Ok(value) => KeyValue::new(key, value),
+
+            Err(_) => KeyValue::new(key, value.to_string()),
+        },
+
+        DiagnosticValue::I128(value) => match i64::try_from(*value) {
+            Ok(value) => KeyValue::new(key, value),
+
+            Err(_) => KeyValue::new(key, value.to_string()),
+        },
+
+        DiagnosticValue::U128(value) => match i64::try_from(*value) {
+            Ok(value) => KeyValue::new(key, value),
+
+            Err(_) => KeyValue::new(key, value.to_string()),
+        },
+
+        DiagnosticValue::F64(value) => KeyValue::new(key, *value),
+    };
+
+    output.push(key_value);
+}
+
+fn attribute_key(name: &str) -> String {
+    format!("diagprint.attribute.{name}")
 }
 
 fn push_location(

@@ -21,9 +21,7 @@ impl TextExport {
     pub(crate) fn apply(self, value: &str) -> Option<String> {
         match self {
             Self::Omit => None,
-
             Self::Redact => Some(REDACTED.to_owned()),
-
             Self::Plaintext => Some(value.to_owned()),
         }
     }
@@ -57,12 +55,35 @@ impl LocationExport {
     }
 }
 
+/// Policy for exporting arbitrary structured diagnostic attributes.
+///
+/// Arbitrary attributes may contain credentials, user information, URLs,
+/// request content, identifiers, or other sensitive application data, so they
+/// are omitted by default.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum AttributeExport {
+    /// Do not export diagnostic attributes.
+    #[default]
+    Omit,
+
+    /// Export attribute names while replacing every value with `[REDACTED]`.
+    Redact,
+
+    /// Export attribute names and values.
+    ///
+    /// This is an explicit opt-in. OpenTelemetry supports signed 64-bit integer
+    /// attributes; wider or non-fitting Rust integer values are exported as
+    /// decimal strings to avoid truncation.
+    Full,
+}
+
 /// Privacy and span-behavior policy for diagnostic telemetry.
 ///
 /// Defaults are intentionally conservative:
 ///
 /// - diagnostic messages are redacted;
 /// - help, notes, causes, and label messages are omitted;
+/// - arbitrary diagnostic attributes are omitted;
 /// - source locations are omitted;
 /// - hostname and PID are omitted;
 /// - application, IDs, severity, code, timestamps, and structural counts are
@@ -75,7 +96,9 @@ pub struct TelemetryPolicy {
     pub notes: TextExport,
     pub causes: TextExport,
     pub label_messages: TextExport,
+
     pub locations: LocationExport,
+    pub attributes: AttributeExport,
 
     pub include_application: bool,
     pub include_hostname: bool,
@@ -86,25 +109,7 @@ pub struct TelemetryPolicy {
 
 impl Default for TelemetryPolicy {
     fn default() -> Self {
-        Self {
-            message: TextExport::Redact,
-
-            help: TextExport::Omit,
-
-            notes: TextExport::Omit,
-
-            causes: TextExport::Omit,
-
-            label_messages: TextExport::Omit,
-
-            locations: LocationExport::Omit,
-
-            include_application: true,
-            include_hostname: false,
-            include_process_id: false,
-
-            mark_error_status: true,
-        }
+        Self::new()
     }
 }
 
@@ -112,16 +117,13 @@ impl TelemetryPolicy {
     pub const fn new() -> Self {
         Self {
             message: TextExport::Redact,
-
             help: TextExport::Omit,
-
             notes: TextExport::Omit,
-
             causes: TextExport::Omit,
-
             label_messages: TextExport::Omit,
 
             locations: LocationExport::Omit,
+            attributes: AttributeExport::Omit,
 
             include_application: true,
             include_hostname: false,
@@ -158,6 +160,12 @@ impl TelemetryPolicy {
 
     pub const fn with_locations(mut self, policy: LocationExport) -> Self {
         self.locations = policy;
+        self
+    }
+
+    /// Controls export of arbitrary structured diagnostic attributes.
+    pub const fn with_attributes(mut self, policy: AttributeExport) -> Self {
+        self.attributes = policy;
         self
     }
 

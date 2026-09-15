@@ -8,6 +8,8 @@ The project follows Semantic Versioning.
 
 ### Added
 
+- Added explicit OpenTelemetry attribute privacy controls with `AttributeExport::{Omit, Redact, Full}`; arbitrary structured diagnostic attributes are omitted by default.
+- Full OpenTelemetry attribute export preserves supported typed values and losslessly falls back to decimal strings for integers outside OpenTelemetry's signed 64-bit range.
 - Added typed `DiagnosticAttribute` / `DiagnosticValue` metadata so structured booleans, integers, floating-point values, and strings no longer need to be flattened into diagnostic notes.
 - The tracing adapter now preserves ordinary event fields as typed diagnostic attributes while retaining reserved diag.code, diag.help, diag.note, message, and error-chain handling.
 - Added the optional `tracing-error` feature for explicit SpanTrace capture backed by tracing-error's ErrorLayer.

@@ -7,6 +7,8 @@
 //! exporters, sampling, batching, and runtime configuration.
 //!
 //! Free-form diagnostic content is not exported in plaintext by default.
+//! Arbitrary structured diagnostic attributes are not exported at all unless
+//! explicitly enabled through [`AttributeExport`].
 
 mod adapter;
 mod event;
@@ -16,7 +18,7 @@ pub use adapter::TelemetryAdapter;
 
 pub use event::{DIAGNOSTIC_EVENT_NAME, TelemetryEvent};
 
-pub use policy::{LocationExport, TelemetryPolicy, TextExport};
+pub use policy::{AttributeExport, LocationExport, TelemetryPolicy, TextExport};
 
 pub use opentelemetry;
 pub use tracing_opentelemetry;

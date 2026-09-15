@@ -164,3 +164,157 @@ fn metadata_remains_available_under_default_redaction() {
         Some(REDACTED.to_owned())
     );
 }
+
+#[test]
+fn diagnostic_attributes_are_omitted_by_default() {
+    let reporter = Reporter::builder()
+        .application("telemetry-test")
+        .build()
+        .unwrap();
+
+    let diagnostic = reporter
+        .error("request failed")
+        .attribute("authorization", "Bearer super-secret-token")
+        .attribute("user_id", 42_u64);
+
+    let event = TelemetryAdapter::default().event(&diagnostic);
+
+    assert!(!has_attribute(&event, "diagprint.attribute.authorization",));
+
+    assert!(!has_attribute(&event, "diagprint.attribute.user_id",));
+
+    assert_eq!(
+        string_attribute(&event, "diagprint.attribute_count",),
+        Some("2".to_owned())
+    );
+}
+
+#[test]
+fn redacted_attribute_export_preserves_names_but_not_values() {
+    use diagprint_otel::AttributeExport;
+
+    let reporter = Reporter::builder()
+        .application("telemetry-test")
+        .build()
+        .unwrap();
+
+    let diagnostic = reporter
+        .warning("request")
+        .attribute("authorization", "Bearer secret")
+        .attribute("user_id", 42_u64);
+
+    let policy = TelemetryPolicy::default().with_attributes(AttributeExport::Redact);
+
+    let event = TelemetryAdapter::new(policy).event(&diagnostic);
+
+    assert_eq!(
+        string_attribute(&event, "diagprint.attribute.authorization",),
+        Some(REDACTED.to_owned())
+    );
+
+    assert_eq!(
+        string_attribute(&event, "diagprint.attribute.user_id",),
+        Some(REDACTED.to_owned())
+    );
+
+    for attribute in event.attributes() {
+        assert!(!attribute.value.as_str().contains("Bearer secret"));
+    }
+}
+
+#[test]
+fn full_attribute_export_preserves_supported_otel_types() {
+    use diagprint_otel::{AttributeExport, opentelemetry::Value};
+
+    let reporter = Reporter::builder()
+        .application("telemetry-test")
+        .build()
+        .unwrap();
+
+    let diagnostic = reporter
+        .info("typed")
+        .attribute("enabled", true)
+        .attribute("attempt", -2_i64)
+        .attribute("user_id", 42_u64)
+        .attribute("ratio", 1.5_f64)
+        .attribute("region", "west");
+
+    let policy = TelemetryPolicy::default().with_attributes(AttributeExport::Full);
+
+    let event = TelemetryAdapter::new(policy).event(&diagnostic);
+
+    let find = |key: &str| {
+        event
+            .attributes()
+            .iter()
+            .find(|attribute| attribute.key.as_str() == key)
+            .expect("telemetry attribute missing")
+    };
+
+    assert!(matches!(
+        find("diagprint.attribute.enabled").value,
+        Value::Bool(true)
+    ));
+
+    assert!(matches!(
+        find("diagprint.attribute.attempt").value,
+        Value::I64(-2)
+    ));
+
+    assert!(matches!(
+        find("diagprint.attribute.user_id").value,
+        Value::I64(42)
+    ));
+
+    assert!(matches!(
+        find(
+            "diagprint.attribute.ratio"
+        )
+        .value,
+        Value::F64(value)
+            if value == 1.5
+    ));
+
+    assert_eq!(find("diagprint.attribute.region").value.as_str(), "west");
+}
+
+#[test]
+fn full_attribute_export_never_truncates_wide_integers() {
+    use diagprint_otel::AttributeExport;
+
+    let reporter = Reporter::builder()
+        .application("telemetry-test")
+        .build()
+        .unwrap();
+
+    let huge_u64 = u64::MAX;
+
+    let huge_i128 = i128::MAX;
+
+    let huge_u128 = u128::MAX;
+
+    let diagnostic = reporter
+        .info("wide integers")
+        .attribute("huge_u64", huge_u64)
+        .attribute("huge_i128", huge_i128)
+        .attribute("huge_u128", huge_u128);
+
+    let policy = TelemetryPolicy::default().with_attributes(AttributeExport::Full);
+
+    let event = TelemetryAdapter::new(policy).event(&diagnostic);
+
+    assert_eq!(
+        string_attribute(&event, "diagprint.attribute.huge_u64",),
+        Some(huge_u64.to_string())
+    );
+
+    assert_eq!(
+        string_attribute(&event, "diagprint.attribute.huge_i128",),
+        Some(huge_i128.to_string())
+    );
+
+    assert_eq!(
+        string_attribute(&event, "diagprint.attribute.huge_u128",),
+        Some(huge_u128.to_string())
+    );
+}
