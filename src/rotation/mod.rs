@@ -1,1 +1,2 @@
-mod policy;pub use policy::{RotationCadence,RotationPolicy,RotationState};
+mod policy;
+pub use policy::{RotationCadence, RotationPolicy, RotationState};
