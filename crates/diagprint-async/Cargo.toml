@@ -1,0 +1,28 @@
+[package]
+name = "diagprint-async"
+version = "0.7.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Bounded asynchronous diagnostic delivery for diagprint."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/darkstardevx/diagprint"
+homepage = "https://github.com/darkstardevx/diagprint"
+documentation = "https://docs.rs/diagprint-async"
+
+[dependencies.diagprint]
+version = "0.7.0"
+path = "../.."
+
+[dependencies.tokio]
+version = "1"
+features = [
+    "rt",
+    "sync",
+]
+
+[dev-dependencies.tokio]
+version = "1"
+features = [
+    "macros",
+    "rt-multi-thread",
+]

@@ -8,6 +8,9 @@ The project follows Semantic Versioning.
 
 ### Added
 
+- Added the runtime-independent `DiagnosticSink` contract with buffered writer and newline-delimited JSON production sinks.
+- Added the `diagprint-async` companion crate with strictly bounded diagnostic queues, ordered flush/shutdown, worker failure propagation, and explicit Block, Reject, and severity-aware DropNewest backpressure.
+- Async DropNewest queues protect diagnostics above their configured drop threshold instead of silently discarding them under overload.
 - Added first-class batch/report output with deterministic report status and configurable severity-based exit decisions.
 - Added valid multi-diagnostic JSON, Markdown, GitHub Actions, and SARIF report rendering plus Reporter batch emission APIs.
 - Added grouped LSP report publishing and report-wide CodeAction generation against immutable source snapshots.

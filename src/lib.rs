@@ -189,6 +189,7 @@ mod reporter;
 mod result_ext;
 mod rotation;
 mod severity;
+mod sink;
 mod source;
 mod suggestion;
 mod typed;
@@ -250,6 +251,8 @@ pub use reporter::{Compression, Reporter, ReporterBuilder};
 pub use rotation::{RotationCadence, RotationPolicy, RotationState};
 
 pub use severity::Severity;
+
+pub use sink::{DiagnosticSink, JsonLinesSink, SinkError, SinkErrorKind, SinkResult, WriterSink};
 
 pub use source::{SourceCache, SourceEntry, SourceProvider, SourceRevision, SourceSnapshot};
 
