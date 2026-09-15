@@ -1,8 +1,8 @@
 //! # diagprint
 //!
 //! `diagprint` provides structured diagnostics, rich terminal rendering,
-//! persistent reports, guarded remediation, and diagnostic-intelligence
-//! integrations for Rust applications.
+//! persistent reports, guarded remediation, compiler-diagnostic ingestion,
+//! and diagnostic-intelligence integrations for Rust applications.
 //!
 //! The crate deliberately separates diagnostic data from presentation and
 //! mutation:
@@ -13,6 +13,7 @@
 //! - [`Fixer`] validates and optionally applies structured text edits.
 //! - [`DiagnosticMetadata`] lets typed errors contribute reliable semantic
 //!   information without parsing formatted error strings.
+//! - [`CompilerImporter`] consumes structured rustc and Cargo diagnostics.
 //!
 //! Calling a renderer never modifies source files.
 //!
@@ -51,6 +52,25 @@
 //! Suggested shell commands are informational only and are never executed by
 //! [`Fixer`].
 //!
+//! ## Compiler diagnostics
+//!
+//! [`CompilerImporter`] consumes structured rustc JSON diagnostics directly,
+//! including diagnostics embedded in Cargo `compiler-message` records.
+//!
+//! It can preserve:
+//!
+//! - compiler severity;
+//! - Rust error codes;
+//! - primary source spans;
+//! - child notes and help;
+//! - rustc suggested replacements;
+//! - rustc suggestion applicability;
+//! - Cargo package, target, and manifest context.
+//!
+//! Filesystem hydration is disabled by default. Applications that want rustc
+//! replacement spans converted into exact [`Edit`] values must explicitly
+//! configure a trusted source root and enable hydration.
+//!
 //! ## Typed errors
 //!
 //! Application error enums and structs can implement [`DiagnosticMetadata`]
@@ -67,14 +87,6 @@
 //!
 //! The optional `tracing` feature provides a composable tracing-subscriber
 //! layer that turns significant runtime events into structured diagnostics.
-//! It can preserve:
-//!
-//! - tracing severity;
-//! - structured event fields;
-//! - diagnostic codes and help;
-//! - active span ancestry;
-//! - source locations;
-//! - actual `std::error::Error` source chains.
 //!
 //! Integrations feed existing Rust ecosystems into `diagprint` rather than
 //! requiring applications to replace them.
@@ -103,11 +115,12 @@
 //! - `terminal-docs` — terminal documentation retrieval and syntax
 //!   highlighting.
 //!
-//! Typed-error metadata support is part of the core crate and does not require
-//! a feature flag.
+//! Typed-error metadata and compiler-diagnostic ingestion are part of the core
+//! crate and do not require feature flags.
 //!
 //! All optional features are disabled by default.
 
+mod compiler;
 mod diagnostic;
 mod fixer;
 mod intelligence;
@@ -125,6 +138,7 @@ pub mod docs;
 
 pub mod render;
 
+pub use compiler::{CompilerImportError, CompilerImporter};
 pub use diagnostic::{Cause, Diagnostic, Label, SourceLocation};
 pub use fixer::{FixCheck, FixError, FixPreview, FixReport, Fixer};
 pub use render::{SeverityTheme, Style, Theme};
