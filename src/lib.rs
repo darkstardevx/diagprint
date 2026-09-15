@@ -2,18 +2,18 @@
 //!
 //! `diagprint` provides structured diagnostics, rich terminal rendering,
 //! persistent reports, guarded remediation, compiler-diagnostic ingestion,
-//! and diagnostic-intelligence integrations for Rust applications.
+//! version-aware documentation intelligence, and Rust ecosystem integrations.
 //!
 //! The crate deliberately separates diagnostic data from presentation and
 //! mutation:
 //!
 //! - [`Diagnostic`] describes what happened.
-//! - renderers decide how the diagnostic is displayed.
 //! - [`Suggestion`] describes a possible resolution.
 //! - [`Fixer`] validates and applies guarded structured edits.
 //! - [`FixPlan`] coordinates transactional multi-file remediation.
-//! - [`DiagnosticMetadata`] lets typed errors contribute reliable semantic
-//!   information without parsing formatted error strings.
+//! - [`DocumentationResolver`] resolves documentation without guessing package
+//!   versions.
+//! - [`DiagnosticMetadata`] lets typed errors supply semantic metadata.
 //! - [`CompilerImporter`] consumes structured rustc and Cargo diagnostics.
 //!
 //! Calling a renderer never modifies source files.
@@ -47,70 +47,63 @@
 //! classification.
 //!
 //! Automatic editing requires [`Applicability::MachineApplicable`], valid
-//! non-overlapping UTF-8 edit ranges, and exact verification of the expected
-//! current file contents.
+//! non-overlapping UTF-8 edit ranges, and verification of expected source
+//! contents.
 //!
 //! Suggested shell commands are informational only and are never executed by
 //! [`Fixer`] or [`FixPlan`].
 //!
 //! ## Transactional remediation
 //!
-//! [`FixPlan`] adds a remediation contract around edits:
+//! [`FixPlan`] supports deterministic preconditions, multi-file preparation,
+//! rollback-on-error writes, post-apply verification, verification rollback,
+//! and optional backups.
 //!
-//! - deterministic filesystem preconditions;
-//! - multi-file edit preparation before the first write;
-//! - rollback-on-error writes;
-//! - deterministic post-apply verification;
-//! - rollback when verification fails;
-//! - optional user-visible backups.
+//! Verification is declarative and does not execute shell commands.
+//!
+//! ## Documentation intelligence
+//!
+//! [`DocumentationResolver`] can build a package/version catalog directly from
+//! `Cargo.lock`.
+//!
+//! If exactly one version of a package is locked, a version-specific docs.rs
+//! URL can be produced automatically.
+//!
+//! If multiple versions are present, resolution fails instead of silently
+//! choosing one.
+//!
+//! Rust-owned documentation can also be pinned to a toolchain release:
 //!
 //! ```no_run
-//! use diagprint::{
-//!     Applicability, Edit, FileCheck, FixPlan, TextRange,
-//! };
+//! use diagprint::DocumentationResolver;
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let file = "config.toml";
-//! let original = "enabled = false\n";
+//! let resolver = DocumentationResolver::from_cargo_lock("Cargo.lock")?
+//!     .rust_version("1.98.0");
 //!
-//! let plan = FixPlan::new("Enable the feature")
-//!     .applicability(Applicability::MachineApplicable)
-//!     .precondition(FileCheck::equals(file, original))
-//!     .edit(Edit::replace(
-//!         file,
-//!         TextRange::new(10, 15),
-//!         "false",
-//!         "true",
-//!     ))
-//!     .verify(FileCheck::contains(file, "enabled = true"));
+//! let serde = resolver.crate_docs(
+//!     "serde",
+//!     "trait.Deserialize.html",
+//! )?;
 //!
-//! let report = plan.apply()?;
-//! assert!(report.verified());
+//! let e0277 = resolver.rust_error("E0277");
+//!
+//! println!("{}", serde.url);
+//! println!("{}", e0277.url);
 //! # Ok(())
 //! # }
 //! ```
-//!
-//! `FixPlan` verification is intentionally declarative. It does not execute
-//! shell commands.
-//!
-//! Transaction rollback covers errors observed by the running process. No
-//! portable multi-file filesystem API can make several independent paths
-//! crash-atomic across sudden process or machine termination.
 //!
 //! ## Compiler diagnostics
 //!
 //! [`CompilerImporter`] consumes structured rustc JSON diagnostics directly,
 //! including diagnostics embedded in Cargo `compiler-message` records.
 //!
-//! It can preserve:
+//! It preserves compiler severity, Rust error codes, source spans, notes,
+//! help, structured replacements, applicability, and Cargo context.
 //!
-//! - compiler severity;
-//! - Rust error codes;
-//! - primary source spans;
-//! - child notes and help;
-//! - rustc suggested replacements;
-//! - rustc suggestion applicability;
-//! - Cargo package, target, and manifest context.
+//! A [`DocumentationResolver`] can be attached to the importer so compiler
+//! documentation links follow the same toolchain-version policy.
 //!
 //! Filesystem hydration is disabled by default. Applications that want rustc
 //! replacement spans converted into exact [`Edit`] values must explicitly
@@ -122,8 +115,8 @@
 //! to provide stable diagnostic codes, severity, help, notes, and structured
 //! suggestions.
 //!
-//! This works naturally with errors generated by `thiserror` because the
-//! integration is based on the standard [`std::error::Error`] interface.
+//! This works naturally with `thiserror` because the integration is based on
+//! the standard [`std::error::Error`] interface.
 //!
 //! ## Ecosystem integrations
 //!
@@ -132,9 +125,6 @@
 //!
 //! The optional `tracing` feature provides a composable tracing-subscriber
 //! layer that turns significant runtime events into structured diagnostics.
-//!
-//! Integrations feed existing Rust ecosystems into `diagprint` rather than
-//! requiring applications to replace them.
 //!
 //! ## Terminal documentation
 //!
@@ -160,13 +150,14 @@
 //! - `terminal-docs` — terminal documentation retrieval and syntax
 //!   highlighting.
 //!
-//! Typed-error metadata, compiler-diagnostic ingestion, and `FixPlan` are part
-//! of the core crate and do not require feature flags.
+//! Typed errors, compiler ingestion, documentation resolution, and `FixPlan`
+//! are core features.
 //!
 //! All optional features are disabled by default.
 
 mod compiler;
 mod diagnostic;
+mod documentation;
 mod fixer;
 mod fixplan;
 mod intelligence;
@@ -188,6 +179,8 @@ pub mod render;
 pub use compiler::{CompilerImportError, CompilerImporter};
 
 pub use diagnostic::{Cause, Diagnostic, Label, SourceLocation};
+
+pub use documentation::{DocumentationError, DocumentationResolver};
 
 pub use fixer::{FixCheck, FixError, FixPreview, FixReport, Fixer, RollbackFailure};
 
@@ -218,5 +211,4 @@ pub use integrations::TracingLayer;
 #[cfg(feature = "terminal-docs")]
 pub use docs::{TerminalDocError, TerminalDocViewer};
 
-/// Convenience result type used by `diagprint` reporting operations.
 pub type Result<T> = std::io::Result<T>;

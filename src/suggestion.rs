@@ -20,8 +20,11 @@ impl Applicability {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::MachineApplicable => "machine-applicable",
+
             Self::MaybeIncorrect => "maybe-incorrect",
+
             Self::HasPlaceholders => "has-placeholders",
+
             Self::Manual => "manual",
         }
     }
@@ -104,7 +107,9 @@ impl Edit {
         Self::Insert {
             file: file.into(),
             offset,
+
             expected_before: Some(expected_before.into()),
+
             text: text.into(),
         }
     }
@@ -128,6 +133,7 @@ impl Edit {
     pub fn start(&self) -> usize {
         match self {
             Self::Replace { range, .. } | Self::Delete { range, .. } => range.start,
+
             Self::Insert { offset, .. } => *offset,
         }
     }
@@ -135,6 +141,7 @@ impl Edit {
     pub fn end(&self) -> usize {
         match self {
             Self::Replace { range, .. } | Self::Delete { range, .. } => range.end,
+
             Self::Insert { offset, .. } => *offset,
         }
     }
@@ -187,6 +194,7 @@ impl Edit {
 pub struct DocumentationLink {
     pub label: String,
     pub url: String,
+
     pub language_hint: Option<String>,
 }
 
@@ -201,15 +209,31 @@ impl DocumentationLink {
 
     pub fn language(mut self, language: impl Into<String>) -> Self {
         self.language_hint = Some(language.into());
+
         self
     }
 
-    pub fn docs_rs(crate_name: &str, version: &str, path: &str) -> Self {
+    /// Creates a docs.rs link where the package name and rustdoc crate
+    /// identifier follow Cargo's normal `-` to `_` conversion.
+    pub fn docs_rs(package_name: &str, version: &str, path: &str) -> Self {
+        let crate_name = package_name.replace('-', "_");
+
+        Self::docs_rs_package(package_name, &crate_name, version, path)
+    }
+
+    /// Creates a docs.rs link when the Cargo package name and generated
+    /// rustdoc crate identifier differ.
+    pub fn docs_rs_package(
+        package_name: &str,
+        crate_name: &str,
+        version: &str,
+        path: &str,
+    ) -> Self {
         let path = path.trim_start_matches('/');
 
         Self::new(
-            format!("{crate_name} documentation"),
-            format!("https://docs.rs/{crate_name}/{version}/{crate_name}/{path}"),
+            format!("{package_name} documentation"),
+            format!("https://docs.rs/{package_name}/{version}/{crate_name}/{path}"),
         )
         .language("rust")
     }
@@ -238,6 +262,7 @@ impl DocumentationLink {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SuggestedCommand {
     pub command: String,
+
     pub explanation: Option<String>,
 }
 
@@ -245,12 +270,14 @@ impl SuggestedCommand {
     pub fn new(command: impl Into<String>) -> Self {
         Self {
             command: command.into(),
+
             explanation: None,
         }
     }
 
     pub fn explanation(mut self, explanation: impl Into<String>) -> Self {
         self.explanation = Some(explanation.into());
+
         self
     }
 }
@@ -258,10 +285,15 @@ impl SuggestedCommand {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Suggestion {
     pub title: String,
+
     pub explanation: Option<String>,
+
     pub applicability: Applicability,
+
     pub documentation: Vec<DocumentationLink>,
+
     pub edits: Vec<Edit>,
+
     pub commands: Vec<SuggestedCommand>,
 }
 
@@ -270,8 +302,11 @@ impl Suggestion {
         Self {
             title: title.into(),
             explanation: None,
+
             applicability: Applicability::Manual,
+
             documentation: Vec::new(),
+
             edits: Vec::new(),
             commands: Vec::new(),
         }
@@ -279,16 +314,19 @@ impl Suggestion {
 
     pub fn explanation(mut self, explanation: impl Into<String>) -> Self {
         self.explanation = Some(explanation.into());
+
         self
     }
 
     pub fn applicability(mut self, applicability: Applicability) -> Self {
         self.applicability = applicability;
+
         self
     }
 
     pub fn documentation(mut self, link: DocumentationLink) -> Self {
         self.documentation.push(link);
+
         self
     }
 
@@ -299,6 +337,7 @@ impl Suggestion {
 
     pub fn command(mut self, command: SuggestedCommand) -> Self {
         self.commands.push(command);
+
         self
     }
 

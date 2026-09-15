@@ -7,30 +7,10 @@
 //!
 //! The importer deliberately treats compiler output as data rather than
 //! scraping rustc's human-readable rendering.
-//!
-//! # Remediation safety
-//!
-//! Compiler suggestions are not automatically granted filesystem access.
-//!
-//! To materialize rustc replacement spans into [`crate::Edit`] values, callers
-//! must:
-//!
-//! 1. configure a trusted source root with [`CompilerImporter::source_root`];
-//! 2. explicitly enable hydration with [`CompilerImporter::hydrate_edits`].
-//!
-//! Hydrated files are canonicalized and must remain inside the configured
-//! source root.
-//!
-//! Non-empty rustc replacement ranges can retain
-//! [`crate::Applicability::MachineApplicable`] when the current source text can
-//! be captured exactly.
-//!
-//! Zero-width insertions are intentionally downgraded because diagprint's
-//! current insertion precondition is weaker than exact replacement
-//! verification.
 
 use crate::{
-    Applicability, Diagnostic, DocumentationLink, Edit, Reporter, Severity, Suggestion, TextRange,
+    Applicability, Diagnostic, DocumentationResolver, Edit, Reporter, Severity, Suggestion,
+    TextRange,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -40,10 +20,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-/// Error returned while decoding compiler JSON.
-///
-/// Ordinary non-JSON lines are ignored rather than treated as errors because
-/// Cargo builds may contain output from tools which do not emit JSON.
 #[derive(Debug)]
 pub enum CompilerImportError {
     Json(serde_json::Error),
@@ -73,65 +49,39 @@ impl From<serde_json::Error> for CompilerImportError {
     }
 }
 
-/// Imports rustc and Cargo compiler diagnostics into `diagprint`.
-///
-/// The default importer parses diagnostics without reading source files.
-///
-/// ```
-/// use diagprint::CompilerImporter;
-///
-/// let importer = CompilerImporter::new();
-/// ```
-///
-/// Applications that want exact structured edits can explicitly establish a
-/// trusted source boundary:
-///
-/// ```no_run
-/// use diagprint::CompilerImporter;
-///
-/// let importer = CompilerImporter::new()
-///     .source_root(".")
-///     .hydrate_edits(true);
-/// ```
 #[derive(Debug, Clone, Default)]
 pub struct CompilerImporter {
     source_root: Option<PathBuf>,
+
     hydrate_edits: bool,
+
+    documentation: DocumentationResolver,
 }
 
 impl CompilerImporter {
-    /// Creates an importer with filesystem hydration disabled.
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Configures the trusted source-tree boundary used to resolve relative
-    /// compiler paths.
-    ///
-    /// Hydrated edits are only created for canonicalized files contained
-    /// within this root.
     pub fn source_root(mut self, root: impl Into<PathBuf>) -> Self {
         self.source_root = Some(root.into());
+
         self
     }
 
-    /// Controls whether compiler replacement spans may be hydrated into exact
-    /// [`Edit`] values.
-    ///
-    /// Hydration also requires a trusted source root.
     pub fn hydrate_edits(mut self, enabled: bool) -> Self {
         self.hydrate_edits = enabled;
+
         self
     }
 
-    /// Parses one line of either raw rustc JSON or Cargo JSON output.
-    ///
-    /// Returns `Ok(None)` for:
-    ///
-    /// - blank lines;
-    /// - non-JSON output;
-    /// - Cargo messages other than `compiler-message`;
-    /// - JSON records which are not rustc diagnostics.
+    /// Configures the documentation policy used for compiler-generated links.
+    pub fn documentation_resolver(mut self, resolver: DocumentationResolver) -> Self {
+        self.documentation = resolver;
+
+        self
+    }
+
     pub fn import_line(
         &self,
         reporter: &Reporter,
@@ -251,7 +201,7 @@ impl CompilerImporter {
                 ))
                 .explanation("The compiler supplied a documented Rust error code.")
                 .applicability(Applicability::Manual)
-                .documentation(DocumentationLink::rust_error(&code.code)),
+                .documentation(self.documentation.rust_error(&code.code)),
             );
         }
 
@@ -304,6 +254,7 @@ impl CompilerImporter {
         let mut applicability = combined_applicability(&replacement_spans);
 
         let mut edits = Vec::new();
+
         let mut hydration_complete = true;
 
         for span in replacement_spans {
@@ -336,13 +287,7 @@ impl CompilerImporter {
             suggestion = suggestion.edit(edit);
         }
 
-        suggestion = suggestion.documentation(
-            DocumentationLink::new(
-                "rustc JSON diagnostics",
-                "https://doc.rust-lang.org/rustc/json.html",
-            )
-            .language("rust"),
-        );
+        suggestion = suggestion.documentation(self.documentation.rustc_json());
 
         Some(suggestion)
     }
@@ -353,6 +298,7 @@ impl CompilerImporter {
         }
 
         let root = self.source_root.as_ref()?;
+
         let root = fs::canonicalize(root).ok()?;
 
         let candidate = self.resolve_path(&span.file_name);
@@ -389,9 +335,6 @@ impl CompilerImporter {
             return Some(HydratedEdit {
                 edit,
 
-                // A zero-width compiler insertion does not currently have the
-                // same exact-content guard as Replace/Delete. Keep the patch
-                // preview, but do not permit automatic application yet.
                 safe_for_automatic_apply: false,
             });
         }
@@ -408,6 +351,7 @@ impl CompilerImporter {
 
         Some(HydratedEdit {
             edit,
+
             safe_for_automatic_apply: true,
         })
     }
@@ -432,6 +376,7 @@ impl CompilerImporter {
 #[derive(Debug)]
 struct HydratedEdit {
     edit: Edit,
+
     safe_for_automatic_apply: bool,
 }
 
@@ -505,14 +450,13 @@ struct RustcSpan {
 fn severity_from_rustc(level: &str) -> Severity {
     match level {
         "error: internal compiler error" => Severity::Fatal,
+
         "error" => Severity::Error,
+
         "warning" => Severity::Warning,
 
         "note" | "help" | "failure-note" => Severity::Info,
 
-        // rustc explicitly documents that consumers should tolerate new
-        // enumerated values. Unknown levels therefore degrade conservatively
-        // rather than making the importer fail.
         _ => Severity::Info,
     }
 }
@@ -549,8 +493,6 @@ fn applicability_from_rustc(value: Option<&str>) -> Applicability {
 
         Some("HasPlaceholders") => Applicability::HasPlaceholders,
 
-        // rustc currently uses values such as Unspecified, and future
-        // versions may introduce more. Unknown values never become automatic.
         _ => Applicability::Manual,
     }
 }
