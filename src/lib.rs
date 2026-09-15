@@ -1,8 +1,8 @@
 //! # diagprint
 //!
 //! `diagprint` provides structured diagnostics, rich terminal rendering,
-//! persistent reports, guarded remediation, compiler-diagnostic ingestion,
-//! version-aware documentation intelligence, and Rust ecosystem integrations.
+//! persistent reports, guarded remediation, compiler/Cargo intelligence,
+//! version-aware documentation, and Rust ecosystem integrations.
 //!
 //! The crate deliberately separates diagnostic data from presentation and
 //! mutation:
@@ -14,7 +14,9 @@
 //! - [`DocumentationResolver`] resolves documentation without guessing package
 //!   versions.
 //! - [`DiagnosticMetadata`] lets typed errors supply semantic metadata.
-//! - [`CompilerImporter`] consumes structured rustc and Cargo diagnostics.
+//! - [`CompilerImporter`] consumes structured rustc diagnostics.
+//! - [`CargoWorkspace`] models Cargo package/dependency metadata.
+//! - [`CargoStreamImporter`] consumes Cargo build-message streams.
 //!
 //! Calling a renderer never modifies source files.
 //!
@@ -61,49 +63,46 @@
 //!
 //! Verification is declarative and does not execute shell commands.
 //!
+//! ## Cargo intelligence
+//!
+//! [`CargoWorkspace`] consumes `cargo metadata --format-version=1` output and
+//! preserves:
+//!
+//! - package identity and exact versions;
+//! - workspace membership;
+//! - manifests and targets;
+//! - enabled features;
+//! - resolved direct dependencies;
+//! - renamed dependency names;
+//! - normal, development, build, and target-specific dependency context.
+//!
+//! [`CargoStreamImporter`] consumes Cargo `--message-format=json` output and
+//! recognizes compiler diagnostics, compiler artifacts, build-script results,
+//! and build completion.
+//!
+//! Unknown future Cargo message kinds are retained as [`CargoMessage::Unknown`]
+//! rather than rejected.
+//!
+//! [`CargoBuildSummary`] can aggregate one build stream without executing Cargo
+//! itself.
+//!
 //! ## Documentation intelligence
 //!
 //! [`DocumentationResolver`] can build a package/version catalog directly from
-//! `Cargo.lock`.
+//! `Cargo.lock`, while [`CargoWorkspace::documentation_resolver`] can build the
+//! same catalog from Cargo metadata.
 //!
-//! If exactly one version of a package is locked, a version-specific docs.rs
-//! URL can be produced automatically.
+//! If exactly one version of a package is known, a version-specific docs.rs URL
+//! can be produced automatically. Multiple versions remain ambiguous rather
+//! than being guessed.
 //!
-//! If multiple versions are present, resolution fails instead of silently
-//! choosing one.
-//!
-//! Rust-owned documentation can also be pinned to a toolchain release:
-//!
-//! ```no_run
-//! use diagprint::DocumentationResolver;
-//!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let resolver = DocumentationResolver::from_cargo_lock("Cargo.lock")?
-//!     .rust_version("1.98.0");
-//!
-//! let serde = resolver.crate_docs(
-//!     "serde",
-//!     "trait.Deserialize.html",
-//! )?;
-//!
-//! let e0277 = resolver.rust_error("E0277");
-//!
-//! println!("{}", serde.url);
-//! println!("{}", e0277.url);
-//! # Ok(())
-//! # }
-//! ```
+//! Rust-owned documentation may also be pinned to a specific toolchain release.
 //!
 //! ## Compiler diagnostics
 //!
-//! [`CompilerImporter`] consumes structured rustc JSON diagnostics directly,
-//! including diagnostics embedded in Cargo `compiler-message` records.
-//!
+//! [`CompilerImporter`] consumes structured rustc JSON diagnostics directly.
 //! It preserves compiler severity, Rust error codes, source spans, notes,
-//! help, structured replacements, applicability, and Cargo context.
-//!
-//! A [`DocumentationResolver`] can be attached to the importer so compiler
-//! documentation links follow the same toolchain-version policy.
+//! help, structured replacements, and applicability.
 //!
 //! Filesystem hydration is disabled by default. Applications that want rustc
 //! replacement spans converted into exact [`Edit`] values must explicitly
@@ -150,11 +149,12 @@
 //! - `terminal-docs` — terminal documentation retrieval and syntax
 //!   highlighting.
 //!
-//! Typed errors, compiler ingestion, documentation resolution, and `FixPlan`
-//! are core features.
+//! Typed errors, compiler/Cargo ingestion, documentation resolution, and
+//! `FixPlan` are core features.
 //!
 //! All optional features are disabled by default.
 
+mod cargo;
 mod compiler;
 mod diagnostic;
 mod documentation;
@@ -175,6 +175,13 @@ pub mod integrations;
 pub mod docs;
 
 pub mod render;
+
+pub use cargo::{
+    CargoArtifact, CargoBuildFinished, CargoBuildScript, CargoBuildSummary,
+    CargoCompilerDiagnostic, CargoDependency, CargoDependencyKind, CargoImportError, CargoMessage,
+    CargoPackage, CargoPackageIdentity, CargoProfile, CargoStreamImporter, CargoTarget,
+    CargoUnknownMessage, CargoWorkspace,
+};
 
 pub use compiler::{CompilerImportError, CompilerImporter};
 
