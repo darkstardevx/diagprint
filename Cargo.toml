@@ -1,6 +1,6 @@
 [package]
 name = "diagprint"
-version = "0.6.0"
+version = "0.7.0"
 edition = "2024"
 rust-version = "1.85"
 description = "Pretty, structured diagnostics and reports for Rust applications."
@@ -20,6 +20,8 @@ exclude = [
 
 [features]
 default = []
+
+derive = ["dep:diagprint-derive"]
 
 compression = [
     "dep:flate2",
@@ -71,6 +73,11 @@ toml = "1.1"
 uuid = { version = "1", features = ["v7", "serde"] }
 unicode-width = "0.2"
 terminal_size = "0.4"
+
+[dependencies.diagprint-derive]
+version = "0.7.0"
+path = "crates/diagprint-derive"
+optional = true
 
 [dependencies.anyhow]
 version = "1"
@@ -158,3 +165,10 @@ required-features = ["ariadne"]
 [[example]]
 name = "annotate_snippets_integration"
 required-features = ["annotate-snippets"]
+
+
+[workspace]
+members = [
+    "crates/diagprint-derive",
+]
+resolver = "3"

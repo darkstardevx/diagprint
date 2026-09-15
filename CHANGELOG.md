@@ -6,6 +6,20 @@ The project follows Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+
+- Introduced a Cargo workspace with the optional `diagprint-derive` procedural
+  macro crate.
+- Added derive-based typed diagnostic metadata with structured primary and
+  secondary source labels.
+- Added `DiagnosticReport` and `SeverityCounts` for aggregation, filtering,
+  deterministic ordering, and severity summaries.
+- Added `ResultDiagnosticExt` for converting typed `Result` errors directly
+  into diagnostics or revision-aware captured diagnostics.
+- Added safe-by-default `Sensitive<T>` values and explicit redaction policy
+  primitives for future exporters and integrations.
+
+
 ### Planned
 
 - Nonblocking and asynchronous report output.

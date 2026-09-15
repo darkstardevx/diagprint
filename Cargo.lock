@@ -327,7 +327,7 @@ dependencies = [
 
 [[package]]
 name = "diagprint"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "annotate-snippets",
  "anyhow",
@@ -335,6 +335,7 @@ dependencies = [
  "chrono",
  "codespan-reporting",
  "cybercore",
+ "diagprint-derive",
  "flate2",
  "hostname",
  "html2text",
@@ -352,6 +353,15 @@ dependencies = [
  "unicode-width 0.2.2",
  "uuid",
  "zstd",
+]
+
+[[package]]
+name = "diagprint-derive"
+version = "0.7.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]

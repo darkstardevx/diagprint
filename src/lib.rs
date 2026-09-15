@@ -7,7 +7,7 @@
 //! The crate deliberately separates diagnostic data from presentation and
 //! mutation:
 //!
-//! - [`Diagnostic`] describes what happened.
+//! - [`struct@Diagnostic`] describes what happened.
 //! - [`CapturedDiagnostic`] pairs a diagnostic with its immutable source snapshot.
 //! - [`Suggestion`] describes a possible resolution.
 //! - [`Fixer`] validates and applies guarded structured edits.
@@ -59,7 +59,7 @@
 //! This supports editor buffers, generated files, parser inputs, compiler
 //! virtual files, and other source text which may never exist on disk.
 //!
-//! Source contents are not serialized into [`Diagnostic`] JSON output.
+//! Source contents are not serialized into [`struct@Diagnostic`] JSON output.
 //!
 //! ## Generic interoperability
 //!
@@ -156,6 +156,7 @@
 //!
 //! ## Feature flags
 //!
+//! - `derive` — derive `DiagnosticMetadata` from typed errors.
 //! - `anyhow` — Anyhow context-chain integration.
 //! - `ariadne` — structured Ariadne/diagprint bridge.
 //! - `annotate-snippets` — structured annotate-snippets/diagprint bridge.
@@ -181,8 +182,11 @@ mod fixer;
 mod fixplan;
 mod intelligence;
 pub mod interop;
+mod redaction;
 mod remediation;
+mod report;
 mod reporter;
+mod result_ext;
 mod rotation;
 mod severity;
 mod source;
@@ -205,6 +209,9 @@ pub mod docs;
 pub mod render;
 
 pub use captured::CapturedDiagnostic;
+
+#[cfg(feature = "derive")]
+pub use diagprint_derive::Diagnostic;
 
 pub use cargo::{
     CargoArtifact, CargoBuildFinished, CargoBuildScript, CargoBuildSummary,
@@ -231,6 +238,12 @@ pub use interop::{
 };
 
 pub use render::{SeverityTheme, Style, Theme};
+
+pub use redaction::{REDACTED, RedactionPolicy, Sensitive};
+
+pub use report::{DiagnosticReport, SeverityCounts};
+
+pub use result_ext::{CapturedDiagnosticResult, DiagnosticResult, ResultDiagnosticExt};
 
 pub use reporter::{Compression, Reporter, ReporterBuilder};
 

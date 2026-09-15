@@ -383,6 +383,11 @@ impl Diagnostic {
         })
     }
 
+    pub fn labels(mut self, labels: impl IntoIterator<Item = Label>) -> Self {
+        self.labels.extend(labels);
+        self
+    }
+
     pub fn suggestion(mut self, suggestion: Suggestion) -> Self {
         self.suggestions.push(suggestion);
         self

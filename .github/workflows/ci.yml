@@ -36,10 +36,10 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Clippy all features
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   test:
     name: Tests
@@ -56,25 +56,25 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Check default features
-        run: cargo check --all-targets
+        run: cargo check --workspace --all-targets
 
       - name: Test default features
-        run: cargo test --all-targets
+        run: cargo test --workspace --all-targets
 
       - name: Test default rustdoc
-        run: cargo test --doc
+        run: cargo test --workspace --doc
 
       - name: Check all features
-        run: cargo check --all-targets --all-features
+        run: cargo check --workspace --all-targets --all-features
 
       - name: Test all features
-        run: cargo test --all-targets --all-features
+        run: cargo test --workspace --all-targets --all-features
 
       - name: Test all-feature rustdoc
-        run: cargo test --doc --all-features
+        run: cargo test --workspace --doc --all-features
 
       - name: Inspect package contents
-        run: cargo package --list
+        run: cargo package --list -p diagprint && cargo package --list -p diagprint-derive
 
   msrv:
     name: MSRV 1.85
@@ -103,7 +103,7 @@ jobs:
         run: rm -f Cargo.lock
 
       - name: Check all targets and features on MSRV
-        run: cargo check --all-targets --all-features
+        run: cargo check --workspace --all-targets --all-features
 
       - name: Check rustdoc examples on MSRV
-        run: cargo test --doc --all-features
+        run: cargo test --workspace --doc --all-features

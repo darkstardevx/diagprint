@@ -1,5 +1,5 @@
 use crate::{
-    Diagnostic, Reporter, Severity, Suggestion,
+    Diagnostic, Label, Reporter, Severity, Suggestion,
     intelligence::{
         cause_chain_from_sources, find_io_error_in_sources, io::suggestion as io_suggestion,
     },
@@ -32,6 +32,11 @@ pub trait DiagnosticMetadata {
 
     /// Additional contextual notes.
     fn diagnostic_notes(&self) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// Structured source labels associated with this error.
+    fn diagnostic_labels(&self) -> Vec<Label> {
         Vec::new()
     }
 
@@ -78,6 +83,8 @@ impl Reporter {
         for note in error.diagnostic_notes() {
             diagnostic = diagnostic.note(note);
         }
+
+        diagnostic = diagnostic.labels(error.diagnostic_labels());
 
         if let Some(cause) = cause_chain_from_sources(error) {
             diagnostic = diagnostic.cause_chain(cause);
