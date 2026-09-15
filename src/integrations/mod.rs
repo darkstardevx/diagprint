@@ -7,6 +7,9 @@
 #[cfg(feature = "anyhow")]
 mod anyhow;
 
+#[cfg(feature = "ariadne")]
+mod ariadne;
+
 #[cfg(feature = "codespan-reporting")]
 mod codespan;
 
@@ -18,6 +21,11 @@ mod tracing;
 
 #[cfg(feature = "anyhow")]
 pub use self::anyhow::AnyhowDiagnosticExt;
+
+#[cfg(feature = "ariadne")]
+pub use self::ariadne::{
+    AriadneBridge, AriadneBridgeError, AriadneBridgeLabel, AriadneOwnedSpan, AriadneSpan,
+};
 
 #[cfg(feature = "codespan-reporting")]
 pub use self::codespan::CodespanDiagnosticExt;

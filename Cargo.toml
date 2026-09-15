@@ -54,6 +54,10 @@ codespan-reporting = [
     "dep:codespan-reporting",
 ]
 
+ariadne = [
+    "dep:ariadne",
+]
+
 [dependencies]
 chrono = { version = "0.4", features = ["clock", "serde"] }
 hostname = "0.4"
@@ -90,6 +94,12 @@ codespan-reporting = {
     optional = true,
     default-features = false,
     features = ["std"]
+}
+
+ariadne = {
+    version = "0.6",
+    optional = true,
+    default-features = false
 }
 
 flate2 = {
@@ -158,3 +168,7 @@ required-features = ["miette"]
 [[example]]
 name = "codespan_integration"
 required-features = ["codespan-reporting"]
+
+[[example]]
+name = "ariadne_integration"
+required-features = ["ariadne"]

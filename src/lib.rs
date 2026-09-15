@@ -93,6 +93,10 @@
 //! The `codespan-reporting` feature resolves codespan's file IDs and byte
 //! ranges into [`InteropDiagnostic`] before conversion to diagprint.
 //!
+//! The `ariadne` feature provides a structured bridge which can emit both an
+//! Ariadne report and a diagprint [`InteropDiagnostic`] from the same source
+//! metadata without parsing rendered terminal output.
+//!
 //! The `anyhow` feature preserves Anyhow context/source chains.
 //!
 //! The `tracing` feature turns significant tracing events into structured
@@ -131,6 +135,7 @@
 //! ## Feature flags
 //!
 //! - `anyhow` — Anyhow context-chain integration.
+//! - `ariadne` — structured Ariadne/diagprint bridge.
 //! - `miette` — miette diagnostic-protocol integration.
 //! - `codespan-reporting` — codespan-reporting diagnostic integration.
 //! - `tracing` — structured tracing-event integration.
@@ -161,6 +166,7 @@ mod typed;
 
 #[cfg(any(
     feature = "anyhow",
+    feature = "ariadne",
     feature = "codespan-reporting",
     feature = "miette",
     feature = "tracing"
@@ -209,6 +215,11 @@ pub use suggestion::{
 };
 
 pub use typed::{DiagnosticErrorExt, DiagnosticMetadata};
+
+#[cfg(feature = "ariadne")]
+pub use integrations::{
+    AriadneBridge, AriadneBridgeError, AriadneBridgeLabel, AriadneOwnedSpan, AriadneSpan,
+};
 
 #[cfg(feature = "anyhow")]
 pub use integrations::AnyhowDiagnosticExt;

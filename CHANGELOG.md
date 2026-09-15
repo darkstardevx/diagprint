@@ -8,6 +8,8 @@ The project follows Semantic Versioning.
 
 ### Added
 
+- Structured Ariadne bridge producing both Ariadne reports and diagprint
+  interoperability diagnostics without rendered-output parsing.
 - Distinct terminal rendering for primary and secondary source labels.
 - Plain-text source-label rendering with explicit label roles.
 - Markdown source-label rendering with explicit label roles.
