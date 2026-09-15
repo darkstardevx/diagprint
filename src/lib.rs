@@ -249,7 +249,8 @@ pub use redaction::{
 };
 
 pub use export::{
-    ExportDiagnostic, ExportDocumentationLink, ExportLabel, ExportSourceLocation, ExportSuggestion,
+    ExportAttributes, ExportDiagnostic, ExportDocumentationLink, ExportLabel, ExportPath,
+    ExportPolicy, ExportRemediation, ExportSourceLocation, ExportSuggestion, ExportText, ExportUrl,
 };
 
 pub use report::{DiagnosticReport, ReportStatus, SeverityCounts};

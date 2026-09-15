@@ -1,11 +1,11 @@
 use super::Renderer;
-use crate::{Diagnostic, Label, LabelKind, Severity};
+use crate::{Diagnostic, ExportPolicy, Label, LabelKind, Severity};
 use serde_json::{Map, Value, json};
 use std::{collections::BTreeMap, fs, io, path::Path};
 
 /// Renders diagnostics as SARIF 2.1.0.
 ///
-/// A single `Diagnostic` becomes one SARIF result.
+/// A single [`struct@Diagnostic`] becomes one SARIF result.
 ///
 /// For source locations:
 ///
@@ -14,6 +14,10 @@ use std::{collections::BTreeMap, fs, io, path::Path};
 /// - all remaining labels become `relatedLocations`.
 ///
 /// SARIF regions use exclusive `endColumn` semantics.
+///
+/// Existing [`Renderer`] behavior preserves source paths exactly as supplied.
+/// Use [`SarifRenderer::render_many_with_policy`] when an explicit external
+/// privacy policy is required.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct SarifRenderer;
 
@@ -22,9 +26,26 @@ impl SarifRenderer {
 
     /// Renders multiple diagnostics into one complete SARIF document.
     ///
-    /// Rules are deduplicated by rule ID and emitted in deterministic
-    /// lexicographic order.
+    /// This preserves the historical path and text behavior.
     pub fn render_many<'a>(&self, diagnostics: impl IntoIterator<Item = &'a Diagnostic>) -> String {
+        self.render_many_internal(diagnostics, None)
+    }
+
+    /// Renders multiple diagnostics into one complete SARIF document using an
+    /// explicit external-export policy.
+    pub fn render_many_with_policy<'a>(
+        &self,
+        diagnostics: impl IntoIterator<Item = &'a Diagnostic>,
+        policy: &ExportPolicy,
+    ) -> String {
+        self.render_many_internal(diagnostics, Some(policy))
+    }
+
+    fn render_many_internal<'a>(
+        &self,
+        diagnostics: impl IntoIterator<Item = &'a Diagnostic>,
+        policy: Option<&ExportPolicy>,
+    ) -> String {
         let diagnostics: Vec<&Diagnostic> = diagnostics.into_iter().collect();
 
         let mut rule_sources: BTreeMap<String, &Diagnostic> = BTreeMap::new();
@@ -43,12 +64,12 @@ impl SarifRenderer {
 
         let rules: Vec<Value> = rule_sources
             .iter()
-            .map(|(rule_id, diagnostic)| Self::rule_descriptor(rule_id, diagnostic))
+            .map(|(rule_id, diagnostic)| Self::rule_descriptor(rule_id, diagnostic, policy))
             .collect();
 
         let results: Vec<Value> = diagnostics
             .iter()
-            .map(|diagnostic| Self::result(diagnostic, &rule_indices))
+            .map(|diagnostic| Self::result(diagnostic, &rule_indices, policy))
             .collect();
 
         let log = json!({
@@ -88,6 +109,16 @@ impl SarifRenderer {
         fs::write(path, self.render_many(diagnostics))
     }
 
+    /// Writes one complete policy-controlled SARIF document.
+    pub fn write_many_with_policy<'a>(
+        &self,
+        path: impl AsRef<Path>,
+        diagnostics: impl IntoIterator<Item = &'a Diagnostic>,
+        policy: &ExportPolicy,
+    ) -> io::Result<()> {
+        fs::write(path, self.render_many_with_policy(diagnostics, policy))
+    }
+
     fn rule_id(diagnostic: &Diagnostic) -> String {
         if let Some(code) = diagnostic.code.as_deref().filter(|code| !code.is_empty()) {
             return code.to_owned();
@@ -115,13 +146,26 @@ impl SarifRenderer {
             Severity::Trace | Severity::Debug => "none",
 
             Severity::Info => "note",
+
             Severity::Warning => "warning",
 
             Severity::Error | Severity::Fatal => "error",
         }
     }
 
-    fn rule_descriptor(rule_id: &str, diagnostic: &Diagnostic) -> Value {
+    fn apply_text(value: &str, policy: Option<&ExportPolicy>) -> String {
+        match policy {
+            Some(policy) => policy.apply_text(value),
+
+            None => value.to_owned(),
+        }
+    }
+
+    fn rule_descriptor(
+        rule_id: &str,
+        diagnostic: &Diagnostic,
+        policy: Option<&ExportPolicy>,
+    ) -> Value {
         let mut rule = Map::new();
 
         rule.insert("id".into(), json!(rule_id));
@@ -129,16 +173,21 @@ impl SarifRenderer {
         rule.insert(
             "shortDescription".into(),
             json!({
-                "text": diagnostic.message
+                "text":
+                    Self::apply_text(
+                        &diagnostic.message,
+                        policy,
+                    )
             }),
         );
 
         rule.insert(
             "defaultConfiguration".into(),
             json!({
-                "level": Self::level(
-                    diagnostic.severity
-                )
+                "level":
+                    Self::level(
+                        diagnostic.severity
+                    )
             }),
         );
 
@@ -146,7 +195,11 @@ impl SarifRenderer {
             rule.insert(
                 "help".into(),
                 json!({
-                    "text": help
+                    "text":
+                        Self::apply_text(
+                            help,
+                            policy,
+                        )
                 }),
             );
         }
@@ -154,7 +207,11 @@ impl SarifRenderer {
         Value::Object(rule)
     }
 
-    fn result(diagnostic: &Diagnostic, rule_indices: &BTreeMap<String, usize>) -> Value {
+    fn result(
+        diagnostic: &Diagnostic,
+        rule_indices: &BTreeMap<String, usize>,
+        policy: Option<&ExportPolicy>,
+    ) -> Value {
         let rule_id = Self::rule_id(diagnostic);
 
         let rule_index = *rule_indices
@@ -174,7 +231,8 @@ impl SarifRenderer {
             json!({
                 "text":
                     Self::result_message(
-                        diagnostic
+                        diagnostic,
+                        policy,
                     )
             }),
         );
@@ -184,7 +242,7 @@ impl SarifRenderer {
 
             result.insert(
                 "locations".into(),
-                Value::Array(vec![Self::location(primary, None)]),
+                Value::Array(vec![Self::location(primary, None, policy)]),
             );
 
             let mut related = Vec::new();
@@ -196,7 +254,7 @@ impl SarifRenderer {
 
                 let id = related.len() + 1;
 
-                related.push(Self::location(label, Some(id)));
+                related.push(Self::location(label, Some(id), policy));
             }
 
             if !related.is_empty() {
@@ -215,7 +273,7 @@ impl SarifRenderer {
             .or((!diagnostic.labels.is_empty()).then_some(0))
     }
 
-    fn location(label: &Label, id: Option<usize>) -> Value {
+    fn location(label: &Label, id: Option<usize>, policy: Option<&ExportPolicy>) -> Value {
         let mut region = Map::new();
 
         region.insert("startLine".into(), json!(label.location.line.max(1)));
@@ -228,12 +286,30 @@ impl SarifRenderer {
             if let Some(length) = label.length {
                 let length = u32::try_from(length).unwrap_or(u32::MAX);
 
-                // SARIF endColumn is exclusive.
                 let end_column = column.saturating_add(length);
 
                 region.insert("endColumn".into(), json!(end_column));
             }
         }
+
+        let mut physical_location = Map::new();
+
+        let exported_path = match policy {
+            Some(policy) => policy.apply_path(&label.location.file),
+
+            None => Some(label.location.file.clone()),
+        };
+
+        if let Some(file) = exported_path {
+            physical_location.insert(
+                "artifactLocation".into(),
+                json!({
+                    "uri": file
+                }),
+            );
+        }
+
+        physical_location.insert("region".into(), Value::Object(region));
 
         let mut location = Map::new();
 
@@ -241,17 +317,7 @@ impl SarifRenderer {
             location.insert("id".into(), json!(id));
         }
 
-        location.insert(
-            "physicalLocation".into(),
-            json!({
-                "artifactLocation": {
-                    "uri":
-                        label.location.file
-                },
-                "region":
-                    Value::Object(region)
-            }),
-        );
+        location.insert("physicalLocation".into(), Value::Object(physical_location));
 
         if let Some(message) = label
             .message
@@ -261,7 +327,11 @@ impl SarifRenderer {
             location.insert(
                 "message".into(),
                 json!({
-                    "text": message
+                    "text":
+                        Self::apply_text(
+                            message,
+                            policy,
+                        )
                 }),
             );
         }
@@ -279,27 +349,30 @@ impl SarifRenderer {
         Value::Object(location)
     }
 
-    fn result_message(diagnostic: &Diagnostic) -> String {
+    fn result_message(diagnostic: &Diagnostic, policy: Option<&ExportPolicy>) -> String {
         let mut message = diagnostic.message.clone();
 
         for note in &diagnostic.notes {
             message.push_str("\n\nNote: ");
+
             message.push_str(note);
         }
 
         if let Some(help) = &diagnostic.help {
             message.push_str("\n\nHelp: ");
+
             message.push_str(help);
         }
 
         if let Some(cause) = &diagnostic.cause {
             for cause in cause.iter() {
                 message.push_str("\n\nCaused by: ");
+
                 message.push_str(&cause.message);
             }
         }
 
-        message
+        Self::apply_text(&message, policy)
     }
 }
 

@@ -8,6 +8,10 @@ The project follows Semantic Versioning.
 
 ### Added
 
+- Added policy-aware GitHub Actions and SARIF rendering with repository-relative or omitted source paths and optional text redaction, while preserving historical renderer behavior by default.
+- Added a shared `ExportPolicy` with explicit controls for free-form text, source paths, structured attributes, remediation metadata, documentation URLs, and process metadata; existing JSON/JSONL behavior retains conservative safe defaults.
+- Added repository-relative source-path export with fail-closed filename fallback for locations outside the configured root.
+- Added opt-in structured attribute export modes including common sensitive-key redaction while preserving non-sensitive typed values.
 - Added an export-safe diagnostic representation used by JSON and JSON Lines output; default external serialization omits arbitrary attribute values, remediation source text, and suggested command contents while retaining structural counts.
 - Added dependency-free path, URL, and common sensitive-key sanitization primitives for external diagnostic boundaries.
 - Added explicit OpenTelemetry attribute privacy controls with `AttributeExport::{Omit, Redact, Full}`; arbitrary structured diagnostic attributes are omitted by default.

@@ -1,4 +1,4 @@
-use crate::{Diagnostic, DiagnosticReport, ExportDiagnostic, render::Renderer};
+use crate::{Diagnostic, DiagnosticReport, ExportDiagnostic, ExportPolicy, render::Renderer};
 use std::{
     error::Error,
     fmt,
@@ -158,13 +158,23 @@ where
 /// newline.
 pub struct JsonLinesSink<W> {
     writer: Mutex<W>,
+    policy: ExportPolicy,
 }
 
 impl<W> JsonLinesSink<W> {
     pub fn new(writer: W) -> Self {
+        Self::with_policy(writer, ExportPolicy::default())
+    }
+
+    pub fn with_policy(writer: W, policy: ExportPolicy) -> Self {
         Self {
             writer: Mutex::new(writer),
+            policy,
         }
+    }
+
+    pub fn policy(&self) -> &ExportPolicy {
+        &self.policy
     }
 
     pub fn into_inner(self) -> SinkResult<W> {
@@ -193,7 +203,7 @@ where
     fn emit(&self, diagnostic: &Diagnostic) -> SinkResult<()> {
         let mut writer = self.writer.lock().map_err(|_| SinkError::poisoned())?;
 
-        let export = ExportDiagnostic::from(diagnostic);
+        let export = ExportDiagnostic::with_policy(diagnostic, &self.policy);
 
         serde_json::to_writer(&mut *writer, &export)?;
 
