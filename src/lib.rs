@@ -2,7 +2,7 @@
 //!
 //! `diagprint` provides structured diagnostics, rich terminal rendering,
 //! persistent reports, guarded remediation, compiler/Cargo intelligence,
-//! version-aware documentation, and Rust ecosystem integrations.
+//! version-aware documentation, and Rust ecosystem interoperability.
 //!
 //! The crate deliberately separates diagnostic data from presentation and
 //! mutation:
@@ -19,28 +19,6 @@
 //! - [`CargoStreamImporter`] consumes Cargo build-message streams.
 //!
 //! Calling a renderer never modifies source files.
-//!
-//! ## Quick start
-//!
-//! ```
-//! use diagprint::{Reporter, Severity};
-//!
-//! # fn main() -> diagprint::Result<()> {
-//! let reporter = Reporter::builder()
-//!     .application("myapp")
-//!     .min_severity(Severity::Info)
-//!     .build()?;
-//!
-//! let diagnostic = reporter
-//!     .error("Network initialization failed")
-//!     .code("NET-001")
-//!     .cause("failed to open network interface")
-//!     .help("Check interface permissions and driver state");
-//!
-//! reporter.emit(&diagnostic)?;
-//! # Ok(())
-//! # }
-//! ```
 //!
 //! ## Diagnostic intelligence
 //!
@@ -66,15 +44,8 @@
 //! ## Cargo intelligence
 //!
 //! [`CargoWorkspace`] consumes `cargo metadata --format-version=1` output and
-//! preserves:
-//!
-//! - package identity and exact versions;
-//! - workspace membership;
-//! - manifests and targets;
-//! - enabled features;
-//! - resolved direct dependencies;
-//! - renamed dependency names;
-//! - normal, development, build, and target-specific dependency context.
+//! preserves package identity, versions, workspace membership, targets,
+//! features, and resolved dependency context.
 //!
 //! [`CargoStreamImporter`] consumes Cargo `--message-format=json` output and
 //! recognizes compiler diagnostics, compiler artifacts, build-script results,
@@ -83,20 +54,40 @@
 //! Unknown future Cargo message kinds are retained as [`CargoMessage::Unknown`]
 //! rather than rejected.
 //!
-//! [`CargoBuildSummary`] can aggregate one build stream without executing Cargo
-//! itself.
-//!
 //! ## Documentation intelligence
 //!
-//! [`DocumentationResolver`] can build a package/version catalog directly from
-//! `Cargo.lock`, while [`CargoWorkspace::documentation_resolver`] can build the
-//! same catalog from Cargo metadata.
+//! [`DocumentationResolver`] can build package/version catalogs from
+//! `Cargo.lock` or [`CargoWorkspace`].
 //!
-//! If exactly one version of a package is known, a version-specific docs.rs URL
-//! can be produced automatically. Multiple versions remain ambiguous rather
-//! than being guessed.
+//! Ambiguous package versions remain ambiguous rather than being guessed.
 //!
-//! Rust-owned documentation may also be pinned to a specific toolchain release.
+//! ## Ecosystem interoperability
+//!
+//! Optional adapters allow existing Rust diagnostic ecosystems to feed
+//! structured data into `diagprint`.
+//!
+//! The `miette` feature consumes [`miette::Diagnostic`] metadata directly:
+//!
+//! - message;
+//! - severity;
+//! - code;
+//! - help;
+//! - documentation URL;
+//! - source labels;
+//! - diagnostic/source chains;
+//! - related diagnostics.
+//!
+//! Miette's `related()` relationship is preserved by
+//! [`MietteDiagnosticTree`] rather than flattened into strings.
+//!
+//! The adapter does not parse miette's rendered report output and does not
+//! manufacture machine-applicable fixes.
+//!
+//! The `anyhow` feature preserves Anyhow context/source chains and enriches
+//! recognized standard-library failures.
+//!
+//! The `tracing` feature provides a composable tracing-subscriber layer that
+//! turns significant runtime events into structured diagnostics.
 //!
 //! ## Compiler diagnostics
 //!
@@ -104,26 +95,13 @@
 //! It preserves compiler severity, Rust error codes, source spans, notes,
 //! help, structured replacements, and applicability.
 //!
-//! Filesystem hydration is disabled by default. Applications that want rustc
-//! replacement spans converted into exact [`Edit`] values must explicitly
-//! configure a trusted source root and enable hydration.
+//! Filesystem hydration is disabled by default.
 //!
 //! ## Typed errors
 //!
 //! Application error enums and structs can implement [`DiagnosticMetadata`]
 //! to provide stable diagnostic codes, severity, help, notes, and structured
 //! suggestions.
-//!
-//! This works naturally with `thiserror` because the integration is based on
-//! the standard [`std::error::Error`] interface.
-//!
-//! ## Ecosystem integrations
-//!
-//! The optional `anyhow` feature preserves Anyhow context/source chains and
-//! enriches recognized standard-library failures.
-//!
-//! The optional `tracing` feature provides a composable tracing-subscriber
-//! layer that turns significant runtime events into structured diagnostics.
 //!
 //! ## Terminal documentation
 //!
@@ -134,8 +112,6 @@
 //! ## Themes
 //!
 //! [`Theme`], [`Style`], and [`SeverityTheme`] control terminal presentation.
-//! Disabling renderer color remains authoritative regardless of the selected
-//! theme.
 //!
 //! The optional `cybercore` feature maps the Cybercore semantic palette into
 //! `diagprint` rather than copying Cybercore color values.
@@ -143,6 +119,7 @@
 //! ## Feature flags
 //!
 //! - `anyhow` — Anyhow context-chain integration.
+//! - `miette` — miette diagnostic-protocol integration.
 //! - `tracing` — structured tracing-event integration.
 //! - `compression` — gzip and Zstandard report compression.
 //! - `cybercore` — Cybercore theme-schema integration.
@@ -168,7 +145,7 @@ mod severity;
 mod suggestion;
 mod typed;
 
-#[cfg(any(feature = "anyhow", feature = "tracing"))]
+#[cfg(any(feature = "anyhow", feature = "miette", feature = "tracing"))]
 pub mod integrations;
 
 #[cfg(feature = "terminal-docs")]
@@ -211,6 +188,9 @@ pub use typed::{DiagnosticErrorExt, DiagnosticMetadata};
 
 #[cfg(feature = "anyhow")]
 pub use integrations::AnyhowDiagnosticExt;
+
+#[cfg(feature = "miette")]
+pub use integrations::{MietteDiagnosticExt, MietteDiagnosticTree, MietteReportExt};
 
 #[cfg(feature = "tracing")]
 pub use integrations::TracingLayer;

@@ -48,6 +48,10 @@ tracing = [
     "dep:tracing-subscriber",
 ]
 
+miette = [
+    "dep:miette",
+]
+
 [dependencies]
 chrono = { version = "0.4", features = ["clock", "serde"] }
 hostname = "0.4"
@@ -71,6 +75,12 @@ tracing = {
 tracing-subscriber = {
     version = "0.3",
     optional = true
+}
+
+miette = {
+    version = "7.6",
+    optional = true,
+    default-features = false
 }
 
 flate2 = {
@@ -131,3 +141,7 @@ required-features = ["anyhow"]
 [[example]]
 name = "tracing_integration"
 required-features = ["tracing"]
+
+[[example]]
+name = "miette_integration"
+required-features = ["miette"]
