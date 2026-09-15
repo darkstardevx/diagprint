@@ -1,4 +1,6 @@
-use diagprint::{Applicability, DocumentationLink, Edit, Fixer, Reporter, Suggestion, TextRange};
+use diagprint::{
+    Applicability, DocumentationLink, Edit, FixError, Fixer, Reporter, Suggestion, TextRange,
+};
 use std::{
     fs,
     path::PathBuf,
@@ -34,6 +36,7 @@ impl TempFile {
 impl Drop for TempFile {
     fn drop(&mut self) {
         let _ = fs::remove_file(&self.path);
+
         let _ = fs::remove_file(format!("{}.diagprint.bak", self.path.display()));
     }
 }
@@ -52,6 +55,31 @@ fn suggestion_is_serialized_with_diagnostic() {
 
     assert!(json.contains("Enable serde"));
     assert!(json.contains("documentation"));
+}
+
+#[test]
+fn check_validates_without_writing() {
+    let file = TempFile::new("before\n");
+
+    let reporter = Reporter::builder().build().unwrap();
+
+    let diagnostic = reporter.error("change available").suggestion(
+        Suggestion::new("Change text")
+            .applicability(Applicability::MachineApplicable)
+            .edit(Edit::replace(
+                &file.path,
+                TextRange::new(0, 6),
+                "before",
+                "after",
+            )),
+    );
+
+    let check = Fixer::new().check(&diagnostic).unwrap();
+
+    assert_eq!(check.applicable_suggestions, 1);
+    assert_eq!(check.affected_files, vec![file.path.clone()]);
+
+    assert_eq!(file.read(), "before\n");
 }
 
 #[test]
@@ -82,6 +110,34 @@ fn machine_applicable_edit_is_applied() {
     assert_eq!(report.applied_suggestions, 1);
     assert_eq!(report.changed_files.len(), 1);
     assert!(file.read().contains("\"serde\""));
+}
+
+#[test]
+fn multiple_non_overlapping_edits_are_applied() {
+    let file = TempFile::new("abc def ghi\n");
+
+    let reporter = Reporter::builder().build().unwrap();
+
+    let diagnostic = reporter.error("two fixes available").suggestion(
+        Suggestion::new("Uppercase two words")
+            .applicability(Applicability::MachineApplicable)
+            .edit(Edit::replace(
+                &file.path,
+                TextRange::new(0, 3),
+                "abc",
+                "ABC",
+            ))
+            .edit(Edit::replace(
+                &file.path,
+                TextRange::new(8, 11),
+                "ghi",
+                "GHI",
+            )),
+    );
+
+    Fixer::new().apply(&diagnostic).unwrap();
+
+    assert_eq!(file.read(), "ABC def GHI\n");
 }
 
 #[test]
@@ -126,8 +182,57 @@ fn stale_edit_is_refused() {
 
     let result = Fixer::new().apply(&diagnostic);
 
-    assert!(result.is_err());
+    assert!(matches!(result, Err(FixError::StaleEdit { .. })));
     assert_eq!(file.read(), "actual\n");
+}
+
+#[test]
+fn overlapping_edits_are_refused() {
+    let file = TempFile::new("abcdef\n");
+
+    let reporter = Reporter::builder().build().unwrap();
+
+    let diagnostic = reporter.error("conflicting fixes").suggestion(
+        Suggestion::new("Conflicting replacements")
+            .applicability(Applicability::MachineApplicable)
+            .edit(Edit::replace(
+                &file.path,
+                TextRange::new(0, 3),
+                "abc",
+                "ABC",
+            ))
+            .edit(Edit::replace(
+                &file.path,
+                TextRange::new(2, 5),
+                "cde",
+                "CDE",
+            )),
+    );
+
+    let result = Fixer::new().apply(&diagnostic);
+
+    assert!(matches!(result, Err(FixError::OverlappingEdits { .. })));
+
+    assert_eq!(file.read(), "abcdef\n");
+}
+
+#[test]
+fn utf8_boundary_violation_is_refused() {
+    let file = TempFile::new("éx\n");
+
+    let reporter = Reporter::builder().build().unwrap();
+
+    let diagnostic = reporter.error("invalid boundary").suggestion(
+        Suggestion::new("Invalid byte edit")
+            .applicability(Applicability::MachineApplicable)
+            .edit(Edit::replace(&file.path, TextRange::new(1, 2), "", "x")),
+    );
+
+    let result = Fixer::new().apply(&diagnostic);
+
+    assert!(matches!(result, Err(FixError::InvalidUtf8Boundary { .. })));
+
+    assert_eq!(file.read(), "éx\n");
 }
 
 #[test]

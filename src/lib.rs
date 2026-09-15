@@ -19,7 +19,7 @@ pub mod docs;
 pub mod render;
 
 pub use diagnostic::{Cause, Diagnostic, Label, SourceLocation};
-pub use fixer::{FixError, FixPreview, FixReport, Fixer};
+pub use fixer::{FixCheck, FixError, FixPreview, FixReport, Fixer};
 pub use render::{SeverityTheme, Style, Theme};
 pub use reporter::{Compression, Reporter, ReporterBuilder};
 pub use rotation::{RotationCadence, RotationPolicy, RotationState};

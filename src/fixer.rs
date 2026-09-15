@@ -6,6 +6,7 @@ use std::{
     io::{self, Write},
     path::{Path, PathBuf},
 };
+use uuid::Uuid;
 
 #[derive(Debug)]
 pub enum FixError {
@@ -125,6 +126,12 @@ impl FixPreview {
 }
 
 #[derive(Debug, Clone, Default)]
+pub struct FixCheck {
+    pub applicable_suggestions: usize,
+    pub affected_files: Vec<PathBuf>,
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct FixReport {
     pub applied_suggestions: usize,
     pub changed_files: Vec<PathBuf>,
@@ -134,6 +141,21 @@ pub struct FixReport {
 pub struct Fixer {
     backup: bool,
     backup_suffix: String,
+}
+
+#[derive(Debug)]
+struct PreparedFile {
+    path: PathBuf,
+    original: String,
+    updated: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InteractiveAction {
+    Apply,
+    Skip,
+    Docs,
+    Quit,
 }
 
 impl Default for Fixer {
@@ -212,13 +234,26 @@ impl Fixer {
         }
     }
 
-    pub fn apply(&self, diagnostic: &Diagnostic) -> Result<FixReport, FixError> {
-        let suggestions: Vec<&Suggestion> = diagnostic
-            .suggestions
+    /// Validates every machine-applicable edit against the current filesystem
+    /// without changing any files.
+    pub fn check(&self, diagnostic: &Diagnostic) -> Result<FixCheck, FixError> {
+        let suggestions = applicable_suggestions(diagnostic);
+        let prepared = prepare_suggestions(&suggestions)?;
+
+        let affected_files = prepared
             .iter()
-            .filter(|suggestion| suggestion.is_machine_applicable() && suggestion.has_edits())
+            .filter(|prepared| prepared.original != prepared.updated)
+            .map(|prepared| prepared.path.clone())
             .collect();
 
+        Ok(FixCheck {
+            applicable_suggestions: suggestions.len(),
+            affected_files,
+        })
+    }
+
+    pub fn apply(&self, diagnostic: &Diagnostic) -> Result<FixReport, FixError> {
+        let suggestions = applicable_suggestions(diagnostic);
         self.apply_suggestions(&suggestions)
     }
 
@@ -229,24 +264,39 @@ impl Fixer {
             println!();
             print!("{}", Self::preview_suggestion(suggestion).render());
 
-            if !suggestion.is_machine_applicable() || !suggestion.has_edits() {
-                println!("ACTION  manual only");
+            let mut can_apply = suggestion.is_machine_applicable() && suggestion.has_edits();
+
+            if can_apply {
+                match prepare_suggestions(&[suggestion]) {
+                    Ok(_) => {
+                        println!("VERIFY  current file contents match the proposed edit");
+                    }
+
+                    Err(error) => {
+                        println!("VERIFY  blocked: {error}");
+                        can_apply = false;
+                    }
+                }
             }
 
+            let has_docs = !suggestion.documentation.is_empty();
+
             loop {
-                print!("[A]pply  [S]kip  [D]ocs  [Q]uit > ");
+                let prompt = interactive_prompt(can_apply, has_docs);
+
+                print!("{prompt}");
                 io::stdout().flush()?;
 
                 let mut answer = String::new();
                 io::stdin().read_line(&mut answer)?;
 
-                match answer.trim().to_ascii_lowercase().as_str() {
-                    "a" | "apply" => {
-                        if !suggestion.is_machine_applicable() || !suggestion.has_edits() {
-                            println!("This suggestion is not safe for automatic application.");
-                            continue;
-                        }
+                let Some(action) = parse_interactive_action(&answer, can_apply, has_docs) else {
+                    println!("Unknown action.");
+                    continue;
+                };
 
+                match action {
+                    InteractiveAction::Apply => {
                         let current = self.apply_suggestions(&[suggestion])?;
 
                         report.applied_suggestions += current.applied_suggestions;
@@ -261,21 +311,17 @@ impl Fixer {
                         break;
                     }
 
-                    "s" | "skip" => {
+                    InteractiveAction::Skip => {
                         println!("skipped.");
                         break;
                     }
 
-                    "d" | "docs" => {
+                    InteractiveAction::Docs => {
                         self.show_documentation(suggestion);
                     }
 
-                    "q" | "quit" => {
+                    InteractiveAction::Quit => {
                         return Ok(report);
-                    }
-
-                    _ => {
-                        println!("Unknown action.");
                     }
                 }
             }
@@ -320,53 +366,90 @@ impl Fixer {
     }
 
     fn apply_suggestions(&self, suggestions: &[&Suggestion]) -> Result<FixReport, FixError> {
-        let mut by_file: BTreeMap<PathBuf, Vec<&Edit>> = BTreeMap::new();
-
-        for suggestion in suggestions {
-            for edit in &suggestion.edits {
-                by_file
-                    .entry(edit.file().to_path_buf())
-                    .or_default()
-                    .push(edit);
-            }
-        }
-
-        if by_file.is_empty() {
-            return Ok(FixReport::default());
-        }
-
-        let mut prepared = Vec::new();
-
-        for (file, edits) in &by_file {
-            let original = fs::read_to_string(file)?;
-
-            validate_edits(file, &original, edits)?;
-
-            let updated = apply_edits(file, original.clone(), edits)?;
-
-            prepared.push((file.clone(), original, updated));
-        }
-
+        let prepared = prepare_suggestions(suggestions)?;
         let mut changed_files = BTreeSet::new();
 
-        for (file, original, updated) in prepared {
-            if original == updated {
+        for prepared in prepared {
+            if prepared.original == prepared.updated {
                 continue;
             }
 
             if self.backup {
-                let backup = backup_path(&file, &self.backup_suffix);
-                fs::write(backup, &original)?;
+                let backup = backup_path(&prepared.path, &self.backup_suffix);
+
+                atomic_write(&backup, &prepared.original)?;
             }
 
-            atomic_write(&file, &updated)?;
-            changed_files.insert(file);
+            atomic_write(&prepared.path, &prepared.updated)?;
+            changed_files.insert(prepared.path);
         }
 
         Ok(FixReport {
             applied_suggestions: suggestions.len(),
             changed_files: changed_files.into_iter().collect(),
         })
+    }
+}
+
+fn applicable_suggestions(diagnostic: &Diagnostic) -> Vec<&Suggestion> {
+    diagnostic
+        .suggestions
+        .iter()
+        .filter(|suggestion| suggestion.is_machine_applicable() && suggestion.has_edits())
+        .collect()
+}
+
+fn prepare_suggestions(suggestions: &[&Suggestion]) -> Result<Vec<PreparedFile>, FixError> {
+    let mut by_file: BTreeMap<PathBuf, Vec<&Edit>> = BTreeMap::new();
+
+    for suggestion in suggestions {
+        for edit in &suggestion.edits {
+            by_file
+                .entry(edit.file().to_path_buf())
+                .or_default()
+                .push(edit);
+        }
+    }
+
+    let mut prepared = Vec::new();
+
+    for (file, edits) in by_file {
+        let original = fs::read_to_string(&file)?;
+
+        validate_edits(&file, &original, &edits)?;
+
+        let updated = apply_edits(&file, original.clone(), &edits)?;
+
+        prepared.push(PreparedFile {
+            path: file,
+            original,
+            updated,
+        });
+    }
+
+    Ok(prepared)
+}
+
+fn interactive_prompt(can_apply: bool, has_docs: bool) -> &'static str {
+    match (can_apply, has_docs) {
+        (true, true) => "[A]pply  [S]kip  [D]ocs  [Q]uit > ",
+        (true, false) => "[A]pply  [S]kip  [Q]uit > ",
+        (false, true) => "[S]kip  [D]ocs  [Q]uit > ",
+        (false, false) => "[S]kip  [Q]uit > ",
+    }
+}
+
+fn parse_interactive_action(
+    input: &str,
+    can_apply: bool,
+    has_docs: bool,
+) -> Option<InteractiveAction> {
+    match input.trim().to_ascii_lowercase().as_str() {
+        "a" | "apply" if can_apply => Some(InteractiveAction::Apply),
+        "s" | "skip" => Some(InteractiveAction::Skip),
+        "d" | "docs" if has_docs => Some(InteractiveAction::Docs),
+        "q" | "quit" => Some(InteractiveAction::Quit),
+        _ => None,
     }
 }
 
@@ -436,6 +519,7 @@ fn validate_edits(file: &Path, content: &str, edits: &[&Edit]) -> Result<(), Fix
         let (second_start, second_end) = pair[1];
 
         let overlaps = first_end > second_start;
+
         let duplicate_insert =
             first_start == first_end && second_start == second_end && first_start == second_start;
 
@@ -511,12 +595,16 @@ fn backup_path(file: &Path, suffix: &str) -> PathBuf {
 fn atomic_write(file: &Path, contents: &str) -> Result<(), FixError> {
     let parent = file.parent().unwrap_or_else(|| Path::new("."));
 
+    if !parent.as_os_str().is_empty() {
+        fs::create_dir_all(parent)?;
+    }
+
     let name = file
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or("diagprint");
 
-    let temporary = parent.join(format!(".{name}.diagprint-{}.tmp", std::process::id()));
+    let temporary = parent.join(format!(".{name}.diagprint-{}.tmp", Uuid::now_v7()));
 
     fs::write(&temporary, contents)?;
 
@@ -530,4 +618,43 @@ fn atomic_write(file: &Path, contents: &str) -> Result<(), FixError> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{interactive_prompt, parse_interactive_action, InteractiveAction};
+
+    #[test]
+    fn interactive_prompt_only_offers_valid_actions() {
+        assert_eq!(
+            interactive_prompt(true, true),
+            "[A]pply  [S]kip  [D]ocs  [Q]uit > "
+        );
+
+        assert_eq!(interactive_prompt(false, true), "[S]kip  [D]ocs  [Q]uit > ");
+
+        assert_eq!(
+            interactive_prompt(true, false),
+            "[A]pply  [S]kip  [Q]uit > "
+        );
+
+        assert_eq!(interactive_prompt(false, false), "[S]kip  [Q]uit > ");
+    }
+
+    #[test]
+    fn parser_rejects_unavailable_actions() {
+        assert_eq!(parse_interactive_action("a", false, true), None);
+
+        assert_eq!(parse_interactive_action("d", true, false), None);
+
+        assert_eq!(
+            parse_interactive_action("apply", true, false),
+            Some(InteractiveAction::Apply)
+        );
+
+        assert_eq!(
+            parse_interactive_action("quit", false, false),
+            Some(InteractiveAction::Quit)
+        );
+    }
 }
