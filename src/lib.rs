@@ -1,7 +1,8 @@
 //! # diagprint
 //!
 //! `diagprint` provides structured diagnostics, rich terminal rendering,
-//! persistent reports, and guarded diagnostic fixes for Rust applications.
+//! persistent reports, guarded diagnostic fixes, and diagnostic-intelligence
+//! integrations for Rust applications.
 //!
 //! The crate deliberately separates **diagnostic data** from
 //! **presentation and mutation**:
@@ -37,9 +38,7 @@
 //!
 //! ## Diagnostic intelligence
 //!
-//! v0.4 adds structured suggestions and guarded file edits.
-//!
-//! A suggestion can carry:
+//! Structured suggestions can carry:
 //!
 //! - an explanation;
 //! - documentation links;
@@ -85,7 +84,6 @@
 //!             )),
 //!     );
 //!
-//! // Validate against the current filesystem without making changes.
 //! let check = Fixer::new().check(&diagnostic)?;
 //!
 //! println!(
@@ -113,6 +111,17 @@
 //!
 //! Suggested shell commands are informational only and are never executed by
 //! [`Fixer`].
+//!
+//! ## Ecosystem integrations
+//!
+//! Optional adapters allow external Rust error ecosystems to feed structured
+//! information into `diagprint`.
+//!
+//! The `anyhow` feature preserves Anyhow context/source chains and can attach
+//! conservative intelligence for recognized standard-library I/O failures.
+//!
+//! Integrations enrich existing error ecosystems rather than requiring
+//! applications to replace them.
 //!
 //! ## Terminal documentation
 //!
@@ -152,6 +161,8 @@
 //!
 //! ## Feature flags
 //!
+//! - `anyhow` — Anyhow context-chain integration and conservative error
+//!   intelligence.
 //! - `compression` — gzip and Zstandard report compression.
 //! - `cybercore` — Cybercore theme-schema integration.
 //! - `terminal-docs` — in-terminal documentation retrieval and syntax
@@ -165,6 +176,9 @@ mod reporter;
 mod rotation;
 mod severity;
 mod suggestion;
+
+#[cfg(feature = "anyhow")]
+pub mod integrations;
 
 #[cfg(feature = "terminal-docs")]
 pub mod docs;
@@ -180,6 +194,9 @@ pub use severity::Severity;
 pub use suggestion::{
     Applicability, DocumentationLink, Edit, SuggestedCommand, Suggestion, TextRange,
 };
+
+#[cfg(feature = "anyhow")]
+pub use integrations::AnyhowDiagnosticExt;
 
 #[cfg(feature = "terminal-docs")]
 pub use docs::{TerminalDocError, TerminalDocViewer};
