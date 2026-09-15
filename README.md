@@ -29,31 +29,14 @@ The core rule is:
 > Diagnostics may explain and propose. Mutation must be explicit, structured,
 > validated, and reject uncertainty.
 
-## Status
-
-The current development branch is preparing **diagprint v0.6.0**.
-
-The latest published crates.io release remains the previous stable release until
-v0.6.0 is published.
-
-To use the v0.6 development branch:
-
-```toml
-[dependencies]
-diagprint = {
-    git = "https://github.com/darkstardevx/diagprint.git",
-    branch = "label-rendering-v0.6.0"
-}
-```
-
-After v0.6.0 is published:
+## Installation
 
 ```toml
 [dependencies]
 diagprint = "0.6"
 ```
 
-`diagprint` uses Rust 2024 and supports Rust **1.85 and newer**.
+`diagprint` v0.6.0 uses Rust 2024 and supports Rust **1.85 and newer**.
 
 ## Optional Features
 
@@ -62,8 +45,7 @@ All optional features are disabled by default.
 ```toml
 [dependencies]
 diagprint = {
-    git = "https://github.com/darkstardevx/diagprint.git",
-    branch = "label-rendering-v0.6.0",
+    version = "0.6",
     features = [
         "compression",
         "cybercore",

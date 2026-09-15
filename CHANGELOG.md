@@ -6,6 +6,15 @@ The project follows Semantic Versioning.
 
 ## [Unreleased]
 
+### Planned
+
+- Nonblocking and asynchronous report output.
+- Async terminal documentation retrieval.
+- Additional renderers.
+- Richer structured diff presentation.
+
+## [0.6.0] - 2026-09-15
+
 ### Changed
 
 - Enforced the declared Rust 1.85 MSRV across all targets and optional
@@ -58,12 +67,6 @@ The project follows Semantic Versioning.
   retain the backward-compatible default representation.
 
 
-### Planned
-
-- Nonblocking and asynchronous report output.
-- Async terminal documentation retrieval.
-- Additional renderers.
-- Richer structured diff presentation.
 
 ## [0.5.0] - 2026-09-15
 
