@@ -1,6 +1,9 @@
 use super::{Renderer, Style, Theme};
-use crate::{Diagnostic, Severity, Suggestion};
-use std::fs;
+use crate::{
+    CapturedDiagnostic, Diagnostic, LabelKind, Severity, SourceCache, SourceRevision,
+    SourceSnapshot, Suggestion,
+};
+use std::{fs, sync::Arc};
 use terminal_size::{Width, terminal_size};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -34,6 +37,52 @@ struct SourceWindow {
     text: String,
     caret_offset: usize,
     caret_width: usize,
+}
+
+enum SourceText {
+    Cached(Arc<str>),
+    File(String),
+}
+
+impl SourceText {
+    fn as_str(&self) -> &str {
+        match self {
+            Self::Cached(source) => source,
+            Self::File(source) => source,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum SourceStore<'a> {
+    Cache(&'a SourceCache),
+    Snapshot(&'a SourceSnapshot),
+}
+
+impl SourceStore<'_> {
+    fn get(self, name: &str) -> Option<Arc<str>> {
+        match self {
+            Self::Cache(cache) => cache.get(name),
+            Self::Snapshot(snapshot) => snapshot.get(name),
+        }
+    }
+
+    fn revision(self, name: &str) -> Option<SourceRevision> {
+        match self {
+            Self::Cache(cache) => cache.revision(name),
+            Self::Snapshot(snapshot) => snapshot.revision(name),
+        }
+    }
+}
+
+fn load_source_text(sources: Option<SourceStore<'_>>, name: &str) -> Option<SourceText> {
+    if let Some(sources) = sources {
+        if let Some(source) = sources.get(name) {
+            return Some(SourceText::Cached(source));
+        }
+    }
+
+    fs::read_to_string(name).ok().map(SourceText::File)
 }
 
 fn strip_ansi(s: &str) -> String {
@@ -475,15 +524,51 @@ impl TerminalRenderer {
         output
     }
 
-    fn source(&self, diagnostic: &Diagnostic, terminal_width: usize) -> Vec<String> {
+    fn source(
+        &self,
+        diagnostic: &Diagnostic,
+        terminal_width: usize,
+        sources: Option<SourceStore<'_>>,
+    ) -> Vec<String> {
         let mut output = Vec::new();
         let content_width = terminal_width.saturating_sub(4);
 
         for label in &diagnostic.labels {
             let location = &label.location;
+            let primary = label.kind == LabelKind::Primary;
+
+            let kind_name = if primary { "primary" } else { "secondary" };
+            let location_marker = if primary { "-->" } else { ":::" };
+            let target_marker = if primary { ">" } else { ":" };
+            let caret_marker = if primary { "^" } else { "-" };
+            let label_marker = if primary { "└─ " } else { "└· " };
+
+            let path_style = if primary {
+                &self.theme.source_path
+            } else {
+                &self.theme.source_gutter
+            };
+
+            let target_style = if primary {
+                &self.theme.source_target
+            } else {
+                &self.theme.source_gutter
+            };
+
+            let caret_style = if primary {
+                &self.theme.source_caret
+            } else {
+                &self.theme.source_gutter
+            };
+
+            let label_style = if primary {
+                &self.theme.source_label
+            } else {
+                &self.theme.source_gutter
+            };
 
             let location_text = format!(
-                "--> {}:{}{}",
+                "{location_marker} {kind_name} {}:{}{}",
                 location.file,
                 location.line,
                 location
@@ -492,10 +577,36 @@ impl TerminalRenderer {
                     .unwrap_or_default()
             );
 
-            output.push(self.paint(&self.theme.source_path, &location_text));
+            output.push(self.paint(path_style, &location_text));
 
-            if let Ok(source) = fs::read_to_string(&location.file) {
-                let lines: Vec<_> = source.lines().collect();
+            if let Some(expected_revision) = location.revision {
+                match sources.and_then(|source| source.revision(&location.file)) {
+                    Some(actual_revision) if actual_revision == expected_revision => {}
+
+                    Some(actual_revision) => {
+                        output.push(self.paint(
+                            &self.theme.source_gutter,
+                            &format!("! stale source: r{expected_revision} != r{actual_revision}"),
+                        ));
+
+                        continue;
+                    }
+
+                    None => {
+                        output.push(self.paint(
+                            &self.theme.source_gutter,
+                            &format!(
+                                "! source revision unavailable: expected                                  r{expected_revision}"
+                            ),
+                        ));
+
+                        continue;
+                    }
+                }
+            }
+
+            if let Some(source) = load_source_text(sources, &location.file) {
+                let lines: Vec<_> = source.as_str().lines().collect();
                 let target = location.line.saturating_sub(1) as usize;
 
                 if target >= lines.len() {
@@ -516,7 +627,7 @@ impl TerminalRenderer {
                     let window = source_window(line, column, highlight_length, source_width);
 
                     let marker = if index == target {
-                        self.paint(&self.theme.source_target, ">")
+                        self.paint(target_style, target_marker)
                     } else {
                         " ".into()
                     };
@@ -541,19 +652,17 @@ impl TerminalRenderer {
                     );
 
                     let caret_indent = " ".repeat(window.caret_offset);
-                    let carets =
-                        self.paint(&self.theme.source_caret, &"^".repeat(window.caret_width));
+
+                    let carets = self.paint(caret_style, &caret_marker.repeat(window.caret_width));
 
                     output.push(format!("{annotation_gutter}{caret_indent}{carets}"));
 
                     if let Some(message) = &label.message {
-                        let plain_label_marker = "└─ ";
-                        let painted_label_marker =
-                            self.paint(&self.theme.source_label, plain_label_marker);
+                        let painted_label_marker = self.paint(label_style, label_marker);
 
                         let plain_prefix_width = visible_len(&annotation_gutter)
                             + window.caret_offset
-                            + visible_len(plain_label_marker);
+                            + visible_len(label_marker);
 
                         let available = content_width.saturating_sub(plain_prefix_width).max(1);
 
@@ -564,13 +673,13 @@ impl TerminalRenderer {
                                 output.push(format!(
                                     "{annotation_gutter}{caret_indent}{}{}",
                                     painted_label_marker,
-                                    self.paint(&self.theme.source_label, message_line)
+                                    self.paint(label_style, message_line)
                                 ));
                             } else {
                                 output.push(format!(
                                     "{}{}",
                                     " ".repeat(plain_prefix_width),
-                                    self.paint(&self.theme.source_label, message_line)
+                                    self.paint(label_style, message_line)
                                 ));
                             }
                         }
@@ -722,8 +831,34 @@ impl TerminalRenderer {
     }
 }
 
-impl Renderer for TerminalRenderer {
-    fn render(&self, diagnostic: &Diagnostic) -> String {
+impl TerminalRenderer {
+    /// Renders a diagnostic using cached source text when available.
+    ///
+    /// Cached source has precedence over filesystem contents. If a source name
+    /// is not present in the cache, rendering falls back to reading that name
+    /// as a filesystem path, preserving the behavior of [`Renderer::render`].
+    pub fn render_with_sources(&self, diagnostic: &Diagnostic, sources: &SourceCache) -> String {
+        self.render_inner(diagnostic, Some(SourceStore::Cache(sources)))
+    }
+
+    /// Renders against an immutable point-in-time source snapshot.
+    ///
+    /// Snapshot contents take precedence over filesystem contents just like
+    /// the live source cache, but cannot change after capture.
+    pub fn render_with_snapshot(
+        &self,
+        diagnostic: &Diagnostic,
+        sources: &SourceSnapshot,
+    ) -> String {
+        self.render_inner(diagnostic, Some(SourceStore::Snapshot(sources)))
+    }
+
+    /// Renders a diagnostic against the exact snapshot captured with it.
+    pub fn render_captured(&self, captured: &CapturedDiagnostic) -> String {
+        self.render_with_snapshot(captured.diagnostic(), captured.sources())
+    }
+
+    fn render_inner(&self, diagnostic: &Diagnostic, sources: Option<SourceStore<'_>>) -> String {
         let width = self.effective_width();
 
         let icon = match diagnostic.severity {
@@ -765,7 +900,7 @@ impl Renderer for TerminalRenderer {
         if !diagnostic.labels.is_empty() {
             output.push_str(&self.row("", width));
 
-            for source_line in self.source(diagnostic, width) {
+            for source_line in self.source(diagnostic, width, sources) {
                 output.push_str(&self.row(&source_line, width));
             }
         }
@@ -858,5 +993,11 @@ impl Renderer for TerminalRenderer {
         ));
 
         output
+    }
+}
+
+impl Renderer for TerminalRenderer {
+    fn render(&self, diagnostic: &Diagnostic) -> String {
+        self.render_inner(diagnostic, None)
     }
 }

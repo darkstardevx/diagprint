@@ -8,10 +8,12 @@
 //! mutation:
 //!
 //! - [`Diagnostic`] describes what happened.
+//! - [`CapturedDiagnostic`] pairs a diagnostic with its immutable source snapshot.
 //! - [`Suggestion`] describes a possible resolution.
 //! - [`Fixer`] validates and applies guarded structured edits.
 //! - [`FixPlan`] coordinates transactional multi-file remediation.
 //! - [`InteropDiagnostic`] is the dependency-free interoperability boundary.
+//! - [`SourceCache`] supplies virtual and cached source text to renderers.
 //! - [`DocumentationResolver`] resolves documentation without guessing package
 //!   versions.
 //! - [`DiagnosticMetadata`] lets typed errors supply semantic metadata.
@@ -41,6 +43,23 @@
 //! and optional backups.
 //!
 //! Verification is declarative and does not execute shell commands.
+//!
+//! ## Virtual and cached source text
+//!
+//! [`SourceCache`] stores named source text independently from diagnostics.
+//! [`SourceProvider`] lets parsers, bridges, and other integrations populate
+//! that cache without coupling the renderer to a specific ecosystem.
+//! [`SourceSnapshot`] captures an immutable point-in-time source view so old
+//! diagnostics can render against the exact text they were created from.
+//! [`SourceRevision`] identifies successive versions of one named source and
+//! allows snapshots to detect whether a diagnostic-time buffer is still current.
+//! Terminal rendering can prefer cached source and fall back to filesystem
+//! reads when no cached source exists.
+//!
+//! This supports editor buffers, generated files, parser inputs, compiler
+//! virtual files, and other source text which may never exist on disk.
+//!
+//! Source contents are not serialized into [`Diagnostic`] JSON output.
 //!
 //! ## Generic interoperability
 //!
@@ -93,6 +112,13 @@
 //! The `codespan-reporting` feature resolves codespan's file IDs and byte
 //! ranges into [`InteropDiagnostic`] before conversion to diagprint.
 //!
+//! The `ariadne` feature provides a structured bridge which can emit both an
+//! Ariadne report and a diagprint [`InteropDiagnostic`] from the same source
+//! metadata without parsing rendered terminal output.
+//!
+//! The `annotate-snippets` feature provides the same dual-output model for
+//! annotate-snippets reports while validating its byte-oriented source spans.
+//!
 //! The `anyhow` feature preserves Anyhow context/source chains.
 //!
 //! The `tracing` feature turns significant tracing events into structured
@@ -131,6 +157,8 @@
 //! ## Feature flags
 //!
 //! - `anyhow` — Anyhow context-chain integration.
+//! - `ariadne` — structured Ariadne/diagprint bridge.
+//! - `annotate-snippets` — structured annotate-snippets/diagprint bridge.
 //! - `miette` — miette diagnostic-protocol integration.
 //! - `codespan-reporting` — codespan-reporting diagnostic integration.
 //! - `tracing` — structured tracing-event integration.
@@ -144,6 +172,7 @@
 //!
 //! All optional features are disabled by default.
 
+mod captured;
 mod cargo;
 mod compiler;
 mod diagnostic;
@@ -156,11 +185,14 @@ mod remediation;
 mod reporter;
 mod rotation;
 mod severity;
+mod source;
 mod suggestion;
 mod typed;
 
 #[cfg(any(
     feature = "anyhow",
+    feature = "ariadne",
+    feature = "annotate-snippets",
     feature = "codespan-reporting",
     feature = "miette",
     feature = "tracing"
@@ -171,6 +203,8 @@ pub mod integrations;
 pub mod docs;
 
 pub mod render;
+
+pub use captured::CapturedDiagnostic;
 
 pub use cargo::{
     CargoArtifact, CargoBuildFinished, CargoBuildScript, CargoBuildSummary,
@@ -204,11 +238,23 @@ pub use rotation::{RotationCadence, RotationPolicy, RotationState};
 
 pub use severity::Severity;
 
+pub use source::{SourceCache, SourceEntry, SourceProvider, SourceRevision, SourceSnapshot};
+
 pub use suggestion::{
     Applicability, DocumentationLink, Edit, SuggestedCommand, Suggestion, TextRange,
 };
 
 pub use typed::{DiagnosticErrorExt, DiagnosticMetadata};
+
+#[cfg(feature = "ariadne")]
+pub use integrations::{
+    AriadneBridge, AriadneBridgeError, AriadneBridgeLabel, AriadneOwnedSpan, AriadneSpan,
+};
+
+#[cfg(feature = "annotate-snippets")]
+pub use integrations::{
+    AnnotateSnippetsBridge, AnnotateSnippetsBridgeError, AnnotateSnippetsLabel,
+};
 
 #[cfg(feature = "anyhow")]
 pub use integrations::AnyhowDiagnosticExt;

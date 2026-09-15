@@ -13,6 +13,61 @@ The project follows Semantic Versioning.
 - Additional renderers.
 - Richer structured diff presentation.
 
+## [0.6.0] - 2026-09-15
+
+### Changed
+
+- Enforced the declared Rust 1.85 MSRV across all targets and optional
+  features using MSRV-aware dependency resolution.
+- Kept terminal documentation compatible with Rust 1.85 by using
+  `scraper` 0.25.x.
+- Reworked internal let-chain expressions into Rust 1.85-compatible
+  control flow without changing behavior.
+
+### Added
+
+- SARIF 2.1.0 rendering for GitHub Code Scanning and other SARIF consumers,
+  including deterministic rules, primary and related locations, exclusive
+  source ranges, severity mapping, source revisions, notes, help, and causes.
+
+- Dependency-free `GithubActionsRenderer` for native GitHub Actions
+  `notice`, `warning`, and `error` annotations with source ranges, command
+  escaping, diagnostic codes, help, notes, and secondary related locations.
+
+- `CapturedDiagnostic` bundles a diagnostic with its immutable source
+  snapshot for stable editor/LSP storage, stale detection, and exact rendering.
+
+- Revision-bound diagnostic source locations with stale-source detection.
+- Terminal rendering fails closed when a diagnostic revision does not match
+  the available live source, preventing misleading highlights on newer text.
+
+- Per-source `SourceRevision` tracking with immutable revision-aware
+  snapshots and stale/current detection for mutable editor buffers.
+
+- Immutable `SourceSnapshot` views for rendering diagnostics against the
+  exact in-memory source text that existed when the snapshot was captured.
+
+- Generic `SourceProvider` handoff for integrations which own in-memory
+  sources, with Ariadne and annotate-snippets bridges implementing it.
+
+- Shared `SourceCache` for virtual and in-memory source text.
+- Terminal rendering can prefer cached source and fall back to filesystem
+  source without changing the existing `Renderer` API.
+- Reporter-level source registration for generated files, editor buffers, and
+  other sources which may never exist on disk.
+
+- Structured Ariadne bridge producing both Ariadne reports and diagprint
+  interoperability diagnostics without rendered-output parsing.
+- Structured annotate-snippets bridge with validated byte spans, Unicode-safe
+  location conversion, and primary/context label preservation.
+- Distinct terminal rendering for primary and secondary source labels.
+- Plain-text source-label rendering with explicit label roles.
+- Markdown source-label rendering with explicit label roles.
+- Secondary source locations remain explicit in JSON while primary labels
+  retain the backward-compatible default representation.
+
+
+
 ## [0.5.0] - 2026-09-15
 
 ### Added

@@ -1,4 +1,4 @@
-use crate::{Severity, Suggestion};
+use crate::{Severity, SourceCache, SourceRevision, SourceSnapshot, Suggestion};
 use chrono::{DateTime, Local};
 use serde::Serialize;
 use std::error::Error;
@@ -23,6 +23,13 @@ pub struct SourceLocation {
     pub file: String,
     pub line: u32,
     pub column: Option<u32>,
+
+    /// Source revision this location was produced against.
+    ///
+    /// Unrevisioned diagnostics leave this unset, preserving the historical
+    /// diagprint data model and JSON representation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revision: Option<SourceRevision>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -189,7 +196,39 @@ impl Diagnostic {
         length: Option<usize>,
         message: Option<impl Into<String>>,
     ) -> Self {
-        self.label_with_kind(LabelKind::Primary, file, line, column, length, message)
+        self.label_with_location(
+            LabelKind::Primary,
+            SourceLocation {
+                file: file.into(),
+                line,
+                column,
+                revision: None,
+            },
+            length,
+            message,
+        )
+    }
+
+    pub fn label_at_revision(
+        self,
+        file: impl Into<String>,
+        revision: SourceRevision,
+        line: u32,
+        column: Option<u32>,
+        length: Option<usize>,
+        message: Option<impl Into<String>>,
+    ) -> Self {
+        self.label_with_location(
+            LabelKind::Primary,
+            SourceLocation {
+                file: file.into(),
+                line,
+                column,
+                revision: Some(revision),
+            },
+            length,
+            message,
+        )
     }
 
     pub fn secondary_label(
@@ -200,11 +239,43 @@ impl Diagnostic {
         length: Option<usize>,
         message: Option<impl Into<String>>,
     ) -> Self {
-        self.label_with_kind(LabelKind::Secondary, file, line, column, length, message)
+        self.label_with_location(
+            LabelKind::Secondary,
+            SourceLocation {
+                file: file.into(),
+                line,
+                column,
+                revision: None,
+            },
+            length,
+            message,
+        )
+    }
+
+    pub fn secondary_label_at_revision(
+        self,
+        file: impl Into<String>,
+        revision: SourceRevision,
+        line: u32,
+        column: Option<u32>,
+        length: Option<usize>,
+        message: Option<impl Into<String>>,
+    ) -> Self {
+        self.label_with_location(
+            LabelKind::Secondary,
+            SourceLocation {
+                file: file.into(),
+                line,
+                column,
+                revision: Some(revision),
+            },
+            length,
+            message,
+        )
     }
 
     pub fn label_with_kind(
-        mut self,
+        self,
         kind: LabelKind,
         file: impl Into<String>,
         line: u32,
@@ -212,15 +283,33 @@ impl Diagnostic {
         length: Option<usize>,
         message: Option<impl Into<String>>,
     ) -> Self {
-        self.labels.push(Label {
+        self.label_with_location(
             kind,
-
-            location: SourceLocation {
+            SourceLocation {
                 file: file.into(),
                 line,
                 column,
+                revision: None,
             },
+            length,
+            message,
+        )
+    }
 
+    /// Adds a label using a fully specified source location.
+    ///
+    /// This is the general form for callers that already have structured
+    /// location metadata, including an optional source revision.
+    pub fn label_with_location(
+        mut self,
+        kind: LabelKind,
+        location: SourceLocation,
+        length: Option<usize>,
+        message: Option<impl Into<String>>,
+    ) -> Self {
+        self.labels.push(Label {
+            kind,
+            location,
             length,
             message: message.map(Into::into),
         });
@@ -230,6 +319,68 @@ impl Diagnostic {
 
     pub fn source(self, file: impl Into<String>, line: u32, column: Option<u32>) -> Self {
         self.label(file, line, column, None, None::<String>)
+    }
+
+    pub fn source_at_revision(
+        self,
+        file: impl Into<String>,
+        revision: SourceRevision,
+        line: u32,
+        column: Option<u32>,
+    ) -> Self {
+        self.label_at_revision(file, revision, line, column, None, None::<String>)
+    }
+
+    pub fn bind_source_revisions(mut self, sources: &SourceSnapshot) -> Self {
+        for label in &mut self.labels {
+            if label.location.revision.is_some() {
+                continue;
+            }
+
+            if let Some(revision) = sources.revision(&label.location.file) {
+                label.location.revision = Some(revision);
+            }
+        }
+
+        self
+    }
+
+    /// Binds unversioned labels to the revisions currently stored in `sources`.
+    ///
+    /// Prefer [`Self::bind_source_revisions`] when a diagnostic was produced
+    /// from a snapshot, because a live cache may change concurrently.
+    pub fn bind_current_source_revisions(mut self, sources: &SourceCache) -> Self {
+        for label in &mut self.labels {
+            if label.location.revision.is_some() {
+                continue;
+            }
+
+            if let Some(revision) = sources.revision(&label.location.file) {
+                label.location.revision = Some(revision);
+            }
+        }
+
+        self
+    }
+
+    pub fn has_revisioned_sources(&self) -> bool {
+        self.labels
+            .iter()
+            .any(|label| label.location.revision.is_some())
+    }
+
+    /// Returns true when any revision-bound label no longer matches the live
+    /// source cache.
+    ///
+    /// Unversioned labels are ignored.
+    pub fn has_stale_sources(&self, sources: &SourceCache) -> bool {
+        self.labels.iter().any(|label| {
+            let Some(expected) = label.location.revision else {
+                return false;
+            };
+
+            sources.revision(&label.location.file) != Some(expected)
+        })
     }
 
     pub fn suggestion(mut self, suggestion: Suggestion) -> Self {

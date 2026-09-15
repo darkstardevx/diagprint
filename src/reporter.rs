@@ -1,6 +1,9 @@
 use crate::{
-    Diagnostic, Severity,
-    render::{JsonRenderer, MarkdownRenderer, PlainRenderer, Renderer, TerminalRenderer, Theme},
+    CapturedDiagnostic, Diagnostic, Severity, SourceCache, SourceProvider, SourceSnapshot,
+    render::{
+        GithubActionsRenderer, JsonRenderer, MarkdownRenderer, PlainRenderer, Renderer,
+        TerminalRenderer, Theme,
+    },
     rotation::{RotationCadence, RotationPolicy, RotationState},
 };
 use std::{
@@ -25,6 +28,7 @@ pub struct Reporter {
     min_severity: Severity,
     file: Option<PathBuf>,
     terminal: TerminalRenderer,
+    source_cache: SourceCache,
     rotation: RotationState,
     lock: Arc<Mutex<()>>,
     compression: Compression,
@@ -37,6 +41,45 @@ impl Reporter {
 
     pub fn session_id(&self) -> Uuid {
         self.session_id
+    }
+
+    /// Returns a shared handle to this reporter's source cache.
+    ///
+    /// Cloning the returned handle does not copy source text.
+    pub fn source_cache(&self) -> SourceCache {
+        self.source_cache.clone()
+    }
+
+    /// Captures the reporter's current in-memory sources.
+    ///
+    /// Later changes to the live source cache do not affect the returned
+    /// snapshot.
+    pub fn source_snapshot(&self) -> SourceSnapshot {
+        self.source_cache.snapshot()
+    }
+
+    /// Captures a diagnostic together with the reporter's current source
+    /// snapshot.
+    ///
+    /// Any unversioned labels whose sources are present in the reporter cache
+    /// are bound to the revisions captured by that snapshot.
+    pub fn capture(&self, diagnostic: Diagnostic) -> CapturedDiagnostic {
+        CapturedDiagnostic::new(diagnostic, self.source_snapshot())
+    }
+
+    /// Inserts or replaces an in-memory source available to terminal rendering.
+    pub fn register_source(&self, name: impl Into<String>, source: impl Into<String>) {
+        self.source_cache.insert(name, source);
+    }
+
+    /// Registers every source currently exposed by a source provider.
+    pub fn register_sources(&self, provider: &impl SourceProvider) {
+        provider.populate_source_cache(&self.source_cache);
+    }
+
+    /// Removes an in-memory source from this reporter.
+    pub fn remove_source(&self, name: &str) -> bool {
+        self.source_cache.remove(name).is_some()
     }
 
     pub fn diagnostic(&self, severity: Severity, message: impl Into<String>) -> Diagnostic {
@@ -72,7 +115,11 @@ impl Reporter {
             return Ok(false);
         }
 
-        print!("{}", self.terminal.render(diagnostic));
+        print!(
+            "{}",
+            self.terminal
+                .render_with_sources(diagnostic, &self.source_cache)
+        );
         io::stdout().flush()?;
 
         if let Some(path) = &self.file {
@@ -80,6 +127,44 @@ impl Reporter {
         }
 
         Ok(true)
+    }
+
+    /// Emits a diagnostic against an immutable source snapshot.
+    ///
+    /// This is useful for diagnostics created from editor buffers or other
+    /// mutable in-memory sources whose live contents may have changed since
+    /// the diagnostic was produced.
+    pub fn emit_with_snapshot(
+        &self,
+        diagnostic: &Diagnostic,
+        sources: &SourceSnapshot,
+    ) -> io::Result<bool> {
+        if diagnostic.severity < self.min_severity {
+            return Ok(false);
+        }
+
+        print!(
+            "{}",
+            self.terminal.render_with_snapshot(diagnostic, sources)
+        );
+
+        io::stdout().flush()?;
+
+        if let Some(path) = &self.file {
+            self.write(path, &PlainRenderer.render(diagnostic))?;
+        }
+
+        Ok(true)
+    }
+
+    /// Emits a captured diagnostic using its immutable source snapshot.
+    pub fn emit_captured(&self, captured: &CapturedDiagnostic) -> io::Result<bool> {
+        self.emit_with_snapshot(captured.diagnostic(), captured.sources())
+    }
+
+    /// Emits GitHub Actions workflow-command annotations.
+    pub fn emit_github_actions(&self, diagnostic: &Diagnostic) -> io::Result<bool> {
+        self.emit_with(diagnostic, &GithubActionsRenderer)
     }
 
     pub fn emit_json(&self, diagnostic: &Diagnostic) -> io::Result<bool> {
@@ -189,6 +274,7 @@ pub struct ReporterBuilder {
     cadence: RotationCadence,
     compression: Compression,
     theme: Theme,
+    source_cache: SourceCache,
 }
 
 impl Default for ReporterBuilder {
@@ -206,6 +292,7 @@ impl Default for ReporterBuilder {
             cadence: RotationCadence::Never,
             compression: Compression::None,
             theme: Theme::default(),
+            source_cache: SourceCache::new(),
         }
     }
 }
@@ -271,6 +358,24 @@ impl ReporterBuilder {
         self
     }
 
+    /// Registers an in-memory source before the reporter is built.
+    pub fn source(self, name: impl Into<String>, source: impl Into<String>) -> Self {
+        self.source_cache.insert(name, source);
+        self
+    }
+
+    /// Uses an existing shared source cache.
+    pub fn source_cache(mut self, value: SourceCache) -> Self {
+        self.source_cache = value;
+        self
+    }
+
+    /// Adds all sources currently exposed by a source provider.
+    pub fn sources_from(self, provider: &impl SourceProvider) -> Self {
+        provider.populate_source_cache(&self.source_cache);
+        self
+    }
+
     pub fn build(self) -> io::Result<Reporter> {
         Ok(Reporter {
             application: self.application,
@@ -284,6 +389,7 @@ impl ReporterBuilder {
                 width: self.width,
                 theme: self.theme,
             },
+            source_cache: self.source_cache,
             rotation: RotationState::new(RotationPolicy {
                 max_file_size: self.max_file_size,
                 max_files: self.rotation_count,
