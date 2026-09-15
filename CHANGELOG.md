@@ -17,6 +17,10 @@ The project follows Semantic Versioning.
 
 ### Added
 
+- Revision-bound diagnostic source locations with stale-source detection.
+- Terminal rendering fails closed when a diagnostic revision does not match
+  the available live source, preventing misleading highlights on newer text.
+
 - Per-source `SourceRevision` tracking with immutable revision-aware
   snapshots and stale/current detection for mutable editor buffers.
 

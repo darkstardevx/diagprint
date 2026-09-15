@@ -11,6 +11,7 @@
 //! It is therefore not serialized into JSON reports or persisted as part of
 //! diagnostic metadata.
 
+use serde::Serialize;
 use std::{
     collections::BTreeMap,
     fmt,
@@ -25,7 +26,8 @@ use std::{
 /// Revision histories survive [`SourceCache::remove`] and
 /// [`SourceCache::clear`], preventing a removed and later reinserted source
 /// from accidentally reusing an older revision.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(transparent)]
 pub struct SourceRevision(u64);
 
 impl SourceRevision {

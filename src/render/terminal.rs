@@ -1,5 +1,7 @@
 use super::{Renderer, Style, Theme};
-use crate::{Diagnostic, LabelKind, Severity, SourceCache, SourceSnapshot, Suggestion};
+use crate::{
+    Diagnostic, LabelKind, Severity, SourceCache, SourceRevision, SourceSnapshot, Suggestion,
+};
 use std::{fs, sync::Arc};
 use terminal_size::{Width, terminal_size};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
@@ -61,6 +63,13 @@ impl SourceStore<'_> {
         match self {
             Self::Cache(cache) => cache.get(name),
             Self::Snapshot(snapshot) => snapshot.get(name),
+        }
+    }
+
+    fn revision(self, name: &str) -> Option<SourceRevision> {
+        match self {
+            Self::Cache(cache) => cache.revision(name),
+            Self::Snapshot(snapshot) => snapshot.revision(name),
         }
     }
 }
@@ -568,6 +577,32 @@ impl TerminalRenderer {
             );
 
             output.push(self.paint(path_style, &location_text));
+
+            if let Some(expected_revision) = location.revision {
+                match sources.and_then(|source| source.revision(&location.file)) {
+                    Some(actual_revision) if actual_revision == expected_revision => {}
+
+                    Some(actual_revision) => {
+                        output.push(self.paint(
+                            &self.theme.source_gutter,
+                            &format!("! stale source: r{expected_revision} != r{actual_revision}"),
+                        ));
+
+                        continue;
+                    }
+
+                    None => {
+                        output.push(self.paint(
+                            &self.theme.source_gutter,
+                            &format!(
+                                "! source revision unavailable: expected                                  r{expected_revision}"
+                            ),
+                        ));
+
+                        continue;
+                    }
+                }
+            }
 
             if let Some(source) = load_source_text(sources, &location.file) {
                 let lines: Vec<_> = source.as_str().lines().collect();
