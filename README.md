@@ -5,7 +5,9 @@
 [![Docs.rs](https://docs.rs/diagprint/badge.svg)](https://docs.rs/diagprint)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 
-Pretty, structured diagnostics and reports for Rust applications.
+**diagprint is a Rust diagnostics lifecycle framework.**
+
+Define diagnostics once, then carry them safely through terminal output, compiler tooling, editors, CI, code scanning, guarded remediation, verification, telemetry, and privacy-aware external reporting.
 
 `diagprint` turns failures into actionable, structured diagnostics with:
 

@@ -1,8 +1,8 @@
 //! # diagprint
 //!
-//! `diagprint` provides structured diagnostics, rich terminal rendering,
-//! persistent reports, guarded remediation, compiler/Cargo intelligence,
-//! version-aware documentation, and Rust ecosystem interoperability.
+//! `diagprint` is a Rust diagnostics lifecycle framework for carrying
+//! structured diagnostics through creation, enrichment, rendering, editor and
+//! CI integration, guarded remediation, verification, export, and telemetry.
 //!
 //! The crate deliberately separates diagnostic data from presentation and
 //! mutation:

@@ -63,10 +63,18 @@ The project follows Semantic Versioning.
 
 ### Planned
 
-- Nonblocking and asynchronous report output.
-- Async terminal documentation retrieval.
-- Additional renderers.
-- Richer structured diff presentation.
+- Add the `diagprint-test` companion crate for diagnostic assertions,
+  snapshot-friendly test helpers, source/revision checks, and remediation
+  verification.
+- Add framework and application adapters, beginning with `diagprint-axum`,
+  while keeping framework dependencies outside the core crate.
+- Add asynchronous terminal documentation retrieval without introducing an
+  async runtime dependency into the core crate.
+- Add richer structured diff presentation for remediation previews and
+  machine-generated fixes.
+- Add additional lifecycle-specific renderers, exporters, and integrations
+  where they extend the create → enrich → render → remediate → verify →
+  export/telemetry pipeline without bloating the default dependency graph.
 
 ## [0.6.0] - 2026-09-15
 
