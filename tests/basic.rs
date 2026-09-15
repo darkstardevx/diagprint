@@ -1,6 +1,6 @@
 use diagprint::{
-    render::{JsonRenderer, Renderer},
     Cause, Reporter, Severity,
+    render::{JsonRenderer, Renderer},
 };
 #[test]
 fn sessions_unique() {

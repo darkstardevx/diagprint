@@ -6,7 +6,7 @@ use syntect::{
     easy::HighlightLines,
     highlighting::{Theme as SyntectTheme, ThemeSet},
     parsing::SyntaxSet,
-    util::{as_24_bit_terminal_escaped, LinesWithEndings},
+    util::{LinesWithEndings, as_24_bit_terminal_escaped},
 };
 
 const DEFAULT_MAX_DOCUMENT_BYTES: usize = 2 * 1024 * 1024;
@@ -437,7 +437,7 @@ fn sanitize_terminal_input(input: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{sanitize_terminal_input, TerminalDocViewer};
+    use super::{TerminalDocViewer, sanitize_terminal_input};
 
     #[test]
     fn sanitizes_terminal_escape_sequences() {

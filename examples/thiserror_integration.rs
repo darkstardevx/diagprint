@@ -53,9 +53,11 @@ impl DiagnosticMetadata for ConfigError {
             Self::Read { .. } => vec!["Typed error metadata was supplied by ConfigError.".into()],
 
             Self::UnsupportedProfile { .. } => {
-                vec!["This diagnostic was enriched without parsing the error's \
+                vec![
+                    "This diagnostic was enriched without parsing the error's \
                  formatted display text."
-                    .into()]
+                        .into(),
+                ]
             }
         }
     }
@@ -63,12 +65,14 @@ impl DiagnosticMetadata for ConfigError {
     fn diagnostic_suggestions(&self) -> Vec<Suggestion> {
         match self {
             Self::UnsupportedProfile { .. } => {
-                vec![Suggestion::new("Select a supported configuration profile")
-                    .explanation(
-                        "The requested profile is not recognized by the \
+                vec![
+                    Suggestion::new("Select a supported configuration profile")
+                        .explanation(
+                            "The requested profile is not recognized by the \
                          application.",
-                    )
-                    .applicability(Applicability::Manual)]
+                        )
+                        .applicability(Applicability::Manual),
+                ]
             }
 
             Self::Read { .. } => Vec::new(),

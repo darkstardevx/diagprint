@@ -82,9 +82,11 @@ fn io_errors_receive_manual_intelligence() {
 
     assert_eq!(suggestion.documentation.len(), 1);
 
-    assert!(suggestion.documentation[0]
-        .url
-        .contains("std/io/enum.ErrorKind.html"));
+    assert!(
+        suggestion.documentation[0]
+            .url
+            .contains("std/io/enum.ErrorKind.html")
+    );
 }
 
 #[test]

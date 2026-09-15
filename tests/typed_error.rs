@@ -49,7 +49,9 @@ impl DiagnosticMetadata for DemoError {
     fn diagnostic_suggestions(&self) -> Vec<Suggestion> {
         match self {
             Self::Mode { .. } => {
-                vec![Suggestion::new("Select a supported mode").applicability(Applicability::Manual)]
+                vec![
+                    Suggestion::new("Select a supported mode").applicability(Applicability::Manual),
+                ]
             }
 
             Self::Config { .. } => Vec::new(),
@@ -144,8 +146,10 @@ fn inferred_io_suggestion_does_not_become_machine_applicable() {
 
     let diagnostic = error.to_diagprint(&reporter);
 
-    assert!(diagnostic
-        .suggestions
-        .iter()
-        .all(|suggestion| { suggestion.applicability != Applicability::MachineApplicable }));
+    assert!(
+        diagnostic
+            .suggestions
+            .iter()
+            .all(|suggestion| { suggestion.applicability != Applicability::MachineApplicable })
+    );
 }

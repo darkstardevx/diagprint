@@ -1,7 +1,7 @@
 use crate::{Cause, Reporter, Severity};
 use ::tracing::{
-    field::{Field, Visit},
     Event, Level, Subscriber,
+    field::{Field, Visit},
 };
 use ::tracing_subscriber::{
     layer::{Context, Layer},

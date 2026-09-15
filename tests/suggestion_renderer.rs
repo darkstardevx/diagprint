@@ -1,6 +1,6 @@
 use diagprint::{
-    render::{Renderer, TerminalRenderer},
     Applicability, DocumentationLink, Edit, Reporter, SuggestedCommand, Suggestion, TextRange,
+    render::{Renderer, TerminalRenderer},
 };
 use unicode_width::UnicodeWidthStr;
 

@@ -1,8 +1,8 @@
 use crate::{
+    Diagnostic, Reporter, Severity, Suggestion,
     intelligence::{
         cause_chain_from_sources, find_io_error_in_sources, io::suggestion as io_suggestion,
     },
-    Diagnostic, Reporter, Severity, Suggestion,
 };
 use std::error::Error;
 

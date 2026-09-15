@@ -1,6 +1,6 @@
 use diagprint::{
-    render::{Renderer, TerminalRenderer},
     Reporter,
+    render::{Renderer, TerminalRenderer},
 };
 use std::{
     fs,

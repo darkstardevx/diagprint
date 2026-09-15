@@ -622,7 +622,7 @@ fn atomic_write(file: &Path, contents: &str) -> Result<(), FixError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{interactive_prompt, parse_interactive_action, InteractiveAction};
+    use super::{InteractiveAction, interactive_prompt, parse_interactive_action};
 
     #[test]
     fn interactive_prompt_only_offers_valid_actions() {
