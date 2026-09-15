@@ -166,17 +166,16 @@ fn reporter_failures_are_retained() {
     assert!(monitor.emission_failures().is_empty());
 }
 
-#[cfg(feature = "tracing-error")]
 #[test]
-fn span_trace_capture_is_explicit_and_structured() {
-    let path = log_path("span-trace");
+fn span_path_attribute_is_explicit_and_structured() {
+    let path = log_path("span-path");
 
     let layer = TracingLayer::new(reporter(&path))
         .with_target(false)
         .with_fields(false)
         .with_span_context(false)
         .with_source_location(false)
-        .with_span_trace(true);
+        .with_span_path_attribute(true);
 
     let subscriber = tracing_subscriber::registry().with(layer);
 
@@ -190,9 +189,9 @@ fn span_trace_capture_is_explicit_and_structured() {
 
     let output = fs::read_to_string(&path).unwrap();
 
-    assert!(output.contains("tracing.span_trace="));
+    assert!(output.contains("tracing.span_path=request"));
 
-    assert!(output.contains("request"));
+    assert!(!output.contains("trace spans:"));
 
     fs::remove_file(path).unwrap();
 }

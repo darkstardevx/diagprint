@@ -48,11 +48,6 @@ tracing = [
     "dep:tracing-subscriber",
 ]
 
-tracing-error = [
-    "tracing",
-    "dep:tracing-error",
-]
-
 miette = [
     "dep:miette",
 ]
@@ -93,10 +88,6 @@ optional = true
 [dependencies.tracing-subscriber]
 version = "0.3"
 optional = true
-[dependencies.tracing-error]
-version = "0.2.1"
-optional = true
-default-features = false
 [dependencies.miette]
 version = "7.6"
 optional = true

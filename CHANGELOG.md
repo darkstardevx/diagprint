@@ -18,7 +18,7 @@ The project follows Semantic Versioning.
 - Full OpenTelemetry attribute export preserves supported typed values and losslessly falls back to decimal strings for integers outside OpenTelemetry's signed 64-bit range.
 - Added typed `DiagnosticAttribute` / `DiagnosticValue` metadata so structured booleans, integers, floating-point values, and strings no longer need to be flattened into diagnostic notes.
 - The tracing adapter now preserves ordinary event fields as typed diagnostic attributes while retaining reserved diag.code, diag.help, diag.note, message, and error-chain handling.
-- Added the optional `tracing-error` feature for explicit SpanTrace capture backed by tracing-error's ErrorLayer.
+- Added opt-in `TracingLayer::with_span_path_attribute` support for recording the active tracing span hierarchy as the structured `tracing.span_path` diagnostic attribute using the event scope provided by `tracing-subscriber`.
 - Added the `diagprint-otel` companion crate for privacy-aware OpenTelemetry diagnostic events and tracing span integration.
 - Telemetry export is metadata-first by default: diagnostic messages are redacted while help, notes, causes, source paths, hostname, and PID are omitted unless explicitly enabled.
 - Added native OpenTelemetry Span and tracing-opentelemetry recording for single diagnostics and DiagnosticReport batches without coupling diagprint to a collector or exporter SDK.

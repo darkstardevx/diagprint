@@ -12,7 +12,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-#[cfg(feature = "tracing-error")]
 /// A `tracing-subscriber` layer that converts tracing events into structured
 /// `diagprint` diagnostics.
 ///
@@ -29,9 +28,15 @@ use std::{
 /// Other tracing fields are preserved as typed [`DiagnosticAttribute`] values
 /// rather than flattened into notes.
 ///
-/// When the `tracing-error` feature is enabled, [`TracingLayer::with_span_trace`]
-/// can capture the current span trace. Applications must install
-/// `tracing_error::ErrorLayer` for span-trace formatting support.
+/// Active span hierarchy can be exposed in two independent forms:
+///
+/// - [`TracingLayer::with_span_context`] adds a human-readable diagnostic note;
+/// - [`TracingLayer::with_span_path_attribute`] adds a structured
+///   `tracing.span_path` diagnostic attribute.
+///
+/// Both are derived directly from the event scope supplied by
+/// `tracing-subscriber`. This is structured span context, not a
+/// an error backtrace or external span-trace type.
 #[derive(Debug, Clone)]
 pub struct TracingLayer {
     reporter: Reporter,
@@ -39,11 +44,8 @@ pub struct TracingLayer {
     include_target: bool,
     include_fields: bool,
     include_span_context: bool,
+    include_span_path_attribute: bool,
     include_source_location: bool,
-
-    #[cfg(feature = "tracing-error")]
-    capture_span_trace: bool,
-
     emission_failures: Arc<Mutex<Vec<String>>>,
 }
 
@@ -55,11 +57,8 @@ impl TracingLayer {
             include_target: true,
             include_fields: true,
             include_span_context: true,
+            include_span_path_attribute: false,
             include_source_location: true,
-
-            #[cfg(feature = "tracing-error")]
-            capture_span_trace: false,
-
             emission_failures: Arc::new(Mutex::new(Vec::new())),
         }
     }
@@ -81,24 +80,26 @@ impl TracingLayer {
         self
     }
 
+    /// Controls whether the active tracing span hierarchy is added as a
+    /// human-readable diagnostic note.
     pub fn with_span_context(mut self, enabled: bool) -> Self {
         self.include_span_context = enabled;
         self
     }
 
-    pub fn with_source_location(mut self, enabled: bool) -> Self {
-        self.include_source_location = enabled;
+    /// Controls whether the active tracing span hierarchy is added as the
+    /// structured `tracing.span_path` diagnostic attribute.
+    ///
+    /// This records span names from the event's active
+    /// `tracing-subscriber` scope. It does not capture a
+    /// an error backtrace or external span-trace type.
+    pub fn with_span_path_attribute(mut self, enabled: bool) -> Self {
+        self.include_span_path_attribute = enabled;
         self
     }
 
-    /// Controls capture of the event's active tracing span tree.
-    ///
-    /// The trace is derived directly from the event scope supplied by
-    /// `tracing-subscriber`, so it remains reliable while this layer is
-    /// processing the event.
-    #[cfg(feature = "tracing-error")]
-    pub fn with_span_trace(mut self, enabled: bool) -> Self {
-        self.capture_span_trace = enabled;
+    pub fn with_source_location(mut self, enabled: bool) -> Self {
+        self.include_source_location = enabled;
         self
     }
 
@@ -185,37 +186,34 @@ where
             diagnostic = diagnostic.note(format!("trace target: {}", event.metadata().target()));
         }
 
-        if self.include_span_context {
-            if let Some(scope) = ctx.event_scope(event) {
-                let spans: Vec<&str> = scope
-                    .from_root()
-                    .map(|span| span.metadata().name())
-                    .collect();
+        let span_path = if self.include_span_context || self.include_span_path_attribute {
+            ctx.event_scope(event)
+                .map(|scope| {
+                    scope
+                        .from_root()
+                        .map(|span| span.metadata().name())
+                        .collect::<Vec<_>>()
+                })
+                .filter(|spans| !spans.is_empty())
+        } else {
+            None
+        };
 
-                if !spans.is_empty() {
-                    diagnostic = diagnostic.note(format!("trace spans: {}", spans.join(" > ")));
-                }
+        if self.include_span_context {
+            if let Some(spans) = span_path.as_ref() {
+                diagnostic = diagnostic.note(format!("trace spans: {}", spans.join(" > ")));
+            }
+        }
+
+        if self.include_span_path_attribute {
+            if let Some(spans) = span_path.as_ref() {
+                diagnostic = diagnostic.attribute("tracing.span_path", spans.join(" > "));
             }
         }
 
         if self.include_source_location {
             if let (Some(file), Some(line)) = (event.metadata().file(), event.metadata().line()) {
                 diagnostic = diagnostic.source(file, line, None);
-            }
-        }
-
-        #[cfg(feature = "tracing-error")]
-        #[cfg(feature = "tracing-error")]
-        if self.capture_span_trace {
-            if let Some(scope) = ctx.event_scope(event) {
-                let spans = scope
-                    .from_root()
-                    .map(|span| span.metadata().name())
-                    .collect::<Vec<_>>();
-
-                if !spans.is_empty() {
-                    diagnostic = diagnostic.attribute("tracing.span_trace", spans.join(" > "));
-                }
             }
         }
 
@@ -231,9 +229,7 @@ struct EventVisitor {
     code: Option<String>,
     help: Option<String>,
     notes: Vec<String>,
-
     attributes: Vec<DiagnosticAttribute>,
-
     cause: Option<Cause>,
 }
 

@@ -295,9 +295,6 @@ pub use integrations::{MietteDiagnosticExt, MietteDiagnosticTree, MietteReportEx
 #[cfg(feature = "tracing")]
 pub use integrations::TracingLayer;
 
-#[cfg(feature = "tracing-error")]
-pub use tracing_error::ErrorLayer as TracingErrorLayer;
-
 #[cfg(feature = "terminal-docs")]
 pub use docs::{TerminalDocError, TerminalDocViewer};
 
