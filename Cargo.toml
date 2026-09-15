@@ -1,7 +1,8 @@
 [package]
 name = "diagprint"
-version = "0.4.0"
-edition = "2021"
+version = "0.5.0"
+edition = "2024"
+rust-version = "1.85"
 description = "Pretty, structured diagnostics and reports for Rust applications."
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/darkstardevx/diagprint"
@@ -10,11 +11,6 @@ documentation = "https://docs.rs/diagprint"
 readme = "README.md"
 keywords = ["diagnostics", "errors", "logging", "terminal", "reporting"]
 categories = ["command-line-utilities", "development-tools::debugging"]
-
-# crates.io publishing remains intentionally disabled while the optional
-# Cybercore integration depends on a Git source. Remove this only after
-# Cybercore is available from the target registry.
-publish = false
 
 exclude = [
     "/.github/",
@@ -41,14 +37,60 @@ terminal-docs = [
     "dep:syntect",
 ]
 
+anyhow = [
+    "dep:anyhow",
+]
+
+tracing = [
+    "dep:tracing",
+    "dep:tracing-subscriber",
+]
+
+miette = [
+    "dep:miette",
+]
+
+codespan-reporting = [
+    "dep:codespan-reporting",
+]
+
 [dependencies]
 chrono = { version = "0.4", features = ["clock", "serde"] }
 hostname = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+toml = "1.1"
 uuid = { version = "1", features = ["v7", "serde"] }
 unicode-width = "0.2"
 terminal_size = "0.4"
+
+anyhow = {
+    version = "1",
+    optional = true
+}
+
+tracing = {
+    version = "0.1",
+    optional = true
+}
+
+tracing-subscriber = {
+    version = "0.3",
+    optional = true
+}
+
+miette = {
+    version = "7.6",
+    optional = true,
+    default-features = false
+}
+
+codespan-reporting = {
+    version = "0.13.1",
+    optional = true,
+    default-features = false,
+    features = ["std"]
+}
 
 flate2 = {
     version = "1",
@@ -90,6 +132,9 @@ syntect = {
     features = ["default-fancy"]
 }
 
+[dev-dependencies]
+thiserror = "2"
+
 [[example]]
 name = "cybercore"
 required-features = ["cybercore"]
@@ -97,3 +142,19 @@ required-features = ["cybercore"]
 [[example]]
 name = "terminal_docs"
 required-features = ["terminal-docs"]
+
+[[example]]
+name = "anyhow_integration"
+required-features = ["anyhow"]
+
+[[example]]
+name = "tracing_integration"
+required-features = ["tracing"]
+
+[[example]]
+name = "miette_integration"
+required-features = ["miette"]
+
+[[example]]
+name = "codespan_integration"
+required-features = ["codespan-reporting"]

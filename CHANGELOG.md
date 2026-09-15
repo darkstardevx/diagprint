@@ -8,13 +8,82 @@ The project follows Semantic Versioning.
 
 ### Planned
 
-- Dedicated `anyhow` integration
-- Expanded `thiserror` integration
-- `tracing` integration
-- Nonblocking and asynchronous report output
-- Async terminal documentation retrieval
-- Additional renderers
-- Richer structured diff presentation
+- Nonblocking and asynchronous report output.
+- Async terminal documentation retrieval.
+- Additional renderers.
+- Richer structured diff presentation.
+
+## [0.5.0] - 2026-09-15
+
+### Added
+
+#### Rust 2024
+
+- Migrated diagprint to Rust 2024.
+- Declared MSRV Rust 1.85.
+
+#### Ecosystem Interoperability
+
+- Anyhow diagnostic adapter.
+- Typed-error and thiserror-compatible metadata.
+- tracing-subscriber integration.
+- miette diagnostic interoperability.
+- codespan-reporting interoperability.
+- Dependency-free generic diagnostic interop protocol.
+- Structured primary and secondary source-label kinds.
+
+#### Compiler and Cargo Intelligence
+
+- Structured rustc JSON diagnostic importer.
+- Cargo compiler-message ingestion.
+- Trusted source-root edit hydration.
+- Structured rustc suggestions and applicability.
+- Cargo metadata workspace ingestion.
+- Exact package and version tracking.
+- Workspace membership and target metadata.
+- Resolved dependency graph and renamed dependencies.
+- Compiler artifact ingestion.
+- Build-script result ingestion.
+- Cargo build completion and build summaries.
+- Forward-compatible unknown Cargo message preservation.
+
+#### Documentation Intelligence
+
+- Version-aware DocumentationResolver.
+- Cargo.lock package-version discovery.
+- Cargo metadata package-version discovery.
+- Exact docs.rs links.
+- Rust toolchain-version documentation pinning.
+- Fail-closed ambiguous-version handling.
+
+#### Transactional Remediation
+
+- FixPlan.
+- Declarative preconditions.
+- Transaction-wide multi-file edit preparation.
+- Rollback-on-error writes.
+- Post-apply verification.
+- Verification rollback.
+- Optional backups.
+- Rollback failure reporting.
+- Shared remediation engine for Fixer and FixPlan.
+- Unguarded automatic insert rejection.
+
+### Changed
+
+- Fixer multi-file application now uses transaction-wide remediation.
+- Ecosystem integrations consume structured protocols instead of rendered text.
+- Diagnostic interoperability is separated from remediation guarantees.
+- Cargo.lock is tracked for deterministic dependency resolution.
+- Source label priority is preserved structurally.
+
+### Security
+
+- Automatic remediation remains restricted to guarded machine-applicable edits.
+- Suggested commands are never automatically executed.
+- Imported compiler edits require explicit trusted-root hydration.
+- Ambiguous documentation versions fail closed.
+- FixPlan verification remains declarative and does not execute shell commands.
 
 ## [0.4.0] - 2026-09-14
 

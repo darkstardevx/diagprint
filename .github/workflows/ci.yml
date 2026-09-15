@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - "diagnostic-intelligence-*"
+      - "integrations-*"
   pull_request:
     branches:
       - main
@@ -76,3 +77,22 @@ jobs:
 
       - name: Inspect package contents
         run: cargo package --list
+
+  msrv:
+    name: MSRV 1.85
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust 1.85
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.85.0"
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check default features on MSRV
+        run: cargo check --all-targets

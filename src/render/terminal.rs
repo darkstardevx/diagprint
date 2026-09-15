@@ -1,7 +1,7 @@
 use super::{Renderer, Style, Theme};
 use crate::{Diagnostic, Severity, Suggestion};
 use std::fs;
-use terminal_size::{terminal_size, Width};
+use terminal_size::{Width, terminal_size};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 const MIN_WIDTH: usize = 40;

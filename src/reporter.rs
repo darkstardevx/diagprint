@@ -1,7 +1,7 @@
 use crate::{
+    Diagnostic, Severity,
     render::{JsonRenderer, MarkdownRenderer, PlainRenderer, Renderer, TerminalRenderer, Theme},
     rotation::{RotationCadence, RotationPolicy, RotationState},
-    Diagnostic, Severity,
 };
 use std::{
     fs::{self, OpenOptions},
@@ -139,7 +139,7 @@ impl Reporter {
 
 #[cfg(feature = "compression")]
 fn compress_gzip(path: &Path) -> io::Result<()> {
-    use flate2::{write::GzEncoder, Compression as GzipCompression};
+    use flate2::{Compression as GzipCompression, write::GzEncoder};
 
     let input = fs::read(path)?;
     let output = fs::File::create(format!("{}.gz", path.display()))?;
