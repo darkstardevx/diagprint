@@ -792,7 +792,9 @@ mod tests {
             }
         };
 
-        let error = expand_diagnostic(&input).unwrap_err();
+        let Err(error) = expand_diagnostic(&input) else {
+            panic!("machine-applicable suggestion without guarded edits was unexpectedly accepted");
+        };
 
         assert!(error.to_string().contains("require guarded edits"));
     }
@@ -805,7 +807,9 @@ mod tests {
             }
         };
 
-        let error = expand_diagnostic(&input).unwrap_err();
+        let Err(error) = expand_diagnostic(&input) else {
+            panic!("tuple enum variant was unexpectedly accepted");
+        };
 
         assert!(error.to_string().contains("unit or named-field"));
     }

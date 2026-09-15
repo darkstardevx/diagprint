@@ -455,12 +455,12 @@ mod tests {
     fn renders_markdown_code_without_network() {
         let viewer = TerminalDocViewer::new();
 
-        let rendered = viewer
-            .render_markdown(
-                "# Example\n\n```rust\nfn main() {\n    println!(\"hello\");\n}\n```\n",
-                None,
-            )
-            .unwrap();
+        let Ok(rendered) = viewer.render_markdown(
+            "# Example\n\n```rust\nfn main() {\n    println!(\"hello\");\n}\n```\n",
+            None,
+        ) else {
+            panic!("offline Markdown documentation rendering failed");
+        };
 
         assert!(rendered.contains("Example"));
         assert!(rendered.contains("fn"));
@@ -472,9 +472,8 @@ mod tests {
     fn renders_html_main_content_without_network() {
         let viewer = TerminalDocViewer::new();
 
-        let rendered = viewer
-            .render_html(
-                r#"
+        let Ok(rendered) = viewer.render_html(
+            r#"
                 <html>
                     <body>
                         <nav>navigation noise</nav>
@@ -486,9 +485,10 @@ mod tests {
                     </body>
                 </html>
                 "#,
-                None,
-            )
-            .unwrap();
+            None,
+        ) else {
+            panic!("offline HTML documentation rendering failed");
+        };
 
         assert!(rendered.contains("Diagnostic docs"));
         assert!(rendered.contains("Useful explanation"));
@@ -500,9 +500,9 @@ mod tests {
     fn falls_back_when_syntax_theme_is_unknown() {
         let viewer = TerminalDocViewer::new().syntax_theme("__does_not_exist__");
 
-        let rendered = viewer
-            .render_markdown("```rust\nlet value = 42;\n```\n", None)
-            .unwrap();
+        let Ok(rendered) = viewer.render_markdown("```rust\nlet value = 42;\n```\n", None) else {
+            panic!("fallback syntax-theme rendering failed");
+        };
 
         assert!(rendered.contains("value"));
     }

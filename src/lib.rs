@@ -23,6 +23,17 @@
 //!
 //! Calling a renderer never modifies source files.
 //!
+//! ## Canonical identity
+//!
+//! `diagprint.canonical/v1` defines stable, schema-versioned identity for
+//! diagnostics and reports without depending on JSON field ordering or volatile
+//! runtime metadata. [`DiagnosticFingerprint`] identifies a logical diagnostic,
+//! [`DiagnosticDigest`] identifies meaningful diagnostic content, and
+//! [`ReportDigest`] identifies report content independently of insertion order.
+//!
+//! Canonical v1 is immutable: incompatible identity changes require a new
+//! canonicalization version rather than silently changing existing digests.
+//!
 //! ## Diagnostic intelligence
 //!
 //! Structured suggestions can carry explanations, documentation links,
@@ -174,12 +185,14 @@
 //! All optional features are disabled by default.
 
 mod attribute;
+mod canonical;
 mod captured;
 mod cargo;
 mod compiler;
 mod diagnostic;
 mod documentation;
 mod export;
+mod fingerprint;
 mod fixer;
 mod fixplan;
 mod intelligence;
@@ -213,6 +226,8 @@ pub mod render;
 
 pub use attribute::{DiagnosticAttribute, DiagnosticValue};
 
+pub use canonical::{CANONICAL_V1_NAMESPACE, CanonicalizationError, CanonicalizationVersion};
+
 pub use captured::CapturedDiagnostic;
 
 #[cfg(feature = "derive")]
@@ -230,6 +245,11 @@ pub use compiler::{CompilerImportError, CompilerImporter};
 pub use diagnostic::{Cause, Diagnostic, Label, LabelKind, SourceLocation};
 
 pub use documentation::{DocumentationError, DocumentationResolver};
+
+pub use fingerprint::{
+    DiagnosticDigest, DiagnosticFingerprint, DigestAlgorithm, FingerprintPolicy, FingerprintSource,
+    IDENTITY_ATTRIBUTE, ReportDigest,
+};
 
 pub use fixer::{FixCheck, FixError, FixPreview, FixReport, Fixer, RollbackFailure};
 

@@ -364,7 +364,9 @@ mod tests {
 
     #[test]
     fn parses_hex_rgb() {
-        let style = Style::from_hex("14B9B5").expect("valid RGB hex");
+        let Some(style) = Style::from_hex("14B9B5") else {
+            panic!("valid RGB hex was unexpectedly rejected");
+        };
 
         assert_eq!(style.open, "\x1b[38;2;20;185;181m");
         assert_eq!(style.close, "\x1b[0m");
@@ -372,7 +374,9 @@ mod tests {
 
     #[test]
     fn parses_hash_prefixed_hex_rgb() {
-        let style = Style::from_hex("#FD3E6A").expect("valid RGB hex");
+        let Some(style) = Style::from_hex("#FD3E6A") else {
+            panic!("valid hash-prefixed RGB hex was unexpectedly rejected");
+        };
 
         assert_eq!(style.open, "\x1b[38;2;253;62;106m");
     }

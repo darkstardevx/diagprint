@@ -8,6 +8,9 @@ The project follows Semantic Versioning.
 
 ### Added
 
+- Added `diagprint.canonical/v1`, a schema-versioned canonical identity contract with SHA-256 diagnostic fingerprints, diagnostic content digests, and order-independent report digests.
+- Added producer-controlled `diagprint.identity` attributes and configurable fingerprint source policy so logical diagnostic identity can remain stable across wording, severity, and exact-location changes.
+- Added canonical v1 regression vectors and a normative compatibility spec; future incompatible canonicalization changes must introduce a new version.
 - Added policy-aware GitHub Actions and SARIF rendering with repository-relative or omitted source paths and optional text redaction, while preserving historical renderer behavior by default.
 - Added a shared `ExportPolicy` with explicit controls for free-form text, source paths, structured attributes, remediation metadata, documentation URLs, and process metadata; existing JSON/JSONL behavior retains conservative safe defaults.
 - Added repository-relative source-path export with fail-closed filename fallback for locations outside the configured root.
