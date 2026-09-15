@@ -66,6 +66,14 @@ impl Renderer for PlainRenderer {
             }
         }
 
+        if !d.attributes.is_empty() {
+            o.push_str("  attributes:\n");
+
+            for attribute in &d.attributes {
+                o.push_str(&format!("    {}={}\n", attribute.name, attribute.value,));
+            }
+        }
+
         if let Some(c) = &d.cause {
             for (i, x) in c.iter().enumerate() {
                 o.push_str(&format!("  {}└─ {}\n", "  ".repeat(i), x.message));

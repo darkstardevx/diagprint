@@ -173,6 +173,7 @@
 //!
 //! All optional features are disabled by default.
 
+mod attribute;
 mod captured;
 mod cargo;
 mod compiler;
@@ -208,6 +209,8 @@ pub mod integrations;
 pub mod docs;
 
 pub mod render;
+
+pub use attribute::{DiagnosticAttribute, DiagnosticValue};
 
 pub use captured::CapturedDiagnostic;
 
@@ -283,6 +286,9 @@ pub use integrations::{MietteDiagnosticExt, MietteDiagnosticTree, MietteReportEx
 
 #[cfg(feature = "tracing")]
 pub use integrations::TracingLayer;
+
+#[cfg(feature = "tracing-error")]
+pub use tracing_error::ErrorLayer as TracingErrorLayer;
 
 #[cfg(feature = "terminal-docs")]
 pub use docs::{TerminalDocError, TerminalDocViewer};

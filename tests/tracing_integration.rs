@@ -36,6 +36,10 @@ fn tracing_event_metadata_is_preserved() {
             diag.help = "Refresh the cache.",
             diag.note = "cache subsystem reported stale state",
             user_id = 42_u64,
+            retry = true,
+            delta = -2_i64,
+            ratio = 1.5_f64,
+            cache = "primary",
             "cache is stale"
         );
     });
@@ -48,7 +52,12 @@ fn tracing_event_metadata_is_preserved() {
 
     assert!(output.contains("note: cache subsystem reported stale state"));
 
-    assert!(output.contains("note: field user_id=42"));
+    assert!(output.contains("attributes:"));
+    assert!(output.contains("user_id=42"));
+    assert!(output.contains("retry=true"));
+    assert!(output.contains("delta=-2"));
+    assert!(output.contains("ratio=1.5"));
+    assert!(output.contains("cache=primary"));
 
     fs::remove_file(path).unwrap();
 }
@@ -155,4 +164,35 @@ fn reporter_failures_are_retained() {
 
     assert_eq!(failures.len(), 1);
     assert!(monitor.emission_failures().is_empty());
+}
+
+#[cfg(feature = "tracing-error")]
+#[test]
+fn span_trace_capture_is_explicit_and_structured() {
+    let path = log_path("span-trace");
+
+    let layer = TracingLayer::new(reporter(&path))
+        .with_target(false)
+        .with_fields(false)
+        .with_span_context(false)
+        .with_source_location(false)
+        .with_span_trace(true);
+
+    let subscriber = tracing_subscriber::registry().with(layer);
+
+    tracing::subscriber::with_default(subscriber, || {
+        let request = tracing::info_span!("request", request_id = 42_u64);
+
+        let _guard = request.enter();
+
+        tracing::error!("request failed");
+    });
+
+    let output = fs::read_to_string(&path).unwrap();
+
+    assert!(output.contains("tracing.span_trace="));
+
+    assert!(output.contains("request"));
+
+    fs::remove_file(path).unwrap();
 }

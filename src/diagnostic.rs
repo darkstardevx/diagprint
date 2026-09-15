@@ -1,4 +1,7 @@
-use crate::{Severity, SourceCache, SourceRevision, SourceSnapshot, Suggestion};
+use crate::{
+    DiagnosticAttribute, DiagnosticValue, Severity, SourceCache, SourceRevision, SourceSnapshot,
+    Suggestion,
+};
 use chrono::{DateTime, Local};
 use serde::Serialize;
 use std::error::Error;
@@ -114,6 +117,9 @@ pub struct Diagnostic {
     pub code: Option<String>,
     pub message: String,
 
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub attributes: Vec<DiagnosticAttribute>,
+
     pub labels: Vec<Label>,
     pub notes: Vec<String>,
     pub help: Option<String>,
@@ -145,6 +151,8 @@ impl Diagnostic {
             code: None,
             message: message.into(),
 
+            attributes: Vec::new(),
+
             labels: Vec::new(),
             notes: Vec::new(),
             help: None,
@@ -156,6 +164,19 @@ impl Diagnostic {
 
     pub fn code(mut self, value: impl Into<String>) -> Self {
         self.code = Some(value.into());
+        self
+    }
+
+    /// Adds one structured diagnostic attribute.
+    pub fn attribute(mut self, name: impl Into<String>, value: impl Into<DiagnosticValue>) -> Self {
+        self.attributes.push(DiagnosticAttribute::new(name, value));
+
+        self
+    }
+
+    /// Adds multiple structured diagnostic attributes.
+    pub fn attributes(mut self, attributes: impl IntoIterator<Item = DiagnosticAttribute>) -> Self {
+        self.attributes.extend(attributes);
         self
     }
 

@@ -905,6 +905,20 @@ impl TerminalRenderer {
             }
         }
 
+        if !diagnostic.attributes.is_empty() {
+            output.push_str(&self.row("", width));
+
+            for attribute in &diagnostic.attributes {
+                output.push_str(&self.prefixed_rows(
+                    "FIELD  ",
+                    &self.theme.metadata_label,
+                    &format!("{}={}", attribute.name, attribute.value,),
+                    &self.theme.metadata_value,
+                    width,
+                ));
+            }
+        }
+
         if let Some(cause) = &diagnostic.cause {
             output.push_str(&self.row("", width));
             output.push_str(&self.row(&self.paint(&self.theme.cause, "CAUSE"), width));
