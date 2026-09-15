@@ -99,6 +99,9 @@ syntect = {
     features = ["default-fancy"]
 }
 
+[dev-dependencies]
+thiserror = "2"
+
 [[example]]
 name = "cybercore"
 required-features = ["cybercore"]
