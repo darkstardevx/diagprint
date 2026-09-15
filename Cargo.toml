@@ -1,6 +1,6 @@
 [package]
 name = "diagprint"
-version = "0.3.1"
+version = "0.4.0"
 edition = "2021"
 description = "Pretty, structured diagnostics and reports for Rust applications."
 license = "MIT OR Apache-2.0"
@@ -15,6 +15,14 @@ categories = ["command-line-utilities", "development-tools::debugging"]
 default = []
 compression = ["dep:flate2", "dep:zstd"]
 cybercore = ["dep:cybercore"]
+
+# Fetch and render documentation directly inside the terminal.
+terminal-docs = [
+    "dep:reqwest",
+    "dep:html2text",
+    "dep:scraper",
+    "dep:syntect",
+]
 
 [dependencies]
 chrono = { version = "0.4", features = ["clock", "serde"] }
@@ -34,6 +42,34 @@ cybercore = {
     optional = true
 }
 
+reqwest = {
+    version = "0.13",
+    optional = true,
+    default-features = false,
+    features = ["blocking", "rustls", "charset"]
+}
+
+html2text = {
+    version = "0.17",
+    optional = true
+}
+
+scraper = {
+    version = "0.27",
+    optional = true
+}
+
+syntect = {
+    version = "5.3",
+    optional = true,
+    default-features = false,
+    features = ["default-fancy"]
+}
+
 [[example]]
 name = "cybercore"
 required-features = ["cybercore"]
+
+[[example]]
+name = "terminal_docs"
+required-features = ["terminal-docs"]

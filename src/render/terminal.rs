@@ -1,5 +1,5 @@
 use super::{Renderer, Style, Theme};
-use crate::{Diagnostic, Severity};
+use crate::{Diagnostic, Severity, Suggestion};
 use std::fs;
 use terminal_size::{terminal_size, Width};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
@@ -190,6 +190,40 @@ fn wrap_visible(s: &str, max_width: usize) -> Vec<String> {
         if !current.is_empty() {
             output.push(current);
         }
+    }
+
+    if output.is_empty() {
+        output.push(String::new());
+    }
+
+    output
+}
+
+fn hard_wrap_visible(s: &str, max_width: usize) -> Vec<String> {
+    if max_width == 0 || s.is_empty() {
+        return vec![String::new()];
+    }
+
+    let mut output = Vec::new();
+
+    for logical_line in s.lines() {
+        let mut current = String::new();
+        let mut current_width = 0;
+
+        for ch in logical_line.chars() {
+            let char_width = UnicodeWidthChar::width(ch).unwrap_or(0);
+
+            if current_width + char_width > max_width && !current.is_empty() {
+                output.push(current);
+                current = String::new();
+                current_width = 0;
+            }
+
+            current.push(ch);
+            current_width += char_width;
+        }
+
+        output.push(current);
     }
 
     if output.is_empty() {
@@ -407,6 +441,40 @@ impl TerminalRenderer {
         output
     }
 
+    fn hard_prefixed_rows(
+        &self,
+        prefix: &str,
+        prefix_style: &Style,
+        text: &str,
+        text_style: &Style,
+        width: usize,
+    ) -> String {
+        let content_width = width.saturating_sub(4);
+        let prefix_width = visible_len(prefix);
+        let available = content_width.saturating_sub(prefix_width).max(1);
+
+        let lines = hard_wrap_visible(text, available);
+        let mut output = String::new();
+
+        for (index, line) in lines.iter().enumerate() {
+            let painted_line = self.paint(text_style, line);
+
+            if index == 0 {
+                output.push_str(&self.row(
+                    &format!("{}{}", self.paint(prefix_style, prefix), painted_line),
+                    width,
+                ));
+            } else {
+                output.push_str(&self.row(
+                    &format!("{}{}", " ".repeat(prefix_width), painted_line),
+                    width,
+                ));
+            }
+        }
+
+        output
+    }
+
     fn source(&self, diagnostic: &Diagnostic, terminal_width: usize) -> Vec<String> {
         let mut output = Vec::new();
         let content_width = terminal_width.saturating_sub(4);
@@ -514,6 +582,133 @@ impl TerminalRenderer {
         output
     }
 
+    fn suggestion_rows(&self, suggestion: &Suggestion, width: usize) -> String {
+        let mut output = String::new();
+
+        output.push_str(&self.row("", width));
+        output.push_str(&self.row(&self.paint(&self.theme.suggestion, "SUGGESTION"), width));
+
+        output.push_str(&self.prefixed_rows(
+            "TITLE  ",
+            &self.theme.suggestion,
+            &suggestion.title,
+            &self.theme.message,
+            width,
+        ));
+
+        if let Some(explanation) = &suggestion.explanation {
+            output.push_str(&self.prefixed_rows(
+                "WHY    ",
+                &self.theme.applicability,
+                explanation,
+                &self.theme.message,
+                width,
+            ));
+        }
+
+        for edit in &suggestion.edits {
+            for line in edit.preview_lines() {
+                if let Some(path) = line.strip_prefix("PATCH ") {
+                    output.push_str(&self.hard_prefixed_rows(
+                        "PATCH  ",
+                        &self.theme.suggestion,
+                        path,
+                        &self.theme.metadata_value,
+                        width,
+                    ));
+                } else if let Some(added) = line.strip_prefix("+ ") {
+                    output.push_str(&self.hard_prefixed_rows(
+                        "+ ",
+                        &self.theme.patch_add,
+                        added,
+                        &self.theme.patch_add,
+                        width,
+                    ));
+                } else if let Some(removed) = line.strip_prefix("- ") {
+                    output.push_str(&self.hard_prefixed_rows(
+                        "- ",
+                        &self.theme.patch_remove,
+                        removed,
+                        &self.theme.patch_remove,
+                        width,
+                    ));
+                }
+            }
+        }
+
+        for link in &suggestion.documentation {
+            output.push_str(&self.prefixed_rows(
+                "DOCS   ",
+                &self.theme.docs,
+                &link.label,
+                &self.theme.message,
+                width,
+            ));
+
+            output.push_str(&self.prefixed_rows(
+                "       ",
+                &self.theme.docs,
+                &link.url,
+                &self.theme.docs,
+                width,
+            ));
+        }
+
+        for command in &suggestion.commands {
+            output.push_str(&self.hard_prefixed_rows(
+                "COMMAND ",
+                &self.theme.command,
+                &command.command,
+                &self.theme.command,
+                width,
+            ));
+
+            if let Some(explanation) = &command.explanation {
+                output.push_str(&self.prefixed_rows(
+                    "        ",
+                    &self.theme.command,
+                    explanation,
+                    &self.theme.message,
+                    width,
+                ));
+            }
+        }
+
+        output.push_str(&self.prefixed_rows(
+            "APPLY  ",
+            &self.theme.applicability,
+            suggestion.applicability.as_str(),
+            &self.theme.applicability,
+            width,
+        ));
+
+        let fix_status = if suggestion.is_machine_applicable() && suggestion.has_edits() {
+            "automatic fix available"
+        } else {
+            "manual review required"
+        };
+
+        output.push_str(&self.prefixed_rows(
+            "FIX    ",
+            &self.theme.fix,
+            fix_status,
+            &self.theme.fix,
+            width,
+        ));
+
+        if !suggestion.commands.is_empty() {
+            output.push_str(&self.prefixed_rows(
+                "       ",
+                &self.theme.command,
+                "commands are suggestions only and are never executed automatically",
+                &self.theme.message,
+                width,
+            ));
+        }
+
+        output
+    }
+
     fn metadata_row(&self, label: &str, value: &str, width: usize) -> String {
         let prefix = format!("{label:<10}");
 
@@ -531,28 +726,27 @@ impl Renderer for TerminalRenderer {
     fn render(&self, diagnostic: &Diagnostic) -> String {
         let width = self.effective_width();
 
-        let raw_title = {
-            let icon = match diagnostic.severity {
-                Severity::Trace => "·",
-                Severity::Debug => "◆",
-                Severity::Info => "ℹ",
-                Severity::Warning => "⚠",
-                Severity::Error => "✖",
-                Severity::Fatal => "☠",
-            };
-
-            format!(
-                "{icon} {}{}",
-                diagnostic.severity,
-                diagnostic
-                    .code
-                    .as_ref()
-                    .map(|code| format!(" [{code}]"))
-                    .unwrap_or_default()
-            )
+        let icon = match diagnostic.severity {
+            Severity::Trace => "·",
+            Severity::Debug => "◆",
+            Severity::Info => "ℹ",
+            Severity::Warning => "⚠",
+            Severity::Error => "✖",
+            Severity::Fatal => "☠",
         };
 
+        let raw_title = format!(
+            "{icon} {}{}",
+            diagnostic.severity,
+            diagnostic
+                .code
+                .as_ref()
+                .map(|code| format!(" [{code}]"))
+                .unwrap_or_default()
+        );
+
         let raw_title = truncate_visible(&raw_title, width.saturating_sub(5));
+
         let title = self.paint(self.theme.severity.style(diagnostic.severity), &raw_title);
 
         let title_width = visible_len(&title);
@@ -619,13 +813,15 @@ impl Renderer for TerminalRenderer {
             ));
         }
 
-        if self.show_metadata {
-            let label = "Diagnostic";
+        for suggestion in &diagnostic.suggestions {
+            output.push_str(&self.suggestion_rows(suggestion, width));
+        }
 
+        if self.show_metadata {
             output.push_str(&format!(
                 "{}{}{}\n",
                 self.paint(&self.theme.border, "├─ "),
-                self.paint(&self.theme.metadata_label, label),
+                self.paint(&self.theme.metadata_label, "Diagnostic"),
                 self.paint(
                     &self.theme.border,
                     &format!(" {}┤", "─".repeat(width.saturating_sub(15)))
