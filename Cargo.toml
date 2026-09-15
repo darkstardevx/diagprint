@@ -172,5 +172,6 @@ members = [
     "crates/diagprint-derive",
     "crates/diagprint-lsp",
     "crates/diagprint-async",
+    "crates/diagprint-otel",
 ]
 resolver = "3"

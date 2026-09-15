@@ -8,6 +8,9 @@ The project follows Semantic Versioning.
 
 ### Added
 
+- Added the `diagprint-otel` companion crate for privacy-aware OpenTelemetry diagnostic events and tracing span integration.
+- Telemetry export is metadata-first by default: diagnostic messages are redacted while help, notes, causes, source paths, hostname, and PID are omitted unless explicitly enabled.
+- Added native OpenTelemetry Span and tracing-opentelemetry recording for single diagnostics and DiagnosticReport batches without coupling diagprint to a collector or exporter SDK.
 - Added the runtime-independent `DiagnosticSink` contract with buffered writer and newline-delimited JSON production sinks.
 - Added the `diagprint-async` companion crate with strictly bounded diagnostic queues, ordered flush/shutdown, worker failure propagation, and explicit Block, Reject, and severity-aware DropNewest backpressure.
 - Async DropNewest queues protect diagnostics above their configured drop threshold instead of silently discarding them under overload.
