@@ -8,6 +8,16 @@ The project follows Semantic Versioning.
 
 ### Added
 
+- Added `DiagnosticDelta` semantic report comparison with `New`, `Resolved`,
+  `Persisting`, and `Changed` classifications backed by
+  `diagprint.canonical/v1` fingerprints and content digests.
+- Diagnostic deltas preserve duplicate diagnostics as multisets, prefer exact
+  digest matches before changed-pair matching, and carry canonical baseline
+  and candidate `ReportDigest` values.
+- Added threshold-aware delta queries for diagnostics newly introduced at a
+  severity threshold and for severity increases, enabling future baseline-aware
+  CI policies without treating existing diagnostic debt as newly introduced.
+
 - Added `diagprint.canonical/v1`, a schema-versioned canonical identity contract with SHA-256 diagnostic fingerprints, diagnostic content digests, and order-independent report digests.
 - Added producer-controlled `diagprint.identity` attributes and configurable fingerprint source policy so logical diagnostic identity can remain stable across wording, severity, and exact-location changes.
 - Added canonical v1 regression vectors and a normative compatibility spec; future incompatible canonicalization changes must introduce a new version.

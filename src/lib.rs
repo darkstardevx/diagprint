@@ -30,6 +30,9 @@
 //! runtime metadata. [`DiagnosticFingerprint`] identifies a logical diagnostic,
 //! [`DiagnosticDigest`] identifies meaningful diagnostic content, and
 //! [`ReportDigest`] identifies report content independently of insertion order.
+//! [`DiagnosticDelta`] uses those identities to classify diagnostics across
+//! reports as new, resolved, persisting, or changed while preserving duplicate
+//! diagnostic instances.
 //!
 //! Canonical v1 is immutable: incompatible identity changes require a new
 //! canonicalization version rather than silently changing existing digests.
@@ -189,6 +192,7 @@ mod canonical;
 mod captured;
 mod cargo;
 mod compiler;
+mod delta;
 mod diagnostic;
 mod documentation;
 mod export;
@@ -243,6 +247,8 @@ pub use cargo::{
 pub use compiler::{CompilerImportError, CompilerImporter};
 
 pub use diagnostic::{Cause, Diagnostic, Label, LabelKind, SourceLocation};
+
+pub use delta::{DeltaCounts, DeltaKind, DiagnosticChange, DiagnosticDelta};
 
 pub use documentation::{DocumentationError, DocumentationResolver};
 
