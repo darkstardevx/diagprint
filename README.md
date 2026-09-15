@@ -1,88 +1,101 @@
 # diagprint
 
 [![CI](https://github.com/darkstardevx/diagprint/actions/workflows/ci.yml/badge.svg)](https://github.com/darkstardevx/diagprint/actions/workflows/ci.yml)
-[![GitHub Release](https://img.shields.io/github/v/release/darkstardevx/diagprint)](https://github.com/darkstardevx/diagprint/releases)
+[![Crates.io](https://img.shields.io/crates/v/diagprint.svg)](https://crates.io/crates/diagprint)
+[![Docs.rs](https://docs.rs/diagprint/badge.svg)](https://docs.rs/diagprint)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 
 Pretty, structured diagnostics and reports for Rust applications.
 
-`diagprint` turns application failures into structured diagnostics that can be
-rendered for terminals, files, JSON, Markdown, or plain text.
+`diagprint` turns failures into actionable, structured diagnostics with:
 
-v0.4 adds **Diagnostic Intelligence**: structured suggestions, documentation
-links, guarded text edits, dry-run validation, interactive fixes, and
-documentation that can be viewed directly in the terminal with syntax
-highlighting.
+- rich terminal rendering;
+- primary and secondary source labels;
+- virtual and in-memory sources;
+- immutable source snapshots;
+- per-source revision tracking;
+- stale-source detection;
+- captured revision-aware diagnostics;
+- JSON, Markdown, plain-text, GitHub Actions, and SARIF output;
+- ecosystem interoperability;
+- rustc and Cargo diagnostic ingestion;
+- guarded remediation;
+- transactional multi-file fixes;
+- post-fix verification;
+- version-aware documentation.
 
-## Highlights
+The core rule is:
 
-- Rich boxed terminal diagnostics
-- Unicode-aware display widths
-- Automatic terminal sizing
-- Source snippets with highlighted ranges
-- Intelligent source clipping around the actual error
-- Hierarchical error chains
-- Notes and help text
-- JSON, Markdown, plain-text, and terminal renderers
-- UUIDv7 session and report identifiers
-- File rotation and retention
-- Optional gzip and Zstandard compression
-- Custom terminal themes
-- Optional Cybercore theme integration
-- Structured diagnostic suggestions
-- Documentation links
-- Machine-applicable text edits
-- Stale-edit protection
-- UTF-8 boundary validation
-- Overlapping-edit rejection
-- Dry-run fix validation
-- Optional backups
-- Interactive fix workflow
-- Optional terminal documentation viewer
-- Syntax-highlighted documentation examples
-- Remote terminal-control sanitization
-- Remote document size limits
+> Diagnostics may explain and propose. Mutation must be explicit, structured,
+> validated, and reject uncertainty.
 
-## Installation
+## Status
 
-Until the crate is published to a registry, use the GitHub repository.
+The current development branch is preparing **diagprint v0.6.0**.
+
+The latest published crates.io release remains the previous stable release until
+v0.6.0 is published.
+
+To use the v0.6 development branch:
 
 ```toml
 [dependencies]
 diagprint = {
     git = "https://github.com/darkstardevx/diagprint.git",
-    tag = "v0.4.0"
+    branch = "label-rendering-v0.6.0"
 }
 ```
 
-Enable optional features as needed:
+After v0.6.0 is published:
+
+```toml
+[dependencies]
+diagprint = "0.6"
+```
+
+`diagprint` uses Rust 2024 and supports Rust **1.85 and newer**.
+
+## Optional Features
+
+All optional features are disabled by default.
 
 ```toml
 [dependencies]
 diagprint = {
     git = "https://github.com/darkstardevx/diagprint.git",
-    tag = "v0.4.0",
-    features = ["compression", "terminal-docs"]
+    branch = "label-rendering-v0.6.0",
+    features = [
+        "compression",
+        "cybercore",
+        "terminal-docs",
+        "anyhow",
+        "tracing",
+        "miette",
+        "codespan-reporting",
+        "ariadne",
+        "annotate-snippets",
+    ]
 }
 ```
 
-Cybercore integration is available separately:
-
-```toml
-[dependencies]
-diagprint = {
-    git = "https://github.com/darkstardevx/diagprint.git",
-    tag = "v0.4.0",
-    features = ["cybercore"]
-}
-```
+| Feature | Purpose |
+| --- | --- |
+| `compression` | gzip and Zstandard report compression |
+| `cybercore` | Cybercore theme integration |
+| `terminal-docs` | terminal documentation retrieval and highlighting |
+| `anyhow` | anyhow diagnostic integration |
+| `tracing` | tracing subscriber integration |
+| `miette` | miette interoperability |
+| `codespan-reporting` | codespan-reporting interoperability |
+| `ariadne` | Ariadne structured bridge |
+| `annotate-snippets` | annotate-snippets structured bridge |
 
 ## Quick Start
 
 ```rust
 use diagprint::{Reporter, Severity};
 
-fn main() -> diagprint::Result<()> {
+fn main() -> std::io::Result<()> {
     let reporter = Reporter::builder()
         .application("myapp")
         .min_severity(Severity::Info)
@@ -92,8 +105,8 @@ fn main() -> diagprint::Result<()> {
         .error("Network initialization failed")
         .code("NET-001")
         .cause("failed to open network interface")
-        .note("Fallback networking is unavailable")
-        .help("Check interface permissions and driver state");
+        .note("fallback networking is unavailable")
+        .help("check interface permissions and driver state");
 
     reporter.emit(&diagnostic)?;
 
@@ -115,94 +128,509 @@ let diagnostic = reporter
         Some(9),
         Some(5),
         Some("unsupported value"),
+    )
+    .secondary_label(
+        "defaults.toml",
+        4,
+        Some(1),
+        Some(7),
+        Some("default declared here"),
     );
 ```
 
-The terminal renderer follows the highlighted range rather than blindly
-truncating long source lines from the beginning.
+Primary and secondary labels remain structurally distinct through rendering and
+interop.
 
-## Error Chains
+The terminal renderer displays them differently so related context does not
+look like an additional primary failure.
 
-`diagprint` supports hierarchical causes:
+## Virtual and In-Memory Sources
+
+Source text does not need to exist on disk.
+
+```rust
+let reporter = Reporter::builder()
+    .application("editor")
+    .source(
+        "memory://editor/main.rs",
+        "let answer = old_value();\n",
+    )
+    .build()?;
+
+let diagnostic = reporter
+    .error("Invalid value")
+    .label(
+        "memory://editor/main.rs",
+        1,
+        Some(14),
+        Some(9),
+        Some("value"),
+    );
+
+reporter.emit(&diagnostic)?;
+```
+
+`SourceCache` stores virtual or generated source text:
+
+```rust
+use diagprint::SourceCache;
+
+let cache = SourceCache::new();
+
+cache.insert(
+    "memory://generated.rs",
+    "fn generated() {}\n",
+);
+```
+
+Source names are matched exactly.
+
+When source-aware terminal rendering is used, cached source takes precedence
+over filesystem fallback.
+
+Cloned `SourceCache` handles share the same underlying source state.
+
+## Immutable Source Snapshots
+
+Mutable editor buffers can change after a diagnostic is created.
+
+`SourceSnapshot` freezes the source view at a point in time while source text
+itself remains shared through `Arc`.
+
+```rust
+let cache = reporter.source_cache();
+
+let snapshot = cache.snapshot();
+
+let diagnostic = reporter
+    .error("old diagnostic")
+    .label(
+        "memory://editor/main.rs",
+        1,
+        Some(14),
+        Some(9),
+        Some("original value"),
+    )
+    .bind_source_revisions(&snapshot);
+```
+
+Later mutations to the live cache do not change the snapshot.
+
+## Source Revisions
+
+Every cached source tracks a `SourceRevision`.
+
+```rust
+let revision = cache.insert_revisioned(
+    "memory://editor/main.rs",
+    "let answer = old_value();\n",
+);
+
+println!("revision: {revision}");
+```
+
+Revisions are tracked independently per source.
+
+Every insertion advances the revision, including replacement with identical
+text.
+
+Revision history survives removal and clearing so an old revision cannot be
+silently reused after a source is recreated.
+
+## Revision-Bound Diagnostics
+
+A diagnostic can bind its source locations to the source revision it was
+created from.
+
+```rust
+let snapshot = reporter.source_snapshot();
+
+let diagnostic = reporter
+    .error("Invalid editor value")
+    .label(
+        "memory://editor/main.rs",
+        1,
+        Some(14),
+        Some(9),
+        Some("old value"),
+    )
+    .bind_source_revisions(&snapshot);
+```
+
+If the live source later changes, a revision-aware terminal render fails
+closed.
+
+Instead of underlining unrelated newer text, it reports the mismatch:
+
+```text
+! stale source: r1 != r2
+```
+
+No misleading newer source excerpt is shown.
+
+Revision-unbound diagnostics retain the existing source behavior.
+
+## Captured Diagnostics
+
+`CapturedDiagnostic` pairs a diagnostic with the immutable source snapshot that
+belongs to it.
+
+```rust
+let captured = reporter.capture(
+    reporter
+        .error("editor diagnostic")
+        .label(
+            "memory://editor/main.rs",
+            1,
+            Some(14),
+            Some(9),
+            Some("source at diagnostic time"),
+        ),
+);
+```
+
+The live buffer may then continue changing:
+
+```rust
+reporter.register_source(
+    "memory://editor/main.rs",
+    "let answer = new_value();\n",
+);
+
+assert!(
+    captured.is_stale(
+        &reporter.source_cache()
+    )
+);
+```
+
+The captured diagnostic still renders against its original immutable source:
+
+```rust
+reporter.emit_captured(&captured)?;
+```
+
+Source text stays outside `Diagnostic` serialization.
+
+## Source Providers
+
+Integrations which own in-memory source text can expose it through
+`SourceProvider`.
+
+A reporter can register those sources:
+
+```rust
+reporter.register_sources(&provider);
+```
+
+Or a builder can import them:
+
+```rust
+let reporter = Reporter::builder()
+    .sources_from(&provider)
+    .build()?;
+```
+
+The Ariadne and annotate-snippets bridges implement this handoff.
+
+## GitHub Actions Annotations
+
+`diagprint` can emit native GitHub Actions workflow-command annotations.
 
 ```rust
 let diagnostic = reporter
-    .error("Request failed")
-    .cause("connection failed")
-    .cause("DNS lookup failed");
+    .error("Cannot combine incompatible values")
+    .code("E-TYPE")
+    .label(
+        "src/main.rs",
+        12,
+        Some(9),
+        Some(5),
+        Some("numeric value"),
+    )
+    .secondary_label(
+        "src/lib.rs",
+        4,
+        Some(5),
+        Some(8),
+        Some("string declaration"),
+    );
+
+reporter.emit_github_actions(&diagnostic)?;
 ```
 
-Existing `std::error::Error` chains can also be captured:
+Severity mapping:
+
+| diagprint | GitHub Actions |
+| --- | --- |
+| Trace | notice |
+| Debug | notice |
+| Info | notice |
+| Warning | warning |
+| Error | error |
+| Fatal | error |
+
+Primary labels retain the diagnostic severity.
+
+Secondary labels are emitted as notices so related source locations remain
+visible without appearing as additional failures.
+
+Workflow command data and properties are escaped before output.
+
+## SARIF 2.1.0
+
+`SarifRenderer` produces SARIF for GitHub Code Scanning and other SARIF 2.1.0
+consumers.
 
 ```rust
-let diagnostic = reporter
-    .error("Operation failed")
-    .from_error(&error);
+use diagprint::render::SarifRenderer;
+
+let first = reporter
+    .error("Type mismatch")
+    .code("E-TYPE")
+    .label(
+        "src/main.rs",
+        12,
+        Some(9),
+        Some(5),
+        Some("numeric value"),
+    )
+    .secondary_label(
+        "src/lib.rs",
+        4,
+        Some(5),
+        Some(8),
+        Some("declared here"),
+    );
+
+let second = reporter
+    .warning("Deprecated configuration")
+    .code("W-CONFIG")
+    .label(
+        "src/config.rs",
+        7,
+        Some(1),
+        Some(12),
+        Some("deprecated setting"),
+    );
+
+SarifRenderer.write_many(
+    "target/diagprint.sarif",
+    [&first, &second],
+)?;
 ```
 
-## Diagnostic Intelligence
+SARIF output includes:
 
-v0.4 introduces structured suggestions.
+- SARIF 2.1.0 metadata;
+- deterministic rule IDs;
+- deterministic rule indices;
+- severity mapping;
+- primary source locations;
+- related source locations;
+- exclusive SARIF end-column ranges;
+- notes;
+- help;
+- cause information;
+- diagprint source revision metadata.
+
+No synthetic fingerprints are invented.
+
+`write_many()` writes one complete SARIF document rather than appending
+independent JSON documents.
+
+## Built-In Output Formats
+
+The same diagnostic data can be rendered as:
+
+- terminal output;
+- plain text;
+- JSON;
+- Markdown;
+- GitHub Actions annotations;
+- SARIF 2.1.0.
+
+```rust
+use diagprint::render::{
+    GithubActionsRenderer,
+    JsonRenderer,
+    MarkdownRenderer,
+    PlainRenderer,
+    Renderer,
+    SarifRenderer,
+    TerminalRenderer,
+};
+```
+
+Diagnostic construction stays independent from presentation.
+
+## Generic Diagnostic Interop
+
+`diagprint` provides a dependency-free interoperability protocol for structured
+diagnostics.
+
+The generic protocol can preserve:
+
+- severity;
+- diagnostic codes;
+- messages;
+- help;
+- notes;
+- source labels;
+- primary and secondary label roles;
+- causes;
+- documentation links;
+- related diagnostics.
+
+Generic interoperability deliberately does **not** grant remediation trust.
+
+An integration that wants automatic edits must establish remediation trust
+separately.
+
+## anyhow
+
+Enable:
+
+```toml
+features = ["anyhow"]
+```
+
+The anyhow adapter can convert error context into structured diagprint
+diagnostics while preserving the error chain.
+
+## tracing
+
+Enable:
+
+```toml
+features = ["tracing"]
+```
+
+The tracing integration connects structured tracing events with diagprint
+reporting.
+
+## miette
+
+Enable:
+
+```toml
+features = ["miette"]
+```
+
+The miette integration maps compatible diagnostic metadata into diagprint's
+structured interoperability model.
+
+## codespan-reporting
+
+Enable:
+
+```toml
+features = ["codespan-reporting"]
+```
+
+Codespan diagnostics are routed through the generic interoperability layer.
+
+## Ariadne
+
+Enable:
+
+```toml
+features = ["ariadne"]
+```
+
+`AriadneBridge` captures structured source and label metadata once and can
+produce both:
+
+- a real Ariadne report;
+- a diagprint interoperability diagnostic.
+
+The bridge does not parse rendered Ariadne terminal text and does not rely on
+private Ariadne internals.
+
+Ariadne source spans are resolved into one-based source locations for
+diagprint.
+
+## annotate-snippets
+
+Enable:
+
+```toml
+features = ["annotate-snippets"]
+```
+
+The annotate-snippets bridge:
+
+- preserves primary and context labels;
+- validates byte ranges;
+- rejects invalid UTF-8 boundaries;
+- converts byte spans into one-based line and column locations;
+- exposes its in-memory sources through `SourceProvider`.
+
+## Rustc Diagnostics
+
+`diagprint` can ingest structured rustc JSON diagnostics.
+
+The compiler integration can preserve information including:
+
+- severity;
+- error codes;
+- source spans;
+- child diagnostics;
+- structured suggestions;
+- applicability;
+- compiler source edits;
+- rendered compiler context when available.
+
+Compiler edits require explicit trusted source-root hydration before they can
+participate in remediation.
+
+## Cargo Intelligence
+
+Cargo ingestion can track information including:
+
+- workspace packages;
+- exact package versions;
+- workspace membership;
+- targets;
+- resolved dependencies;
+- renamed dependencies;
+- compiler artifacts;
+- build-script results;
+- build completion;
+- build summaries.
+
+Unknown Cargo messages are preserved for forward compatibility.
+
+## Diagnostic Suggestions
+
+Diagnostics can carry structured suggestions.
 
 ```rust
 use diagprint::{
-    Applicability, DocumentationLink, Edit, Suggestion, TextRange,
+    Applicability,
+    Edit,
+    Suggestion,
+    TextRange,
 };
 
-let original =
-    r#"chrono = { version = "0.4", features = ["clock"] }"#;
-
-let replacement =
-    r#"chrono = { version = "0.4", features = ["clock", "serde"] }"#;
-
-let diagnostic = reporter
-    .error("chrono::DateTime cannot be serialized")
-    .code("CARGO-001")
-    .suggestion(
-        Suggestion::new("Enable chrono's serde feature")
-            .explanation(
-                "chrono only provides serde implementations when its \
-                 `serde` feature is enabled",
-            )
-            .applicability(Applicability::MachineApplicable)
-            .documentation(
-                DocumentationLink::docs_rs(
-                    "chrono",
-                    "latest",
-                    "",
-                ),
-            )
-            .edit(Edit::replace(
-                "Cargo.toml",
-                TextRange::new(0, original.len()),
-                original,
-                replacement,
-            )),
+let suggestion =
+    Suggestion::new(
+        "Replace deprecated value",
+    )
+    .applicability(
+        Applicability::MachineApplicable,
+    )
+    .edit(
+        Edit::replace(
+            "config.toml",
+            TextRange::new(10, 13),
+            "old",
+            "new",
+        ),
     );
 ```
 
-Terminal output includes the proposed change:
-
-```text
-SUGGESTION
-TITLE  Enable chrono's serde feature
-WHY    chrono only provides serde implementations when its `serde`
-       feature is enabled
-
-PATCH  Cargo.toml
-- chrono = { version = "0.4", features = ["clock"] }
-+ chrono = { version = "0.4", features = ["clock", "serde"] }
-
-DOCS   chrono documentation
-       https://docs.rs/chrono/latest/chrono/
-
-APPLY  machine-applicable
-FIX    automatic fix available
-```
-
-## Applicability
-
-Every suggestion has an applicability level:
+Applicability levels are:
 
 ```rust
 pub enum Applicability {
@@ -213,140 +641,115 @@ pub enum Applicability {
 }
 ```
 
-Only `MachineApplicable` suggestions containing structured edits are eligible
-for automatic application.
+Only guarded, machine-applicable structured edits are eligible for automatic
+application.
 
-The classification alone is not enough. `diagprint` validates the current
-filesystem again before writing.
+## Fixer
 
-## Validate Without Changing Files
-
-Use `Fixer::check()` as a dry-run:
+Validate without writing:
 
 ```rust
 use diagprint::Fixer;
 
-let fixer = Fixer::new();
-
-let check = fixer.check(&diagnostic)?;
-
-println!(
-    "{} applicable suggestion(s)",
-    check.applicable_suggestions
-);
-
-for file in check.affected_files {
-    println!("would change: {}", file.display());
-}
+let check =
+    Fixer::new()
+        .check(&diagnostic)?;
 ```
 
-No files are modified.
-
-## Apply Fixes
+Apply validated fixes:
 
 ```rust
-let report = Fixer::new()
-    .backups(true)
-    .apply(&diagnostic)?;
-
-println!(
-    "{} suggestion(s) applied",
-    report.applied_suggestions
-);
+let report =
+    Fixer::new()
+        .backups(true)
+        .apply(&diagnostic)?;
 ```
 
-Before changing a file, `diagprint` verifies:
-
-- the edit is machine-applicable;
-- the byte range is valid;
-- edit offsets are UTF-8 boundaries;
-- edits do not overlap;
-- the current file still contains the exact expected text.
-
-If the source changed after the diagnostic was generated, the edit is rejected
-instead of guessing.
-
-## Interactive Fixes
+Interactive mode:
 
 ```rust
 Fixer::new()
     .backups(true)
-    .apply_interactive(&diagnostic)?;
+    .apply_interactive(
+        &diagnostic,
+    )?;
 ```
 
-The terminal workflow exposes only actions that are actually available:
+Before mutation, diagprint validates:
 
-```text
-FIX  Enable chrono's serde feature
-APPLICABILITY  machine-applicable
-VERIFY  current file contents match the proposed edit
-[A]pply  [S]kip  [D]ocs  [Q]uit >
-```
+- applicability;
+- expected source contents;
+- edit ranges;
+- UTF-8 boundaries;
+- overlapping edits;
+- duplicate insertion positions;
+- filesystem state.
 
-If validation fails, `[A]pply` disappears:
+Stale edits are rejected instead of guessed.
 
-```text
-VERIFY  blocked: refusing stale edit in Cargo.toml ...
-[S]kip  [D]ocs  [Q]uit >
-```
+## FixPlan
+
+`FixPlan` supports transaction-wide multi-file remediation.
+
+The remediation flow:
+
+1. validates all affected files;
+2. prepares all resulting contents;
+3. creates recovery state;
+4. performs transaction writes;
+5. rolls back observed failures;
+6. optionally performs post-fix verification;
+7. rolls back when verification fails.
+
+Portable crash-atomic multi-file writes are **not** claimed.
+
+## Post-Fix Verification
+
+Fix plans can declare structured verification requirements after application.
+
+Verification remains declarative.
+
+`diagprint` does not automatically execute arbitrary shell commands as part of
+fix application or verification.
 
 ## Suggested Commands
 
-Suggestions may include follow-up commands:
+Suggestions may contain advisory commands:
 
 ```rust
 use diagprint::SuggestedCommand;
 
-let suggestion = Suggestion::new("Enable serde")
-    .command(
-        SuggestedCommand::new("cargo check")
-            .explanation(
-                "Verify the project after applying the edit",
-            ),
+let command =
+    SuggestedCommand::new(
+        "cargo check",
+    )
+    .explanation(
+        "Verify the project after applying the edit",
     );
 ```
 
-Commands are **never executed automatically**.
+Suggested commands are **never executed automatically**.
 
-They are advisory information only.
+## Documentation Intelligence
 
-## Documentation Links
+`DocumentationResolver` supports version-aware documentation resolution using
+Cargo metadata and lockfiles.
 
-Documentation links are structured data:
+Supported documentation targets include:
 
-```rust
-let rust = DocumentationLink::rust_error("E0277");
+- Rust error documentation;
+- Cargo Book pages;
+- docs.rs package documentation;
+- custom documentation links.
 
-let cargo = DocumentationLink::cargo_book(
-    "reference/features.html",
-);
-
-let chrono = DocumentationLink::docs_rs(
-    "chrono",
-    "latest",
-    "",
-);
-```
-
-Custom links are also supported:
-
-```rust
-let link = DocumentationLink::new(
-    "Project troubleshooting guide",
-    "https://example.com/docs/troubleshooting",
-);
-```
+Ambiguous package versions fail closed instead of guessing a docs.rs version.
 
 ## Terminal Documentation
 
 Enable:
 
 ```toml
-diagprint = {
-    git = "https://github.com/darkstardevx/diagprint.git",
-    tag = "v0.4.0",
-    features = ["terminal-docs"]
-}
+features = ["terminal-docs"]
 ```
 
 Then:
@@ -357,104 +760,62 @@ use diagprint::{
     TerminalDocViewer,
 };
 
-let link = DocumentationLink::rust_error("E0277");
+let link =
+    DocumentationLink::rust_error(
+        "E0277",
+    );
 
 TerminalDocViewer::new()
     .width(96)
     .open_and_print(&link)?;
 ```
 
-The viewer:
+The terminal documentation viewer:
 
 - accepts HTTP and HTTPS documentation URLs;
-- retrieves the document synchronously;
 - limits remote document size;
 - sanitizes terminal control characters;
-- converts HTML to readable terminal text;
+- converts HTML to terminal-readable text;
 - extracts code examples;
-- syntax-highlights code with 24-bit ANSI output.
+- syntax-highlights code.
 
-The default maximum remote document size is 2 MiB.
-
-Because the current viewer uses a blocking HTTP client, applications already
-inside an async runtime should call it from an appropriate blocking worker.
-
-### Demo
-
-```bash
-cargo run --features terminal-docs --example terminal_docs
-```
-
-Or:
-
-```bash
-cargo run \
-    --features terminal-docs \
-    --example terminal_docs -- \
-    https://docs.rs/chrono/latest/chrono/
-```
-
-## Intelligence Demo
-
-Preview:
-
-```bash
-cargo run --example intelligence
-```
-
-Validate without writing:
-
-```bash
-cargo run --example intelligence -- --check
-```
-
-Apply:
-
-```bash
-cargo run --example intelligence -- --apply
-```
-
-Interactive mode with terminal docs:
-
-```bash
-cargo run \
-    --features terminal-docs \
-    --example intelligence \
-    -- --interactive
-```
-
-The demo operates on:
-
-```text
-target/diagprint-demo/Cargo.toml
-```
-
-rather than your project's real manifest.
+The current documentation viewer uses blocking I/O.
 
 ## Themes
 
-Terminal presentation is controlled by:
+Terminal presentation is customizable.
 
 ```rust
-use diagprint::{SeverityTheme, Style, Theme};
-```
+use diagprint::{
+    Style,
+    Theme,
+};
 
-Create a custom theme:
-
-```rust
 let theme = Theme {
-    border: Style::rgb(20, 185, 181),
-    patch_add: Style::rgb(100, 255, 100),
-    patch_remove: Style::rgb(255, 80, 100),
+    border: Style::rgb(
+        20,
+        185,
+        181,
+    ),
+    patch_add: Style::rgb(
+        100,
+        255,
+        100,
+    ),
+    patch_remove: Style::rgb(
+        255,
+        80,
+        100,
+    ),
     ..Theme::default()
 };
 ```
 
 Styles support:
 
-- standard ANSI foregrounds;
-- ANSI-256 foregrounds and backgrounds;
-- 24-bit RGB foregrounds and backgrounds;
+- standard ANSI colors;
+- ANSI-256 colors;
+- RGB foregrounds and backgrounds;
 - hex colors;
 - bold;
 - dim;
@@ -462,18 +823,14 @@ Styles support:
 - underline.
 
 `color(false)` remains authoritative and disables ANSI styling regardless of
-the selected theme.
+theme configuration.
 
 ## Cybercore Integration
 
 Enable:
 
 ```toml
-diagprint = {
-    git = "https://github.com/darkstardevx/diagprint.git",
-    tag = "v0.4.0",
-    features = ["cybercore"]
-}
+features = ["cybercore"]
 ```
 
 Use the active Cybercore theme:
@@ -481,63 +838,14 @@ Use the active Cybercore theme:
 ```rust
 use diagprint::Theme;
 
-let theme = Theme::cybercore();
+let theme =
+    Theme::cybercore();
 ```
 
-Or select a named theme:
+Named Cybercore themes are also supported.
 
-```rust
-let theme = Theme::cybercore_or_default("neon-night");
-```
-
-Useful helpers:
-
-```rust
-Theme::cybercore_theme_names();
-Theme::cybercore_active_theme_name();
-Theme::cybercore_theme_exists("neon-night");
-Theme::cybercore_named("neon-night");
-```
-
-`diagprint` consumes Cybercore's semantic palette rather than duplicating its
-hex values.
-
-### Showcase
-
-```bash
-cargo run \
-    --features cybercore \
-    --example cybercore
-```
-
-List Cybercore themes:
-
-```bash
-cargo run \
-    --features cybercore \
-    --example cybercore -- \
-    --list
-```
-
-Choose one:
-
-```bash
-cargo run \
-    --features cybercore \
-    --example cybercore -- \
-    neon-night
-```
-
-## Output Formats
-
-The same diagnostic data can be rendered as:
-
-- terminal output;
-- plain text;
-- JSON;
-- Markdown.
-
-This keeps diagnostic construction independent from presentation.
+The integration consumes Cybercore's semantic palette rather than duplicating
+theme values inside diagprint.
 
 ## Rotation
 
@@ -549,10 +857,14 @@ File reports support:
 - retention cleanup.
 
 ```rust
-use diagprint::{RotationCadence, RotationPolicy};
+use diagprint::{
+    RotationCadence,
+    RotationPolicy,
+};
 
 let policy = RotationPolicy {
-    cadence: RotationCadence::Daily,
+    cadence:
+        RotationCadence::Daily,
     ..Default::default()
 };
 ```
@@ -565,7 +877,7 @@ Enable:
 features = ["compression"]
 ```
 
-Supported formats:
+Supported compression formats:
 
 ```rust
 use diagprint::Compression;
@@ -574,62 +886,145 @@ use diagprint::Compression;
 // Compression::Zstd
 ```
 
-## Feature Flags
-
-| Feature | Purpose |
-| --- | --- |
-| `compression` | gzip and Zstandard report compression |
-| `cybercore` | Cybercore theme-schema integration |
-| `terminal-docs` | documentation retrieval and terminal syntax highlighting |
-
-All optional features are disabled by default.
-
 ## Safety Model
 
-`diagprint` intentionally separates presentation from mutation.
+`diagprint` deliberately separates diagnostic presentation from mutation.
 
-Rendering a diagnostic does not modify files.
+Rendering never modifies source files.
 
-`Fixer` only applies structured text edits that:
+Automatic remediation is restricted to structured edits that:
 
 1. are marked `MachineApplicable`;
-2. still match the expected source content;
+2. still match expected source contents;
 3. use valid UTF-8 boundaries;
-4. do not overlap.
+4. do not overlap;
+5. satisfy declared preconditions.
+
+Additional safeguards include:
+
+- stale-edit rejection;
+- guarded insertion requirements;
+- transaction-wide validation;
+- recovery state before writes;
+- rollback on observed write failures;
+- optional post-fix verification;
+- verification rollback;
+- trusted-root requirements for hydrated compiler edits;
+- fail-closed documentation version resolution.
 
 Suggested shell commands are never automatically executed.
 
-Terminal documentation also sanitizes remote control characters before
-display and limits the amount of remote content accepted.
+Revision-aware source rendering also fails closed when source identity no longer
+matches the diagnostic.
+
+## Minimum Supported Rust Version
+
+The minimum supported Rust version is:
+
+```text
+Rust 1.85
+```
+
+CI performs an MSRV-aware fresh dependency resolution and checks all targets and
+all features on Rust 1.85.
 
 ## Development
 
-Default feature gate:
+Default gate:
 
 ```bash
 cargo fmt --all -- --check
-cargo check --all-targets
-cargo clippy --all-targets -- -D warnings
-cargo test --all-targets
-cargo test --doc
+
+cargo check \
+    --all-targets
+
+cargo clippy \
+    --all-targets \
+    -- -D warnings
+
+cargo test \
+    --all-targets
+
+cargo test \
+    --doc
 ```
 
 Full feature gate:
 
 ```bash
-cargo check --all-targets --all-features
-cargo clippy --all-targets --all-features -- -D warnings
-cargo test --all-targets --all-features
-cargo test --doc --all-features
+cargo check \
+    --all-targets \
+    --all-features
+
+cargo clippy \
+    --all-targets \
+    --all-features \
+    -- -D warnings
+
+cargo test \
+    --all-targets \
+    --all-features
+
+cargo test \
+    --doc \
+    --all-features
+
+cargo doc \
+    --no-deps \
+    --all-features
 ```
 
-Examples:
+MSRV gate:
+
+```bash
+CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback \
+cargo +1.85.0 check \
+    --all-targets \
+    --all-features
+```
+
+## Examples
+
+Core examples:
 
 ```bash
 cargo run --example basic
 cargo run --example error_chain
 cargo run --example intelligence
+```
 
+Revision-aware source examples:
+
+```bash
+cargo run --example virtual_source
+cargo run --example source_snapshot
+cargo run --example source_revision
+cargo run --example revision_bound_diagnostic
+cargo run --example captured_diagnostic
+```
+
+CI output examples:
+
+```bash
+cargo run --example github_actions
+cargo run --example sarif
+```
+
+Interop examples:
+
+```bash
+cargo run \
+    --features ariadne \
+    --example ariadne_integration
+
+cargo run \
+    --features annotate-snippets \
+    --example annotate_snippets_integration
+```
+
+Other optional examples:
+
+```bash
 cargo run \
     --features cybercore \
     --example cybercore
@@ -639,40 +1034,56 @@ cargo run \
     --example terminal_docs
 ```
 
-## Project Status
+## v0.6
 
-### v0.4.0 — Diagnostic Intelligence
+### Revision-Aware Diagnostics and CI Output
 
-v0.4 expands `diagprint` from a diagnostic presentation engine into a
-structured diagnostic assistance system.
+v0.6 adds:
 
-The guiding rule remains:
+- distinct primary and secondary label rendering;
+- virtual source caching;
+- generic source-provider handoff;
+- immutable source snapshots;
+- per-source revision tracking;
+- revision-bound source locations;
+- stale-source detection;
+- fail-closed stale-source terminal rendering;
+- captured diagnostics;
+- Ariadne structured interoperability;
+- annotate-snippets structured interoperability;
+- GitHub Actions annotations;
+- SARIF 2.1.0 rendering;
+- hardened Rust 1.85 validation across all targets and features.
 
-> A diagnostic may explain and propose. Mutation must be explicit, structured,
-> validated, and reject uncertainty.
+## v0.5
+
+### Interoperability and Transactional Remediation
+
+v0.5 added:
+
+- Rust 2024;
+- Rust 1.85 MSRV;
+- anyhow integration;
+- typed-error metadata;
+- tracing integration;
+- rustc/Cargo structured ingestion;
+- version-aware documentation;
+- FixPlan;
+- transaction-wide multi-file remediation;
+- post-fix verification;
+- Cargo intelligence;
+- miette interoperability;
+- codespan-reporting interoperability;
+- generic dependency-free diagnostic interoperability.
 
 ## Roadmap
 
 Potential future work includes:
 
-- `anyhow` integration;
-- expanded `thiserror` integration;
-- `tracing` integration;
-- asynchronous/nonblocking report output;
-- async terminal documentation retrieval;
-- richer unified diff rendering;
-- additional renderers;
+- asynchronous and nonblocking report output;
+- asynchronous terminal documentation retrieval;
+- richer structured diff presentation;
 - additional structured fix sources.
-
-## Registry Publication
-
-Registry publication is intentionally disabled in v0.4 release preparation
-while the optional Cybercore dependency is sourced from GitHub.
-
-GitHub releases remain fully supported.
-
-Once Cybercore is available from the target registry, the publishing guard can
-be removed and the registry package verified independently.
 
 ## Repository
 
@@ -680,7 +1091,7 @@ https://github.com/darkstardevx/diagprint
 
 ## License
 
-Licensed under either of:
+Licensed under either:
 
 - Apache License, Version 2.0
 - MIT License
