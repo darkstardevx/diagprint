@@ -67,6 +67,38 @@ fn assert_box_width(rendered: &str, expected_width: usize) {
 }
 
 #[test]
+fn golden_basic_diagnostic_layout() {
+    let reporter = Reporter::builder()
+        .application("golden-test")
+        .build()
+        .unwrap();
+
+    let diagnostic = reporter
+        .error("Something failed")
+        .code("E-GOLD")
+        .cause("root cause")
+        .note("remember this")
+        .help("try again");
+
+    let rendered = renderer(52).render(&diagnostic);
+
+    let expected = concat!(
+        "╭─ ✖ ERROR [E-GOLD] ───────────────────────────────╮\n",
+        "│ Something failed                                 │\n",
+        "│                                                  │\n",
+        "│ CAUSE                                            │\n",
+        "│ └─ root cause                                    │\n",
+        "│                                                  │\n",
+        "│ NOTE  remember this                              │\n",
+        "│                                                  │\n",
+        "│ HELP  try again                                  │\n",
+        "╰──────────────────────────────────────────────────╯\n",
+    );
+
+    assert_eq!(rendered, expected);
+}
+
+#[test]
 fn wraps_long_message_without_losing_text() {
     let reporter = Reporter::builder()
         .application("renderer-test")
@@ -138,7 +170,7 @@ fn wraps_causes_notes_and_help_without_truncation() {
 
     let rendered = renderer(52).render(&diagnostic);
 
-    assert!(rendered.contains("Caused by"));
+    assert!(rendered.contains("CAUSE"));
     assert!(rendered.contains("entire cause"));
     assert!(rendered.contains("another terminal"));
     assert!(rendered.contains("final-important-word"));
@@ -182,11 +214,48 @@ fn source_window_follows_highlight_on_long_line() {
     );
 
     assert!(
-        rendered.contains("focused label"),
+        rendered.contains("└─ focused label"),
         "expected source label text:\n{rendered}"
     );
 
+    assert!(
+        rendered.lines().any(|line| line.contains("> 2 │")),
+        "expected target source line marker:\n{rendered}"
+    );
+
     assert_box_width(&rendered, 60);
+}
+
+#[test]
+fn long_source_label_wraps_beneath_highlight() {
+    let source = TempSource::new(
+        "fn before() {}\nlet configuration_value = load_configuration();\nfn after() {}\n",
+    );
+
+    let reporter = Reporter::builder()
+        .application("label-test")
+        .build()
+        .unwrap();
+
+    let diagnostic = reporter.error("Configuration failed").label(
+        source.path_string(),
+        2,
+        Some(5),
+        Some(19),
+        Some(
+            "this source label is intentionally long and should wrap \
+             cleanly underneath the highlighted source region",
+        ),
+    );
+
+    let rendered = renderer(58).render(&diagnostic);
+
+    assert!(rendered.contains("^^^^^^^^^^^^^^^^^^^"));
+    assert!(rendered.contains("└─ this source label"));
+    assert!(rendered.contains("highlighted"));
+    assert!(rendered.contains("source region"));
+
+    assert_box_width(&rendered, 58);
 }
 
 #[test]

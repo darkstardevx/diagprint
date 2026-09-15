@@ -215,6 +215,28 @@ fn wrapped_rows(s: &str, width: usize) -> String {
     output
 }
 
+fn prefixed_rows(prefix: &str, text: &str, width: usize) -> String {
+    let content_width = width.saturating_sub(4);
+    let prefix_width = visible_len(prefix);
+    let available = content_width.saturating_sub(prefix_width).max(1);
+
+    let lines = wrap_visible(text, available);
+    let mut output = String::new();
+
+    for (index, line) in lines.iter().enumerate() {
+        if index == 0 {
+            output.push_str(&row(&format!("{prefix}{line}"), width));
+        } else {
+            output.push_str(&row(
+                &format!("{}{}", " ".repeat(prefix_width), line),
+                width,
+            ));
+        }
+    }
+
+    output
+}
+
 fn expand_source_line(line: &str) -> (String, Vec<usize>) {
     let mut rendered = String::new();
     let mut offsets = Vec::new();
@@ -312,7 +334,6 @@ fn source_window(
     }
 
     let window_budget = max_width.saturating_sub(2).max(1);
-
     let mut requested_start = focus_start.saturating_sub(window_budget / 3);
 
     if requested_start + window_budget > total_width {
@@ -427,7 +448,7 @@ impl TerminalRenderer {
                 let end = (target + self.source_context_lines + 1).min(lines.len());
                 let gutter_width = end.to_string().len();
 
-                let source_prefix_width = gutter_width + 3;
+                let source_prefix_width = gutter_width + 5;
                 let source_width = content_width.saturating_sub(source_prefix_width);
 
                 let column = location.column.unwrap_or(1) as usize;
@@ -436,28 +457,49 @@ impl TerminalRenderer {
                 for (index, line) in lines.iter().enumerate().take(end).skip(start) {
                     let window = source_window(line, column, highlight_length, source_width);
 
+                    let target_marker = if index == target { ">" } else { " " };
+
                     output.push(format!(
-                        "{:>width$} │ {}",
+                        "{target_marker} {:>width$} │ {}",
                         index + 1,
                         window.text,
                         width = gutter_width
                     ));
 
-                    if index == target {
-                        let label_text = label
-                            .message
-                            .as_ref()
-                            .map(|message| format!(" {message}"))
-                            .unwrap_or_default();
+                    if index != target {
+                        continue;
+                    }
 
-                        output.push(format!(
-                            "{:>width$} │ {}{}{}",
-                            " ",
-                            " ".repeat(window.caret_offset),
-                            "^".repeat(window.caret_width),
-                            label_text,
-                            width = gutter_width
-                        ));
+                    let annotation_gutter = format!("  {:>width$} │ ", "", width = gutter_width);
+
+                    let caret_indent = " ".repeat(window.caret_offset);
+                    let carets = "^".repeat(window.caret_width);
+
+                    output.push(format!("{annotation_gutter}{caret_indent}{carets}"));
+
+                    if let Some(message) = &label.message {
+                        let label_marker = "└─ ";
+
+                        let label_prefix =
+                            format!("{annotation_gutter}{caret_indent}{label_marker}");
+
+                        let label_prefix_width = visible_len(&label_prefix);
+
+                        let available = content_width.saturating_sub(label_prefix_width).max(1);
+
+                        let wrapped = wrap_visible(message, available);
+
+                        for (message_index, message_line) in wrapped.iter().enumerate() {
+                            if message_index == 0 {
+                                output.push(format!("{label_prefix}{message_line}"));
+                            } else {
+                                output.push(format!(
+                                    "{}{}",
+                                    " ".repeat(label_prefix_width),
+                                    message_line
+                                ));
+                            }
+                        }
                     }
                 }
             }
@@ -480,65 +522,35 @@ impl Renderer for TerminalRenderer {
 
         output.push_str(&wrapped_rows(&d.message, width));
 
-        for source_line in self.source(d, width) {
-            output.push_str(&row(&source_line, width));
+        if !d.labels.is_empty() {
+            output.push_str(&row("", width));
+
+            for source_line in self.source(d, width) {
+                output.push_str(&row(&source_line, width));
+            }
         }
 
         if let Some(cause) = &d.cause {
             output.push_str(&row("", width));
-            output.push_str(&row("Caused by", width));
+            output.push_str(&row("CAUSE", width));
 
             for (depth, cause) in cause.iter().enumerate() {
                 let prefix = format!("{}└─ ", "   ".repeat(depth));
-                let available = width.saturating_sub(4).saturating_sub(visible_len(&prefix));
-
-                let lines = wrap_visible(&cause.message, available);
-
-                for (index, line) in lines.iter().enumerate() {
-                    if index == 0 {
-                        output.push_str(&row(&format!("{prefix}{line}"), width));
-                    } else {
-                        output.push_str(&row(
-                            &format!("{}{}", " ".repeat(visible_len(&prefix)), line),
-                            width,
-                        ));
-                    }
-                }
+                output.push_str(&prefixed_rows(&prefix, &cause.message, width));
             }
         }
 
-        for note in &d.notes {
+        if !d.notes.is_empty() {
             output.push_str(&row("", width));
 
-            let prefix = "NOTE  ";
-            let available = width.saturating_sub(4).saturating_sub(visible_len(prefix));
-
-            for (index, line) in wrap_visible(note, available).iter().enumerate() {
-                if index == 0 {
-                    output.push_str(&row(&format!("{prefix}{line}"), width));
-                } else {
-                    output.push_str(&row(
-                        &format!("{}{}", " ".repeat(visible_len(prefix)), line),
-                        width,
-                    ));
-                }
+            for note in &d.notes {
+                output.push_str(&prefixed_rows("NOTE  ", note, width));
             }
         }
 
         if let Some(help) = &d.help {
-            let prefix = "HELP  ";
-            let available = width.saturating_sub(4).saturating_sub(visible_len(prefix));
-
-            for (index, line) in wrap_visible(help, available).iter().enumerate() {
-                if index == 0 {
-                    output.push_str(&row(&format!("{prefix}{line}"), width));
-                } else {
-                    output.push_str(&row(
-                        &format!("{}{}", " ".repeat(visible_len(prefix)), line),
-                        width,
-                    ));
-                }
-            }
+            output.push_str(&row("", width));
+            output.push_str(&prefixed_rows("HELP  ", help, width));
         }
 
         if self.show_metadata {
