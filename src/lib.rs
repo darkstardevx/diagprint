@@ -10,7 +10,8 @@
 //! - [`Diagnostic`] describes what happened.
 //! - renderers decide how the diagnostic is displayed.
 //! - [`Suggestion`] describes a possible resolution.
-//! - [`Fixer`] validates and optionally applies structured text edits.
+//! - [`Fixer`] validates and applies guarded structured edits.
+//! - [`FixPlan`] coordinates transactional multi-file remediation.
 //! - [`DiagnosticMetadata`] lets typed errors contribute reliable semantic
 //!   information without parsing formatted error strings.
 //! - [`CompilerImporter`] consumes structured rustc and Cargo diagnostics.
@@ -50,7 +51,51 @@
 //! current file contents.
 //!
 //! Suggested shell commands are informational only and are never executed by
-//! [`Fixer`].
+//! [`Fixer`] or [`FixPlan`].
+//!
+//! ## Transactional remediation
+//!
+//! [`FixPlan`] adds a remediation contract around edits:
+//!
+//! - deterministic filesystem preconditions;
+//! - multi-file edit preparation before the first write;
+//! - rollback-on-error writes;
+//! - deterministic post-apply verification;
+//! - rollback when verification fails;
+//! - optional user-visible backups.
+//!
+//! ```no_run
+//! use diagprint::{
+//!     Applicability, Edit, FileCheck, FixPlan, TextRange,
+//! };
+//!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let file = "config.toml";
+//! let original = "enabled = false\n";
+//!
+//! let plan = FixPlan::new("Enable the feature")
+//!     .applicability(Applicability::MachineApplicable)
+//!     .precondition(FileCheck::equals(file, original))
+//!     .edit(Edit::replace(
+//!         file,
+//!         TextRange::new(10, 15),
+//!         "false",
+//!         "true",
+//!     ))
+//!     .verify(FileCheck::contains(file, "enabled = true"));
+//!
+//! let report = plan.apply()?;
+//! assert!(report.verified());
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! `FixPlan` verification is intentionally declarative. It does not execute
+//! shell commands.
+//!
+//! Transaction rollback covers errors observed by the running process. No
+//! portable multi-file filesystem API can make several independent paths
+//! crash-atomic across sudden process or machine termination.
 //!
 //! ## Compiler diagnostics
 //!
@@ -115,15 +160,17 @@
 //! - `terminal-docs` — terminal documentation retrieval and syntax
 //!   highlighting.
 //!
-//! Typed-error metadata and compiler-diagnostic ingestion are part of the core
-//! crate and do not require feature flags.
+//! Typed-error metadata, compiler-diagnostic ingestion, and `FixPlan` are part
+//! of the core crate and do not require feature flags.
 //!
 //! All optional features are disabled by default.
 
 mod compiler;
 mod diagnostic;
 mod fixer;
+mod fixplan;
 mod intelligence;
+mod remediation;
 mod reporter;
 mod rotation;
 mod severity;
@@ -139,15 +186,27 @@ pub mod docs;
 pub mod render;
 
 pub use compiler::{CompilerImportError, CompilerImporter};
+
 pub use diagnostic::{Cause, Diagnostic, Label, SourceLocation};
-pub use fixer::{FixCheck, FixError, FixPreview, FixReport, Fixer};
+
+pub use fixer::{FixCheck, FixError, FixPreview, FixReport, Fixer, RollbackFailure};
+
+pub use fixplan::{
+    FileCheck, FileCheckFailure, FixPlan, FixPlanCheck, FixPlanError, FixPlanPreview, FixPlanReport,
+};
+
 pub use render::{SeverityTheme, Style, Theme};
+
 pub use reporter::{Compression, Reporter, ReporterBuilder};
+
 pub use rotation::{RotationCadence, RotationPolicy, RotationState};
+
 pub use severity::Severity;
+
 pub use suggestion::{
     Applicability, DocumentationLink, Edit, SuggestedCommand, Suggestion, TextRange,
 };
+
 pub use typed::{DiagnosticErrorExt, DiagnosticMetadata};
 
 #[cfg(feature = "anyhow")]
