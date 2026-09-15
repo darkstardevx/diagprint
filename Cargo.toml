@@ -11,9 +11,6 @@ readme = "README.md"
 keywords = ["diagnostics", "errors", "logging", "terminal", "reporting"]
 categories = ["command-line-utilities", "development-tools::debugging"]
 
-# crates.io publishing remains intentionally disabled while the optional
-# Cybercore integration depends on a Git source. Remove this only after
-# Cybercore is available from the target registry.
 publish = false
 
 exclude = [
@@ -45,6 +42,11 @@ anyhow = [
     "dep:anyhow",
 ]
 
+tracing = [
+    "dep:tracing",
+    "dep:tracing-subscriber",
+]
+
 [dependencies]
 chrono = { version = "0.4", features = ["clock", "serde"] }
 hostname = "0.4"
@@ -56,6 +58,16 @@ terminal_size = "0.4"
 
 anyhow = {
     version = "1",
+    optional = true
+}
+
+tracing = {
+    version = "0.1",
+    optional = true
+}
+
+tracing-subscriber = {
+    version = "0.3",
     optional = true
 }
 
@@ -113,3 +125,7 @@ required-features = ["terminal-docs"]
 [[example]]
 name = "anyhow_integration"
 required-features = ["anyhow"]
+
+[[example]]
+name = "tracing_integration"
+required-features = ["tracing"]

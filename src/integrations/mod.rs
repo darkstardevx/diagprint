@@ -6,5 +6,11 @@
 #[cfg(feature = "anyhow")]
 mod anyhow;
 
+#[cfg(feature = "tracing")]
+mod tracing;
+
 #[cfg(feature = "anyhow")]
 pub use self::anyhow::AnyhowDiagnosticExt;
+
+#[cfg(feature = "tracing")]
+pub use self::tracing::TracingLayer;
