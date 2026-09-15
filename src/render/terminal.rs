@@ -1,6 +1,6 @@
 use super::{Renderer, Style, Theme};
-use crate::{Diagnostic, LabelKind, Severity, Suggestion};
-use std::fs;
+use crate::{Diagnostic, LabelKind, Severity, SourceCache, Suggestion};
+use std::{fs, sync::Arc};
 use terminal_size::{Width, terminal_size};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -34,6 +34,30 @@ struct SourceWindow {
     text: String,
     caret_offset: usize,
     caret_width: usize,
+}
+
+enum SourceText {
+    Cached(Arc<str>),
+    File(String),
+}
+
+impl SourceText {
+    fn as_str(&self) -> &str {
+        match self {
+            Self::Cached(source) => source,
+            Self::File(source) => source,
+        }
+    }
+}
+
+fn load_source_text(sources: Option<&SourceCache>, name: &str) -> Option<SourceText> {
+    if let Some(sources) = sources {
+        if let Some(source) = sources.get(name) {
+            return Some(SourceText::Cached(source));
+        }
+    }
+
+    fs::read_to_string(name).ok().map(SourceText::File)
 }
 
 fn strip_ansi(s: &str) -> String {
@@ -475,7 +499,12 @@ impl TerminalRenderer {
         output
     }
 
-    fn source(&self, diagnostic: &Diagnostic, terminal_width: usize) -> Vec<String> {
+    fn source(
+        &self,
+        diagnostic: &Diagnostic,
+        terminal_width: usize,
+        sources: Option<&SourceCache>,
+    ) -> Vec<String> {
         let mut output = Vec::new();
         let content_width = terminal_width.saturating_sub(4);
 
@@ -525,8 +554,8 @@ impl TerminalRenderer {
 
             output.push(self.paint(path_style, &location_text));
 
-            if let Ok(source) = fs::read_to_string(&location.file) {
-                let lines: Vec<_> = source.lines().collect();
+            if let Some(source) = load_source_text(sources, &location.file) {
+                let lines: Vec<_> = source.as_str().lines().collect();
                 let target = location.line.saturating_sub(1) as usize;
 
                 if target >= lines.len() {
@@ -751,8 +780,17 @@ impl TerminalRenderer {
     }
 }
 
-impl Renderer for TerminalRenderer {
-    fn render(&self, diagnostic: &Diagnostic) -> String {
+impl TerminalRenderer {
+    /// Renders a diagnostic using cached source text when available.
+    ///
+    /// Cached source has precedence over filesystem contents. If a source name
+    /// is not present in the cache, rendering falls back to reading that name
+    /// as a filesystem path, preserving the behavior of [`Renderer::render`].
+    pub fn render_with_sources(&self, diagnostic: &Diagnostic, sources: &SourceCache) -> String {
+        self.render_inner(diagnostic, Some(sources))
+    }
+
+    fn render_inner(&self, diagnostic: &Diagnostic, sources: Option<&SourceCache>) -> String {
         let width = self.effective_width();
 
         let icon = match diagnostic.severity {
@@ -794,7 +832,7 @@ impl Renderer for TerminalRenderer {
         if !diagnostic.labels.is_empty() {
             output.push_str(&self.row("", width));
 
-            for source_line in self.source(diagnostic, width) {
+            for source_line in self.source(diagnostic, width, sources) {
                 output.push_str(&self.row(&source_line, width));
             }
         }
@@ -887,5 +925,11 @@ impl Renderer for TerminalRenderer {
         ));
 
         output
+    }
+}
+
+impl Renderer for TerminalRenderer {
+    fn render(&self, diagnostic: &Diagnostic) -> String {
+        self.render_inner(diagnostic, None)
     }
 }

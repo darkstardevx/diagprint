@@ -12,6 +12,7 @@
 //! - [`Fixer`] validates and applies guarded structured edits.
 //! - [`FixPlan`] coordinates transactional multi-file remediation.
 //! - [`InteropDiagnostic`] is the dependency-free interoperability boundary.
+//! - [`SourceCache`] supplies virtual and cached source text to renderers.
 //! - [`DocumentationResolver`] resolves documentation without guessing package
 //!   versions.
 //! - [`DiagnosticMetadata`] lets typed errors supply semantic metadata.
@@ -41,6 +42,17 @@
 //! and optional backups.
 //!
 //! Verification is declarative and does not execute shell commands.
+//!
+//! ## Virtual and cached source text
+//!
+//! [`SourceCache`] stores named source text independently from diagnostics.
+//! Terminal rendering can prefer cached source and fall back to filesystem
+//! reads when no cached source exists.
+//!
+//! This supports editor buffers, generated files, parser inputs, compiler
+//! virtual files, and other source text which may never exist on disk.
+//!
+//! Source contents are not serialized into [`Diagnostic`] JSON output.
 //!
 //! ## Generic interoperability
 //!
@@ -165,6 +177,7 @@ mod remediation;
 mod reporter;
 mod rotation;
 mod severity;
+mod source;
 mod suggestion;
 mod typed;
 
@@ -214,6 +227,8 @@ pub use reporter::{Compression, Reporter, ReporterBuilder};
 pub use rotation::{RotationCadence, RotationPolicy, RotationState};
 
 pub use severity::Severity;
+
+pub use source::SourceCache;
 
 pub use suggestion::{
     Applicability, DocumentationLink, Edit, SuggestedCommand, Suggestion, TextRange,

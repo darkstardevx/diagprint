@@ -1,5 +1,5 @@
 use crate::{
-    Diagnostic, Severity,
+    Diagnostic, Severity, SourceCache,
     render::{JsonRenderer, MarkdownRenderer, PlainRenderer, Renderer, TerminalRenderer, Theme},
     rotation::{RotationCadence, RotationPolicy, RotationState},
 };
@@ -25,6 +25,7 @@ pub struct Reporter {
     min_severity: Severity,
     file: Option<PathBuf>,
     terminal: TerminalRenderer,
+    source_cache: SourceCache,
     rotation: RotationState,
     lock: Arc<Mutex<()>>,
     compression: Compression,
@@ -37,6 +38,23 @@ impl Reporter {
 
     pub fn session_id(&self) -> Uuid {
         self.session_id
+    }
+
+    /// Returns a shared handle to this reporter's source cache.
+    ///
+    /// Cloning the returned handle does not copy source text.
+    pub fn source_cache(&self) -> SourceCache {
+        self.source_cache.clone()
+    }
+
+    /// Inserts or replaces an in-memory source available to terminal rendering.
+    pub fn register_source(&self, name: impl Into<String>, source: impl Into<String>) {
+        self.source_cache.insert(name, source);
+    }
+
+    /// Removes an in-memory source from this reporter.
+    pub fn remove_source(&self, name: &str) -> bool {
+        self.source_cache.remove(name).is_some()
     }
 
     pub fn diagnostic(&self, severity: Severity, message: impl Into<String>) -> Diagnostic {
@@ -72,7 +90,11 @@ impl Reporter {
             return Ok(false);
         }
 
-        print!("{}", self.terminal.render(diagnostic));
+        print!(
+            "{}",
+            self.terminal
+                .render_with_sources(diagnostic, &self.source_cache)
+        );
         io::stdout().flush()?;
 
         if let Some(path) = &self.file {
@@ -189,6 +211,7 @@ pub struct ReporterBuilder {
     cadence: RotationCadence,
     compression: Compression,
     theme: Theme,
+    source_cache: SourceCache,
 }
 
 impl Default for ReporterBuilder {
@@ -206,6 +229,7 @@ impl Default for ReporterBuilder {
             cadence: RotationCadence::Never,
             compression: Compression::None,
             theme: Theme::default(),
+            source_cache: SourceCache::new(),
         }
     }
 }
@@ -271,6 +295,18 @@ impl ReporterBuilder {
         self
     }
 
+    /// Registers an in-memory source before the reporter is built.
+    pub fn source(self, name: impl Into<String>, source: impl Into<String>) -> Self {
+        self.source_cache.insert(name, source);
+        self
+    }
+
+    /// Uses an existing shared source cache.
+    pub fn source_cache(mut self, value: SourceCache) -> Self {
+        self.source_cache = value;
+        self
+    }
+
     pub fn build(self) -> io::Result<Reporter> {
         Ok(Reporter {
             application: self.application,
@@ -284,6 +320,7 @@ impl ReporterBuilder {
                 width: self.width,
                 theme: self.theme,
             },
+            source_cache: self.source_cache,
             rotation: RotationState::new(RotationPolicy {
                 max_file_size: self.max_file_size,
                 max_files: self.rotation_count,

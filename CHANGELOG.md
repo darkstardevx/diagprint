@@ -17,6 +17,12 @@ The project follows Semantic Versioning.
 
 ### Added
 
+- Shared `SourceCache` for virtual and in-memory source text.
+- Terminal rendering can prefer cached source and fall back to filesystem
+  source without changing the existing `Renderer` API.
+- Reporter-level source registration for generated files, editor buffers, and
+  other sources which may never exist on disk.
+
 - Structured Ariadne bridge producing both Ariadne reports and diagprint
   interoperability diagnostics without rendered-output parsing.
 - Structured annotate-snippets bridge with validated byte spans, Unicode-safe
