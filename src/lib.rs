@@ -66,22 +66,21 @@
 //! Optional adapters allow existing Rust diagnostic ecosystems to feed
 //! structured data into `diagprint`.
 //!
-//! The `miette` feature consumes [`miette::Diagnostic`] metadata directly:
-//!
-//! - message;
-//! - severity;
-//! - code;
-//! - help;
-//! - documentation URL;
-//! - source labels;
-//! - diagnostic/source chains;
-//! - related diagnostics.
+//! The `miette` feature consumes `miette::Diagnostic` metadata directly,
+//! including severity, code, help, documentation URLs, source labels,
+//! diagnostic/source chains, and related diagnostics.
 //!
 //! Miette's `related()` relationship is preserved by
 //! [`MietteDiagnosticTree`] rather than flattened into strings.
 //!
-//! The adapter does not parse miette's rendered report output and does not
-//! manufacture machine-applicable fixes.
+//! The `codespan-reporting` feature consumes
+//! `codespan_reporting::diagnostic::Diagnostic` together with the producer's
+//! `codespan_reporting::files::Files` source database.
+//!
+//! It preserves severity, diagnostic code, message, source positions,
+//! label messages, and notes without invoking codespan's terminal renderer.
+//!
+//! Neither adapter manufactures machine-applicable fixes.
 //!
 //! The `anyhow` feature preserves Anyhow context/source chains and enriches
 //! recognized standard-library failures.
@@ -120,6 +119,7 @@
 //!
 //! - `anyhow` — Anyhow context-chain integration.
 //! - `miette` — miette diagnostic-protocol integration.
+//! - `codespan-reporting` — codespan-reporting diagnostic integration.
 //! - `tracing` — structured tracing-event integration.
 //! - `compression` — gzip and Zstandard report compression.
 //! - `cybercore` — Cybercore theme-schema integration.
@@ -145,7 +145,12 @@ mod severity;
 mod suggestion;
 mod typed;
 
-#[cfg(any(feature = "anyhow", feature = "miette", feature = "tracing"))]
+#[cfg(any(
+    feature = "anyhow",
+    feature = "codespan-reporting",
+    feature = "miette",
+    feature = "tracing"
+))]
 pub mod integrations;
 
 #[cfg(feature = "terminal-docs")]
@@ -188,6 +193,9 @@ pub use typed::{DiagnosticErrorExt, DiagnosticMetadata};
 
 #[cfg(feature = "anyhow")]
 pub use integrations::AnyhowDiagnosticExt;
+
+#[cfg(feature = "codespan-reporting")]
+pub use integrations::CodespanDiagnosticExt;
 
 #[cfg(feature = "miette")]
 pub use integrations::{MietteDiagnosticExt, MietteDiagnosticTree, MietteReportExt};

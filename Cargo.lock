@@ -180,6 +180,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "codespan-reporting"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af491d569909a7e4dee0ad7db7f5341fef5c614d5b8ec8cf765732aba3cff681"
+dependencies = [
+ "serde",
+ "unicode-width 0.2.2",
+]
+
+[[package]]
 name = "combine"
 version = "4.6.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -294,6 +304,7 @@ version = "0.5.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "codespan-reporting",
  "cybercore",
  "flate2",
  "hostname",

@@ -52,6 +52,10 @@ miette = [
     "dep:miette",
 ]
 
+codespan-reporting = [
+    "dep:codespan-reporting",
+]
+
 [dependencies]
 chrono = { version = "0.4", features = ["clock", "serde"] }
 hostname = "0.4"
@@ -81,6 +85,13 @@ miette = {
     version = "7.6",
     optional = true,
     default-features = false
+}
+
+codespan-reporting = {
+    version = "0.13.1",
+    optional = true,
+    default-features = false,
+    features = ["std"]
 }
 
 flate2 = {
@@ -145,3 +156,7 @@ required-features = ["tracing"]
 [[example]]
 name = "miette_integration"
 required-features = ["miette"]
+
+[[example]]
+name = "codespan_integration"
+required-features = ["codespan-reporting"]
