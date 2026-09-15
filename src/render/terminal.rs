@@ -1,0 +1,15 @@
+use super::Renderer;use crate::{Diagnostic,Severity};use std::fs;
+#[derive(Debug,Clone)]pub struct TerminalRenderer{pub color:bool,pub show_metadata:bool,pub source_context_lines:usize,pub width:usize}
+impl Default for TerminalRenderer{fn default()->Self{Self{color:true,show_metadata:false,source_context_lines:1,width:72}}}
+fn visible_len(s:&str)->usize{let mut n=0;let mut esc=false;for c in s.chars(){if c=='\x1b'{esc=true;}else if esc&&c=='m'{esc=false;}else if !esc{n+=1;}}n}
+fn row(s:&str,width:usize)->String{let max=width.saturating_sub(4);let text: String=s.chars().take(max).collect();let pad=max.saturating_sub(visible_len(&text));format!("│ {text}{} │\n"," ".repeat(pad))}
+impl TerminalRenderer{
+ fn title(&self,d:&Diagnostic)->String{let icon=match d.severity{Severity::Trace=>"·",Severity::Debug=>"◆",Severity::Info=>"ℹ",Severity::Warning=>"⚠",Severity::Error=>"✖",Severity::Fatal=>"☠"};let raw=format!("{icon} {}{}",d.severity,d.code.as_ref().map(|c|format!(" [{c}]")).unwrap_or_default());if !self.color{return raw}let a=match d.severity{Severity::Trace|Severity::Debug=>"\x1b[90m",Severity::Info=>"\x1b[36m",Severity::Warning=>"\x1b[33m",Severity::Error=>"\x1b[31m",Severity::Fatal=>"\x1b[35;1m"};format!("{a}{raw}\x1b[0m")}
+ fn source(&self,d:&Diagnostic)->Vec<String>{let mut v=vec![];for l in &d.labels{let loc=&l.location;v.push(format!("--> {}:{}{}",loc.file,loc.line,loc.column.map(|c|format!(":{c}")).unwrap_or_default()));if let Ok(s)=fs::read_to_string(&loc.file){let ls:Vec<_>=s.lines().collect();let t=loc.line.saturating_sub(1)as usize;if t<ls.len(){let a=t.saturating_sub(self.source_context_lines);let b=(t+self.source_context_lines+1).min(ls.len());let w=b.to_string().len();for i in a..b{v.push(format!("{:>w$} │ {}",i+1,ls[i],w=w));if i==t{let col=loc.column.unwrap_or(1).saturating_sub(1)as usize;let len=l.length.unwrap_or(1).max(1);v.push(format!("{:>w$} │ {}{}{}"," "," ".repeat(col),"^".repeat(len),l.message.as_ref().map(|m|format!(" {m}")).unwrap_or_default(),w=w));}}}}}v}
+}
+impl Renderer for TerminalRenderer{fn render(&self,d:&Diagnostic)->String{let w=self.width.max(40);let title=self.title(d);let titlev=visible_len(&title);let mut o=format!("╭─ {title} {}╮\n","─".repeat(w.saturating_sub(titlev+5)));o.push_str(&row(&d.message,w));
+ for s in self.source(d){o.push_str(&row(&s,w));}
+ if let Some(c)=&d.cause{o.push_str(&row("",w));o.push_str(&row("Caused by",w));for(i,x)in c.iter().enumerate(){o.push_str(&row(&format!("{}└─ {}","   ".repeat(i),x.message),w));}}
+ for n in &d.notes{o.push_str(&row("",w));o.push_str(&row(&format!("NOTE  {n}"),w));}if let Some(h)=&d.help{o.push_str(&row(&format!("HELP  {h}"),w));}
+ if self.show_metadata{o.push_str(&format!("├─ Diagnostic {}┤\n","─".repeat(w.saturating_sub(15))));for x in [format!("Timestamp {}",d.timestamp.to_rfc3339()),format!("App       {}",d.application),format!("PID       {}",d.pid),format!("Host      {}",d.hostname),format!("Session   {}",d.session_id),format!("Report    {}",d.report_id)]{o.push_str(&row(&x,w));}}
+ o.push_str(&format!("╰{}╯\n","─".repeat(w.saturating_sub(2))));o}}

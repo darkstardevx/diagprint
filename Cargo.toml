@@ -1,0 +1,19 @@
+[package]
+name="diagprint"
+version="0.3.0"
+edition="2021"
+description="Pretty, structured diagnostics and reports for Rust applications."
+license="MIT OR Apache-2.0"
+
+[features]
+default=[]
+compression=["dep:flate2","dep:zstd"]
+
+[dependencies]
+chrono={version="0.4",features=["clock","serde"]}
+hostname="0.4"
+serde={version="1",features=["derive"]}
+serde_json="1"
+uuid={version="1",features=["v7","serde"]}
+flate2={version="1",optional=true}
+zstd={version="0.13",optional=true}
