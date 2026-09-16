@@ -1,0 +1,5 @@
+error: unsupported #[diag(...)] option
+ --> tests/ui/unsupported_type_option.rs:4:8
+  |
+4 | #[diag(unsupported = "value")]
+  |        ^^^^^^^^^^^

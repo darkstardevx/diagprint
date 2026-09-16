@@ -1,0 +1,5 @@
+error: duplicate suggestion title
+ --> tests/ui/suggestion_duplicate_title.rs:4:36
+  |
+4 | #[diag(suggestion(title = "first", title = "second"))]
+  |                                    ^^^^^

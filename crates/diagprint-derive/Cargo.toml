@@ -8,6 +8,9 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/darkstardevx/diagprint"
 homepage = "https://github.com/darkstardevx/diagprint"
 documentation = "https://docs.rs/diagprint-derive"
+readme = "README.md"
+keywords = ["diagnostics", "derive", "errors", "proc-macro"]
+categories = ["development-tools::procedural-macro-helpers"]
 
 [lib]
 proc-macro = true
@@ -16,3 +19,6 @@ proc-macro = true
 proc-macro2 = "1"
 quote = "1"
 syn = { version = "2", features = ["full"] }
+
+[dev-dependencies]
+trybuild = "1.0"

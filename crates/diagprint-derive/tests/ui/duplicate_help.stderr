@@ -1,0 +1,5 @@
+error: duplicate diag help
+ --> tests/ui/duplicate_help.rs:4:24
+  |
+4 | #[diag(help = "first", help = "second")]
+  |                        ^^^^

@@ -1,0 +1,5 @@
+error: suggestion requires title = "..."
+ --> tests/ui/suggestion_missing_title.rs:4:8
+  |
+4 | #[diag(suggestion(applicability = manual))]
+  |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

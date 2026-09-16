@@ -1,0 +1,5 @@
+error: diagprint::Diagnostic enum variants currently support unit or named-field variants
+ --> tests/ui/tuple_enum_variant.rs:5:5
+  |
+5 |     Broken(u32),
+  |     ^^^^^^^^^^^

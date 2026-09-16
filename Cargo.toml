@@ -13,6 +13,7 @@ keywords = ["diagnostics", "errors", "logging", "terminal", "reporting"]
 categories = ["command-line-utilities", "development-tools::debugging"]
 
 exclude = [
+    "/.diagprint/",
     "/.github/",
     "/.gitignore",
     "/reports/",

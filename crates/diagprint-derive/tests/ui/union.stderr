@@ -1,0 +1,7 @@
+error: diagprint::Diagnostic does not support unions
+ --> tests/ui/union.rs:4:1
+  |
+4 | / union BadDiagnostic {
+5 | |     value: u32,
+6 | | }
+  | |_^
