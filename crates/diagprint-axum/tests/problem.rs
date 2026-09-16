@@ -347,3 +347,11 @@ fn duplicate_keys_are_rejected_across_public_and_internal_extensions() {
         ProblemExtensionError::DuplicateKey("validation_state".to_owned())
     );
 }
+
+#[test]
+fn problem_details_response_remains_compact_for_handler_results() {
+    assert!(
+        std::mem::size_of::<diagprint_axum::ProblemDetailsResponse>() <= 128,
+        "ProblemDetailsResponse grew too large for ergonomic Result error usage"
+    );
+}

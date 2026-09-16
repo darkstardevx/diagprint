@@ -214,6 +214,14 @@ impl ProblemDetails {
     }
 }
 
+#[derive(Debug, Clone)]
+struct ProblemDetailsState {
+    problem_policy: ProblemDetailsPolicy,
+    request_id: Option<String>,
+    public_extensions: BTreeMap<String, Value>,
+    internal_extensions: BTreeMap<String, Value>,
+}
+
 /// Axum response that renders a [`DiagnosticResponse`] as RFC 9457 Problem
 /// Details.
 ///
@@ -222,10 +230,7 @@ impl ProblemDetails {
 #[derive(Debug, Clone)]
 pub struct ProblemDetailsResponse {
     response: DiagnosticResponse,
-    problem_policy: Box<ProblemDetailsPolicy>,
-    request_id: Option<String>,
-    public_extensions: BTreeMap<String, Value>,
-    internal_extensions: BTreeMap<String, Value>,
+    state: Box<ProblemDetailsState>,
 }
 
 impl ProblemDetailsResponse {
@@ -234,16 +239,18 @@ impl ProblemDetailsResponse {
     pub fn new(response: DiagnosticResponse) -> Self {
         Self {
             response,
-            problem_policy: Box::new(ProblemDetailsPolicy::default()),
-            request_id: None,
-            public_extensions: BTreeMap::new(),
-            internal_extensions: BTreeMap::new(),
+            state: Box::new(ProblemDetailsState {
+                problem_policy: ProblemDetailsPolicy::default(),
+                request_id: None,
+                public_extensions: BTreeMap::new(),
+                internal_extensions: BTreeMap::new(),
+            }),
         }
     }
 
     /// Replaces the RFC 9457 representation policy.
     pub fn with_problem_policy(mut self, policy: ProblemDetailsPolicy) -> Self {
-        self.problem_policy = Box::new(policy);
+        self.state.problem_policy = policy;
         self
     }
 
@@ -252,7 +259,7 @@ impl ProblemDetailsResponse {
     /// Request IDs and diagprint report IDs are intentionally separate
     /// correlation identifiers.
     pub fn with_request_id(mut self, request_id: impl Into<String>) -> Self {
-        self.request_id = Some(request_id.into());
+        self.state.request_id = Some(request_id.into());
         self
     }
 
@@ -270,7 +277,7 @@ impl ProblemDetailsResponse {
     ) -> Result<Self, ProblemExtensionError> {
         let name = name.into();
         self.validate_new_extension(&name)?;
-        self.public_extensions.insert(name, value);
+        self.state.public_extensions.insert(name, value);
         Ok(self)
     }
 
@@ -288,7 +295,7 @@ impl ProblemDetailsResponse {
     ) -> Result<Self, ProblemExtensionError> {
         let name = name.into();
         self.validate_new_extension(&name)?;
-        self.internal_extensions.insert(name, value);
+        self.state.internal_extensions.insert(name, value);
         Ok(self)
     }
 
@@ -303,8 +310,8 @@ impl ProblemDetailsResponse {
     }
 
     /// Returns the Problem Details representation policy.
-    pub const fn problem_policy(&self) -> &ProblemDetailsPolicy {
-        &self.problem_policy
+    pub fn problem_policy(&self) -> &ProblemDetailsPolicy {
+        &self.state.problem_policy
     }
 
     /// Consumes the wrapper and returns the underlying diagnostic response.
@@ -318,21 +325,22 @@ impl ProblemDetailsResponse {
         let client = self.response.client_body();
 
         let title = self
+            .state
             .problem_policy
             .title
             .clone()
             .unwrap_or_else(|| status_title(status).to_owned());
 
-        let request_id = if self.problem_policy.include_request_id {
-            self.request_id.clone()
+        let request_id = if self.state.problem_policy.include_request_id {
+            self.state.request_id.clone()
         } else {
             None
         };
 
-        let mut extensions = self.public_extensions.clone();
+        let mut extensions = self.state.public_extensions.clone();
 
-        if self.problem_policy.expose_internal_extensions {
-            for (name, value) in &self.internal_extensions {
+        if self.state.problem_policy.expose_internal_extensions {
+            for (name, value) in &self.state.internal_extensions {
                 let previous = extensions.insert(name.clone(), value.clone());
                 debug_assert!(
                     previous.is_none(),
@@ -342,11 +350,11 @@ impl ProblemDetailsResponse {
         }
 
         ProblemDetails {
-            type_uri: self.problem_policy.type_uri.clone(),
+            type_uri: self.state.problem_policy.type_uri.clone(),
             title,
             status: status.as_u16(),
             detail: client.error.message,
-            instance: self.problem_policy.instance.clone(),
+            instance: self.state.problem_policy.instance.clone(),
             report_id: client.error.report_id,
             request_id,
             code: client.error.code,
@@ -361,7 +369,8 @@ impl ProblemDetailsResponse {
             return Err(ProblemExtensionError::ReservedName(name.to_owned()));
         }
 
-        if self.public_extensions.contains_key(name) || self.internal_extensions.contains_key(name)
+        if self.state.public_extensions.contains_key(name)
+            || self.state.internal_extensions.contains_key(name)
         {
             return Err(ProblemExtensionError::DuplicateKey(name.to_owned()));
         }

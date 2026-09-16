@@ -346,6 +346,119 @@ hints.
 Internal extensions are appropriate for application-controlled diagnostic or
 debugging state that should remain private unless deliberately exposed.
 
+## Application error adapters
+
+Application and domain errors can implement `ApplicationError` to define one
+explicit mapping from domain semantics into diagprint diagnostics and HTTP
+responses.
+
+The mapping controls:
+
+- HTTP status;
+- internal diagnostic construction;
+- client disclosure policy;
+- RFC 9457 problem type and title.
+
+For example:
+
+    use axum::http::StatusCode;
+    use diagprint::{Diagnostic, Reporter};
+    use diagprint_axum::{
+        ApplicationError,
+        ApplicationErrorExt,
+        ProblemDetailsPolicy,
+    };
+    use std::{error::Error, fmt};
+
+    #[derive(Debug)]
+    struct OrderNotFound;
+
+    impl fmt::Display for OrderNotFound {
+        fn fmt(
+            &self,
+            f: &mut fmt::Formatter<'_>,
+        ) -> fmt::Result {
+            write!(f, "internal order lookup failed")
+        }
+    }
+
+    impl Error for OrderNotFound {}
+
+    impl ApplicationError for OrderNotFound {
+        fn http_status(&self) -> StatusCode {
+            StatusCode::NOT_FOUND
+        }
+
+        fn to_diagnostic(
+            &self,
+            reporter: &Reporter,
+        ) -> Diagnostic {
+            reporter
+                .warning("order was not found")
+                .code("shop.order.not_found")
+        }
+
+        fn problem_policy(&self) -> ProblemDetailsPolicy {
+            ProblemDetailsPolicy::default()
+                .with_type_uri(
+                    "https://api.example.com/problems/order-not-found",
+                )
+                .with_title("Order not found")
+        }
+    }
+
+The resulting adapter call is small:
+
+    let response =
+        error.to_problem_response(&reporter);
+
+The application can also request the existing JSON diagnostic response:
+
+    let response =
+        error.to_diagnostic_response(&reporter);
+
+Application error adaptation is deliberately explicit.
+
+`diagprint-axum` does not infer HTTP statuses from diagnostic severity, and it
+does not automatically expose an error's `Display` representation to the
+client.
+
+This prevents internal error strings from accidentally becoming part of the
+public API.
+
+### Application errors and Problem Details extensions
+
+Public and internal RFC 9457 extensions compose with application-error
+responses after adaptation:
+
+    let response = error
+        .to_problem_response(&reporter)
+        .with_extension(
+            "errors",
+            serde_json::json!([
+                {
+                    "field": "email",
+                    "code": "invalid_format"
+                }
+            ]),
+        )?;
+
+The existing extension validation rules still apply:
+
+- reserved names are rejected;
+- invalid names are rejected;
+- duplicate names are rejected;
+- internal extensions remain private by default.
+
+Request correlation also layers normally:
+
+    let response = error
+        .to_problem_response(&reporter)
+        .with_request_id(request_id.to_string());
+
+This keeps domain-error mapping, diagnostic identity, request correlation, and
+HTTP representation separate but composable.
+
 ## Axum rejection adapters
 
 `diagprint-axum` can convert common Axum extractor failures into structured
@@ -497,6 +610,7 @@ The v0.8 adapter currently provides:
 - root-level RFC 9457 custom extension members;
 - privacy-gated internal extension members;
 - deterministic duplicate-extension rejection;
+- explicit application/domain error adapters;
 - JSON rejection diagnostics;
 - path rejection diagnostics;
 - query rejection diagnostics;
@@ -507,7 +621,6 @@ Likely future work includes:
 
 - DiagnosticReport responses;
 - richer tracing/request context integration;
-- application-error conversion;
 - middleware-based internal diagnostic emission;
 - additional extractor adapters.
 

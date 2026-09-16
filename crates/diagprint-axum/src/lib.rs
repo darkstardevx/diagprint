@@ -9,10 +9,12 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+mod application;
 mod problem;
 mod rejection;
 mod response;
 
+pub use application::{ApplicationError, ApplicationErrorExt};
 pub use problem::{
     ABOUT_BLANK, PROBLEM_JSON_MEDIA_TYPE, ProblemDetails, ProblemDetailsPolicy,
     ProblemDetailsResponse, ProblemDetailsResponseExt, ProblemExtensionError,
