@@ -78,7 +78,7 @@ with path.open("rb") as handle:
 package = manifest["package"]
 features = manifest["features"]
 dependencies = manifest["dependencies"]
-metadata = package["metadata"]["docs.rs"]
+docs_rs = package["metadata"]["docs"]["rs"]
 examples = {
     example["name"]: example
     for example in manifest.get("example", [])
@@ -106,7 +106,7 @@ assert async_dep["optional"] is True
 axum = dependencies["axum"]
 assert axum["version"] == "0.8.9"
 
-assert metadata["all-features"] is True
+assert docs_rs["all-features"] is True
 
 assert examples["sync_app"]["path"] == (
     "examples/sync_app.rs"
