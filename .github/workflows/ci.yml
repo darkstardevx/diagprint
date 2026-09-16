@@ -22,7 +22,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -71,7 +71,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -175,13 +175,17 @@ jobs:
               --all-targets
           done
 
+      - name: Remove trybuild scratch state
+        if: always()
+        run: rm -rf target/tests
+
   package:
     name: Package readiness
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -256,7 +260,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Rust 1.85
         uses: dtolnay/rust-toolchain@master
@@ -308,3 +312,7 @@ jobs:
           --no-default-features
           --features tracing
           --all-targets
+
+      - name: Remove trybuild scratch state
+        if: always()
+        run: rm -rf target/tests
