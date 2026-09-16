@@ -242,6 +242,110 @@ If an application deliberately exposes a diagnostic message or code through
 Only enable that exposure when those values are intentionally safe and stable
 parts of the public API.
 
+### Root-level custom extension members
+
+RFC 9457 allows problem types to define additional members directly at the
+root of the Problem Details object. `diagprint-axum` supports these through
+`with_extension`.
+
+For example:
+
+    let response = diagnostic_response
+        .into_problem_details()
+        .with_extension(
+            "errors",
+            serde_json::json!([
+                {
+                    "field": "email",
+                    "code": "invalid_format"
+                }
+            ]),
+        )?;
+
+This produces a root-level member:
+
+    {
+      "type": "https://api.example.com/problems/validation",
+      "title": "Validation failed",
+      "status": 422,
+      "detail": "The request contains invalid values.",
+      "report_id": "...",
+      "request_id": "...",
+      "errors": [
+        {
+          "field": "email",
+          "code": "invalid_format"
+        }
+      ]
+    }
+
+There is deliberately no nested `extensions` object. Unknown members remain
+ordinary RFC 9457 extension members that standards-compliant clients can
+ignore.
+
+Extension names are validated. They must:
+
+- be at least three ASCII characters long;
+- begin with an ASCII letter;
+- contain only ASCII letters, digits, and `_`.
+
+The following names are reserved and cannot be replaced by custom extensions:
+
+- `type`
+- `title`
+- `status`
+- `detail`
+- `instance`
+- `report_id`
+- `request_id`
+- `code`
+
+Duplicate extension keys are always rejected.
+
+This applies across both public and internal extensions. A public extension
+cannot silently replace an internal extension with the same name, and an
+internal extension cannot silently replace a public one.
+
+This behavior is intentional: duplicate keys are treated as construction
+errors rather than using last-write-wins semantics.
+
+### Internal extension members
+
+Debugging state, internal validation details, or other implementation data can
+be attached separately:
+
+    let response = diagnostic_response
+        .into_problem_details()
+        .with_internal_extension(
+            "validator_state",
+            serde_json::json!({
+                "rule": "email_format",
+                "stage": 3
+            }),
+        )?;
+
+Internal extensions are retained by the response object but are redacted from
+HTTP output by default.
+
+Exposure requires an explicit Problem Details policy:
+
+    let problem_policy = ProblemDetailsPolicy::default()
+        .expose_internal_extensions(true);
+
+    let response = response.with_problem_policy(problem_policy);
+
+Enabling this option creates an intentional externalization boundary. Internal
+extension values should therefore be reviewed for secrets, credentials,
+private user data, stack traces, implementation details, and other sensitive
+state before exposure.
+
+Public extensions are appropriate for stable machine-readable API data such as
+validation errors, retry information, domain-specific state, or remediation
+hints.
+
+Internal extensions are appropriate for application-controlled diagnostic or
+debugging state that should remain private unless deliberately exposed.
+
 ## Axum rejection adapters
 
 `diagprint-axum` can convert common Axum extractor failures into structured
@@ -390,6 +494,9 @@ The v0.8 adapter currently provides:
 - RFC 9457 Problem Details responses;
 - custom problem types, titles, and instance URI references;
 - separate request-ID and report-ID correlation;
+- root-level RFC 9457 custom extension members;
+- privacy-gated internal extension members;
+- deterministic duplicate-extension rejection;
 - JSON rejection diagnostics;
 - path rejection diagnostics;
 - query rejection diagnostics;

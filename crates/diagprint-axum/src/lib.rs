@@ -15,7 +15,7 @@ mod response;
 
 pub use problem::{
     ABOUT_BLANK, PROBLEM_JSON_MEDIA_TYPE, ProblemDetails, ProblemDetailsPolicy,
-    ProblemDetailsResponse, ProblemDetailsResponseExt,
+    ProblemDetailsResponse, ProblemDetailsResponseExt, ProblemExtensionError,
 };
 pub use rejection::{AxumRejectionExt, RejectionKind};
 pub use response::{

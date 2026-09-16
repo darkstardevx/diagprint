@@ -204,3 +204,146 @@ async fn axum_handler_returns_rfc9457_document() {
     assert!(!serialized.contains("database password"));
     assert!(!serialized.contains("internal.database.failure"));
 }
+
+#[test]
+fn public_extensions_are_serialized_at_the_problem_root() {
+    let response = DiagnosticResponse::new(StatusCode::UNPROCESSABLE_ENTITY, test_diagnostic())
+        .into_problem_details()
+        .with_extension(
+            "errors",
+            serde_json::json!([
+                {
+                    "field": "email",
+                    "code": "invalid_format"
+                }
+            ]),
+        )
+        .expect("public extension should be accepted");
+
+    let problem = response.problem_details();
+
+    assert_eq!(
+        problem.extensions().get("errors"),
+        Some(&serde_json::json!([
+            {
+                "field": "email",
+                "code": "invalid_format"
+            }
+        ]))
+    );
+
+    let json = serde_json::to_value(problem).expect("Problem Details should serialize");
+
+    assert!(json.get("extensions").is_none());
+    assert_eq!(json["errors"][0]["field"], "email");
+    assert_eq!(json["errors"][0]["code"], "invalid_format");
+}
+
+#[test]
+fn internal_extensions_are_redacted_by_default() {
+    let response = DiagnosticResponse::new(StatusCode::UNPROCESSABLE_ENTITY, test_diagnostic())
+        .into_problem_details()
+        .with_internal_extension(
+            "debug_state",
+            serde_json::json!({
+                "validator": "email",
+                "stage": 3
+            }),
+        )
+        .expect("internal extension should be accepted");
+
+    let json =
+        serde_json::to_value(response.problem_details()).expect("Problem Details should serialize");
+
+    assert!(json.get("debug_state").is_none());
+}
+
+#[test]
+fn internal_extensions_require_explicit_policy_opt_in() {
+    let policy = ProblemDetailsPolicy::default().expose_internal_extensions(true);
+
+    let response = DiagnosticResponse::new(StatusCode::UNPROCESSABLE_ENTITY, test_diagnostic())
+        .into_problem_details()
+        .with_internal_extension(
+            "debug_state",
+            serde_json::json!({
+                "validator": "email",
+                "stage": 3
+            }),
+        )
+        .expect("internal extension should be accepted")
+        .with_problem_policy(policy);
+
+    let json =
+        serde_json::to_value(response.problem_details()).expect("Problem Details should serialize");
+
+    assert_eq!(json["debug_state"]["validator"], "email");
+    assert_eq!(json["debug_state"]["stage"], 3);
+}
+
+#[test]
+fn reserved_extension_names_are_rejected() {
+    use diagprint_axum::ProblemExtensionError;
+
+    let error = DiagnosticResponse::new(StatusCode::BAD_REQUEST, test_diagnostic())
+        .into_problem_details()
+        .with_extension("status", serde_json::json!(999))
+        .expect_err("reserved extension name must be rejected");
+
+    assert_eq!(
+        error,
+        ProblemExtensionError::ReservedName("status".to_owned())
+    );
+}
+
+#[test]
+fn invalid_extension_names_are_rejected() {
+    use diagprint_axum::ProblemExtensionError;
+
+    for name in ["x", "1debug", "debug-state"] {
+        let error = DiagnosticResponse::new(StatusCode::BAD_REQUEST, test_diagnostic())
+            .into_problem_details()
+            .with_extension(name, serde_json::json!(true))
+            .expect_err("invalid extension name must be rejected");
+
+        assert_eq!(error, ProblemExtensionError::InvalidName(name.to_owned()));
+    }
+}
+
+#[test]
+fn duplicate_public_extension_keys_are_rejected() {
+    use diagprint_axum::ProblemExtensionError;
+
+    let response = DiagnosticResponse::new(StatusCode::UNPROCESSABLE_ENTITY, test_diagnostic())
+        .into_problem_details()
+        .with_extension("errors", serde_json::json!([1]))
+        .expect("first extension should be accepted");
+
+    let error = response
+        .with_extension("errors", serde_json::json!([2]))
+        .expect_err("duplicate extension must be rejected");
+
+    assert_eq!(
+        error,
+        ProblemExtensionError::DuplicateKey("errors".to_owned())
+    );
+}
+
+#[test]
+fn duplicate_keys_are_rejected_across_public_and_internal_extensions() {
+    use diagprint_axum::ProblemExtensionError;
+
+    let response = DiagnosticResponse::new(StatusCode::UNPROCESSABLE_ENTITY, test_diagnostic())
+        .into_problem_details()
+        .with_extension("validation_state", serde_json::json!("public"))
+        .expect("public extension should be accepted");
+
+    let error = response
+        .with_internal_extension("validation_state", serde_json::json!("internal"))
+        .expect_err("cross-boundary duplicate must be rejected");
+
+    assert_eq!(
+        error,
+        ProblemExtensionError::DuplicateKey("validation_state".to_owned())
+    );
+}

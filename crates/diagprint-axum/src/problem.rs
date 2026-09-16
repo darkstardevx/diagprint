@@ -5,6 +5,8 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use serde::Serialize;
+use serde_json::Value;
+use std::{collections::BTreeMap, error::Error, fmt};
 
 /// RFC 9457 media type for JSON Problem Details responses.
 pub const PROBLEM_JSON_MEDIA_TYPE: &str = "application/problem+json";
@@ -15,17 +17,68 @@ pub const PROBLEM_JSON_MEDIA_TYPE: &str = "application/problem+json";
 /// status code.
 pub const ABOUT_BLANK: &str = "about:blank";
 
+const RESERVED_EXTENSION_NAMES: &[&str] = &[
+    "type",
+    "title",
+    "status",
+    "detail",
+    "instance",
+    "report_id",
+    "request_id",
+    "code",
+];
+
+/// Error returned when an RFC 9457 extension member cannot be added.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProblemExtensionError {
+    /// The extension name does not follow the portable naming rules enforced
+    /// by diagprint-axum.
+    InvalidName(String),
+
+    /// The extension name is reserved by RFC 9457 or diagprint-axum.
+    ReservedName(String),
+
+    /// The extension name has already been defined for this problem response.
+    DuplicateKey(String),
+}
+
+impl fmt::Display for ProblemExtensionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidName(name) => write!(
+                f,
+                "invalid Problem Details extension name `{name}`; names must be at least \
+                 three ASCII characters, start with a letter, and contain only letters, \
+                 digits, or `_`"
+            ),
+            Self::ReservedName(name) => {
+                write!(f, "Problem Details extension name `{name}` is reserved")
+            }
+            Self::DuplicateKey(name) => {
+                write!(
+                    f,
+                    "Problem Details extension name `{name}` is already defined"
+                )
+            }
+        }
+    }
+}
+
+impl Error for ProblemExtensionError {}
+
 /// Policy controlling the RFC 9457 representation of a diagnostic response.
 ///
 /// Diagnostic disclosure remains controlled by the underlying
 /// [`crate::ResponsePolicy`]. This policy only controls Problem Details
-/// representation metadata.
+/// representation metadata and whether explicitly registered internal
+/// extensions may cross the HTTP boundary.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProblemDetailsPolicy {
     type_uri: String,
     title: Option<String>,
     instance: Option<String>,
     include_request_id: bool,
+    expose_internal_extensions: bool,
 }
 
 impl Default for ProblemDetailsPolicy {
@@ -35,6 +88,7 @@ impl Default for ProblemDetailsPolicy {
             title: None,
             instance: None,
             include_request_id: true,
+            expose_internal_extensions: false,
         }
     }
 }
@@ -78,6 +132,15 @@ impl ProblemDetailsPolicy {
         self
     }
 
+    /// Controls whether explicitly registered internal extensions may cross
+    /// the HTTP boundary.
+    ///
+    /// Internal extensions are redacted by default.
+    pub fn expose_internal_extensions(mut self, expose: bool) -> Self {
+        self.expose_internal_extensions = expose;
+        self
+    }
+
     /// Returns the configured problem type URI.
     pub fn type_uri(&self) -> &str {
         &self.type_uri
@@ -92,12 +155,19 @@ impl ProblemDetailsPolicy {
     pub fn instance(&self) -> Option<&str> {
         self.instance.as_deref()
     }
+
+    /// Returns whether internal extensions are allowed across the HTTP
+    /// boundary.
+    pub const fn internal_extensions_exposed(&self) -> bool {
+        self.expose_internal_extensions
+    }
 }
 
 /// RFC 9457 Problem Details JSON document.
 ///
-/// `report_id`, `request_id`, and `code` are extension members. They remain
-/// subject to diagprint's response-disclosure policy.
+/// `report_id`, `request_id`, and `code` are diagprint extension members.
+/// Additional application-defined members are serialized at the root level of
+/// the JSON object.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ProblemDetails {
     /// URI reference identifying the problem type.
@@ -131,6 +201,17 @@ pub struct ProblemDetails {
     /// by the underlying response policy.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub code: Option<String>,
+
+    #[serde(flatten)]
+    extensions: BTreeMap<String, Value>,
+}
+
+impl ProblemDetails {
+    /// Returns the custom RFC 9457 extension members included in this
+    /// representation.
+    pub fn extensions(&self) -> &BTreeMap<String, Value> {
+        &self.extensions
+    }
 }
 
 /// Axum response that renders a [`DiagnosticResponse`] as RFC 9457 Problem
@@ -143,6 +224,8 @@ pub struct ProblemDetailsResponse {
     response: DiagnosticResponse,
     problem_policy: Box<ProblemDetailsPolicy>,
     request_id: Option<String>,
+    public_extensions: BTreeMap<String, Value>,
+    internal_extensions: BTreeMap<String, Value>,
 }
 
 impl ProblemDetailsResponse {
@@ -153,6 +236,8 @@ impl ProblemDetailsResponse {
             response,
             problem_policy: Box::new(ProblemDetailsPolicy::default()),
             request_id: None,
+            public_extensions: BTreeMap::new(),
+            internal_extensions: BTreeMap::new(),
         }
     }
 
@@ -169,6 +254,42 @@ impl ProblemDetailsResponse {
     pub fn with_request_id(mut self, request_id: impl Into<String>) -> Self {
         self.request_id = Some(request_id.into());
         self
+    }
+
+    /// Adds a public root-level RFC 9457 extension member.
+    ///
+    /// Extension names are validated against the portable RFC 9457 naming
+    /// recommendation. Reserved names and duplicate names are rejected.
+    ///
+    /// Duplicate detection spans both public and internal extensions so one
+    /// JSON member can never silently replace another.
+    pub fn with_extension(
+        mut self,
+        name: impl Into<String>,
+        value: Value,
+    ) -> Result<Self, ProblemExtensionError> {
+        let name = name.into();
+        self.validate_new_extension(&name)?;
+        self.public_extensions.insert(name, value);
+        Ok(self)
+    }
+
+    /// Adds an internal root-level extension member.
+    ///
+    /// Internal extensions are retained by the response object but are not
+    /// serialized unless [`ProblemDetailsPolicy::expose_internal_extensions`]
+    /// is explicitly enabled.
+    ///
+    /// Reserved names and duplicate names are rejected.
+    pub fn with_internal_extension(
+        mut self,
+        name: impl Into<String>,
+        value: Value,
+    ) -> Result<Self, ProblemExtensionError> {
+        let name = name.into();
+        self.validate_new_extension(&name)?;
+        self.internal_extensions.insert(name, value);
+        Ok(self)
     }
 
     /// Returns the underlying HTTP status code.
@@ -208,6 +329,18 @@ impl ProblemDetailsResponse {
             None
         };
 
+        let mut extensions = self.public_extensions.clone();
+
+        if self.problem_policy.expose_internal_extensions {
+            for (name, value) in &self.internal_extensions {
+                let previous = extensions.insert(name.clone(), value.clone());
+                debug_assert!(
+                    previous.is_none(),
+                    "duplicate Problem Details extension escaped construction validation"
+                );
+            }
+        }
+
         ProblemDetails {
             type_uri: self.problem_policy.type_uri.clone(),
             title,
@@ -217,7 +350,23 @@ impl ProblemDetailsResponse {
             report_id: client.error.report_id,
             request_id,
             code: client.error.code,
+            extensions,
         }
+    }
+
+    fn validate_new_extension(&self, name: &str) -> Result<(), ProblemExtensionError> {
+        validate_extension_name(name)?;
+
+        if RESERVED_EXTENSION_NAMES.contains(&name) {
+            return Err(ProblemExtensionError::ReservedName(name.to_owned()));
+        }
+
+        if self.public_extensions.contains_key(name) || self.internal_extensions.contains_key(name)
+        {
+            return Err(ProblemExtensionError::DuplicateKey(name.to_owned()));
+        }
+
+        Ok(())
     }
 }
 
@@ -259,6 +408,23 @@ impl ProblemDetailsResponseExt for DiagnosticResponse {
     fn into_problem_details(self) -> ProblemDetailsResponse {
         ProblemDetailsResponse::new(self)
     }
+}
+
+fn validate_extension_name(name: &str) -> Result<(), ProblemExtensionError> {
+    let bytes = name.as_bytes();
+
+    if bytes.len() < 3
+        || !bytes
+            .first()
+            .is_some_and(|first| first.is_ascii_alphabetic())
+        || !bytes
+            .iter()
+            .all(|byte| byte.is_ascii_alphanumeric() || *byte == b'_')
+    {
+        return Err(ProblemExtensionError::InvalidName(name.to_owned()));
+    }
+
+    Ok(())
 }
 
 fn status_title(status: StatusCode) -> &'static str {
