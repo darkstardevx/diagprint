@@ -1,5 +1,9 @@
 mod github_actions;
 mod github_actions_delta;
+
+#[cfg(feature = "html")]
+mod html;
+
 mod json;
 mod markdown;
 mod plain;
@@ -10,6 +14,10 @@ mod theme;
 
 pub use github_actions::GithubActionsRenderer;
 pub use github_actions_delta::GithubActionsDeltaRenderer;
+
+#[cfg(feature = "html")]
+pub use html::{HtmlRenderer, HtmlSourceOptions, HtmlTheme};
+
 pub use json::JsonRenderer;
 pub use markdown::{MarkdownRenderer, MarkdownSourceOptions};
 pub use plain::PlainRenderer;
@@ -59,6 +67,13 @@ impl ReportRenderer for GithubActionsRenderer {
 impl ReportRenderer for MarkdownRenderer {
     fn render_report<'a>(&self, diagnostics: impl IntoIterator<Item = &'a Diagnostic>) -> String {
         render_joined(self, diagnostics, "\n\n---\n\n")
+    }
+}
+
+#[cfg(feature = "html")]
+impl ReportRenderer for HtmlRenderer {
+    fn render_report<'a>(&self, diagnostics: impl IntoIterator<Item = &'a Diagnostic>) -> String {
+        HtmlRenderer::render_report(self, diagnostics)
     }
 }
 

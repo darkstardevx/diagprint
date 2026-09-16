@@ -34,6 +34,10 @@ cybercore = [
     "dep:cybercore",
 ]
 
+html = [
+    "dep:syntect",
+]
+
 terminal-docs = [
     "dep:reqwest",
     "dep:html2text",
@@ -93,50 +97,63 @@ optional = true
 [dependencies.anyhow]
 version = "1"
 optional = true
+
 [dependencies.tracing]
 version = "0.1"
 optional = true
+
 [dependencies.tracing-subscriber]
 version = "0.3"
 optional = true
+
 [dependencies.miette]
 version = "7.6"
 optional = true
 default-features = false
+
 [dependencies.codespan-reporting]
 version = "0.13.1"
 optional = true
 default-features = false
 features = ["std"]
+
 [dependencies.ariadne]
 version = "0.6"
 optional = true
 default-features = false
+
 [dependencies.annotate-snippets]
 version = "0.12.16"
 optional = true
+
 [dependencies.flate2]
 version = "1"
 optional = true
+
 [dependencies.zstd]
 version = "0.13"
 optional = true
+
 [dependencies.cybercore]
 version = "0.4.0"
 git = "https://github.com/darkstardevx/cybercore.git"
 optional = true
+
 [dependencies.reqwest]
 version = "0.13"
 optional = true
 default-features = false
 features = ["blocking", "rustls", "charset"]
+
 [dependencies.html2text]
 version = "0.17"
 optional = true
+
 [dependencies.scraper]
 # scraper 0.26+ uses let-chains unavailable on diagprint's Rust 1.85 MSRV.
 version = "=0.25.0"
 optional = true
+
 [dependencies.syntect]
 version = "5.3"
 optional = true
@@ -150,6 +167,7 @@ features = ["default-fancy"]
 version = "=0.8.2"
 optional = true
 default-features = false
+
 [dev-dependencies]
 thiserror = "2"
 
@@ -184,7 +202,6 @@ required-features = ["ariadne"]
 [[example]]
 name = "annotate_snippets_integration"
 required-features = ["annotate-snippets"]
-
 
 [workspace]
 members = [
