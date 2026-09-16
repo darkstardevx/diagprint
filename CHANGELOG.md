@@ -17,6 +17,16 @@ The project follows Semantic Versioning.
   Problem Details correlation, matched-route privacy, and client redaction
   through a real Axum handler stack.
 
+- Added cloneable `DiagnosticState` for keeping a shared `Reporter` and
+  synchronous `DiagnosticSink` in Axum application state.
+- Added `DiagnosticState::emit_problem` for explicitly adapting an
+  `ApplicationError`, attaching `RequestContext`, producing RFC 9457 Problem
+  Details, and performing one synchronous sink emission attempt.
+- Added application-state integration coverage proving successful requests do
+  not emit, error requests emit exactly once, complete internal diagnostics
+  reach the sink, client redaction remains intact, and sink failure does not
+  replace the HTTP response.
+
 ### Planned
 
 - Add framework and application adapters, beginning with `diagprint-axum`,

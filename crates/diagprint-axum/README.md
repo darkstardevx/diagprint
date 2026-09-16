@@ -439,6 +439,87 @@ Emission and HTTP disclosure are therefore separate decisions:
 
 No response or adapter emits diagnostics unless `emit_to` is called.
 
+## Application-state ergonomics
+
+Applications commonly need the same `Reporter` and diagnostic sink across many
+handlers.
+
+`DiagnosticState` packages those two values into one cloneable application
+state component:
+
+    use std::sync::Arc;
+    use diagprint::Reporter;
+    use diagprint_axum::DiagnosticState;
+
+    let reporter = Reporter::builder()
+        .application("api")
+        .build()?;
+
+    let diagnostics = DiagnosticState::new(
+        reporter,
+        Arc::new(sink),
+    );
+
+It can live alongside ordinary application state:
+
+    #[derive(Clone)]
+    struct AppState {
+        diagnostics: DiagnosticState,
+        orders: OrderService,
+    }
+
+A handler can then combine application state, the first-class
+`RequestContext` extractor, domain error adaptation, RFC 9457 Problem Details,
+and explicit sink delivery without manually passing a reporter and sink through
+each function:
+
+    use axum::{
+        Json,
+        extract::State,
+    };
+
+    async fn handler(
+        State(state): State<AppState>,
+        context: RequestContext,
+    ) -> Result<Json<Order>, Emission<ProblemDetailsResponse>> {
+        state
+            .orders
+            .load()
+            .map(Json)
+            .map_err(|error| {
+                state
+                    .diagnostics
+                    .emit_problem(&error, &context)
+            })
+    }
+
+`emit_problem` is deliberately named as a side effect.
+
+It:
+
+- creates the diagnostic through the application's `ApplicationError`;
+- attaches privacy-safe request correlation;
+- produces RFC 9457 Problem Details;
+- performs exactly one synchronous `DiagnosticSink::emit` attempt;
+- preserves the emission outcome as server-side response metadata.
+
+It does not:
+
+- emit successful responses;
+- emit errors automatically;
+- flush the sink;
+- retry failures;
+- create a queue;
+- create background work;
+- alter the client disclosure policy.
+
+The sink receives the complete internal diagnostic. The HTTP client still
+receives only the representation permitted by `ResponsePolicy` and
+`ProblemDetailsPolicy`.
+
+A sink failure remains `EmissionOutcome::Failed` and does not replace the
+application's Problem Details response.
+
 ## Asynchronous diagnostic delivery
 
 The optional `async-delivery` feature connects `diagprint-axum` to the bounded

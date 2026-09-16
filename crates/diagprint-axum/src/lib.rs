@@ -18,7 +18,18 @@
 //! as `EmissionOutcome::Failed` response metadata and do not replace the HTTP
 //! response.
 //!
-//! ## Optional asynchronous delivery
+//! ## Application-state ergonomics
+//!
+//! [`DiagnosticState`] groups a cloneable [`diagprint::Reporter`] with one
+//! shared [`diagprint::DiagnosticSink`] for use in Axum application state.
+//!
+//! Application errors can be converted into correlated Problem Details and
+//! explicitly emitted with [`DiagnosticState::emit_problem`].
+//!
+//! This remains an explicit side effect. Storing a sink in application state
+//! does not cause responses, errors, or diagnostics to emit automatically.
+//!
+////! ## Optional asynchronous delivery
 //!
 //! The `async-delivery` feature adds an explicit asynchronous submission bridge
 //! backed by `diagprint-async`.
@@ -52,6 +63,7 @@ mod emission;
 mod problem;
 mod rejection;
 mod response;
+mod state;
 
 pub use application::{ApplicationError, ApplicationErrorExt};
 
@@ -76,3 +88,5 @@ pub use response::{
     ClientErrorBody, ClientErrorEnvelope, DiagnosticResponse, DiagnosticResponseExt,
     DiagnosticResult, ResponsePolicy,
 };
+
+pub use state::DiagnosticState;
