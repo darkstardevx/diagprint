@@ -563,6 +563,66 @@ The feature provides `AsyncDiagnosticEmissionExt::emit_to_async`:
         }
     }
 
+### Async application state
+
+With `async-delivery` enabled, `AsyncDiagnosticState` provides the asynchronous
+counterpart to `DiagnosticState`.
+
+It stores one `Reporter` together with a shared `Arc<AsyncDiagnosticSink>`:
+
+    let async_diagnostics = AsyncDiagnosticState::new(
+        reporter,
+        Arc::clone(&async_sink),
+    );
+
+The state can live beside the rest of an Axum application's resources:
+
+    #[derive(Clone)]
+    struct AppState {
+        diagnostics: AsyncDiagnosticState,
+        orders: OrderService,
+    }
+
+A handler can combine `State`, `RequestContext`, domain error adaptation,
+Problem Details, and bounded async submission:
+
+    async fn handler(
+        State(state): State<AppState>,
+        context: RequestContext,
+    ) -> Result<Json<Order>, AsyncEmission<ProblemDetailsResponse>> {
+        match state.orders.load() {
+            Ok(order) => Ok(Json(order)),
+            Err(error) => Err(
+                state
+                    .diagnostics
+                    .emit_problem(&error, &context)
+                    .await,
+            ),
+        }
+    }
+
+`emit_problem(...).await` is an explicit submission operation.
+
+It does not:
+
+- create another queue;
+- spawn one worker per request;
+- retry failed submissions;
+- flush automatically;
+- shut down the async sink.
+
+`AsyncEmissionOutcome::Enqueued` still means queue acceptance only.
+
+`AsyncEmissionOutcome::Dropped` still represents an explicit `DropNewest`
+backpressure decision.
+
+Queue rejection remains `AsyncEmissionOutcome::Failed`.
+
+The application owns the async sink lifecycle. A typical application keeps an
+external shared handle while the router is running, drops router/application
+state during graceful shutdown, and then recovers ownership or otherwise
+arranges for `AsyncDiagnosticSink::shutdown` at the lifecycle boundary.
+
 ### Submission is not delivery completion
 
 `AsyncEmissionOutcome::Enqueued` means the diagnostic was accepted into the

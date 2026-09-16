@@ -27,6 +27,15 @@ The project follows Semantic Versioning.
   reach the sink, client redaction remains intact, and sink failure does not
   replace the HTTP response.
 
+- Added feature-gated `AsyncDiagnosticState` for sharing one `Reporter` and
+  bounded `AsyncDiagnosticSink` through Axum application state.
+- Added `AsyncDiagnosticState::emit_problem` for explicit application-error
+  adaptation, request correlation, RFC 9457 Problem Details construction, and
+  bounded asynchronous diagnostic submission.
+- Added real-router async-state coverage for successful requests, queue
+  acceptance, `Reject` backpressure, `DropNewest` behavior, shared queue
+  identity, privacy preservation, and explicit sink lifecycle ownership.
+
 ### Planned
 
 - Add framework and application adapters, beginning with `diagprint-axum`,
