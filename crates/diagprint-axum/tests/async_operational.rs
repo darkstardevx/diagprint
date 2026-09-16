@@ -34,6 +34,8 @@ const CONCURRENT_REQUESTS: usize = 16;
 
 const WORKER_FAILURE_SECRET: &str = "injected-worker-failure-private-secret";
 
+const DIRECT_FLUSH_FAILURE: &str = "injected direct async flush failure";
+
 #[derive(Debug)]
 struct OperationalError {
     job_id: u64,
@@ -333,6 +335,26 @@ impl DiagnosticSink for FailingEmitSink {
     }
 }
 
+struct FlushFailureSink;
+
+impl DiagnosticSink for FlushFailureSink {
+    fn emit(&self, _diagnostic: &Diagnostic) -> SinkResult<()> {
+        Ok(())
+    }
+
+    fn flush(&self) -> SinkResult<()> {
+        Err(SinkError::new(SinkErrorKind::Io, DIRECT_FLUSH_FAILURE))
+    }
+}
+
+struct PanicSink;
+
+impl DiagnosticSink for PanicSink {
+    fn emit(&self, _diagnostic: &Diagnostic) -> SinkResult<()> {
+        panic!("injected async sink worker panic");
+    }
+}
+
 fn prefill_diagnostic(label: &str) -> Diagnostic {
     reporter()
         .info(format!("operational queue prefill {label}"))
@@ -395,6 +417,111 @@ fn assert_worker_error(error: &AsyncSinkError, expected_message: &str) {
             panic!("expected worker error, got {other:?}");
         }
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn primitive_emit_failure_is_sticky_and_shutdown_reports_it() {
+    let sink = AsyncDiagnosticSink::spawn(FailingEmitSink, 8, BackpressurePolicy::Block)
+        .expect("async diagnostic sink should spawn");
+
+    assert_eq!(
+        sink.emit(reporter().error("primitive emit-failure diagnostic",),)
+            .await
+            .expect("queue acceptance precedes worker delivery",),
+        SubmitOutcome::Enqueued
+    );
+
+    let flush_error = sink
+        .flush()
+        .await
+        .expect_err("worker emit failure must fail flush");
+
+    assert_worker_error(&flush_error, WORKER_FAILURE_SECRET);
+
+    let later_error = sink
+        .emit(reporter().error("primitive diagnostic after worker failure"))
+        .await
+        .expect_err("worker failure must remain sticky");
+
+    assert_worker_error(&later_error, WORKER_FAILURE_SECRET);
+
+    let shutdown_error = sink
+        .shutdown()
+        .await
+        .expect_err("shutdown must retain worker failure");
+
+    assert_worker_error(&shutdown_error, WORKER_FAILURE_SECRET);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn primitive_flush_failure_is_sticky_and_blocks_future_submission() {
+    let sink = AsyncDiagnosticSink::spawn(FlushFailureSink, 8, BackpressurePolicy::Block)
+        .expect("async diagnostic sink should spawn");
+
+    assert_eq!(
+        sink.emit(reporter().warning("primitive diagnostic before flush failure",),)
+            .await
+            .expect("diagnostic should enter queue",),
+        SubmitOutcome::Enqueued
+    );
+
+    let flush_error = sink
+        .flush()
+        .await
+        .expect_err("injected flush failure must surface");
+
+    assert_worker_error(&flush_error, DIRECT_FLUSH_FAILURE);
+
+    let later_error = sink
+        .emit(reporter().warning("primitive diagnostic after flush failure"))
+        .await
+        .expect_err("failed worker must reject later submissions");
+
+    assert_worker_error(&later_error, DIRECT_FLUSH_FAILURE);
+
+    let shutdown_error = sink
+        .shutdown()
+        .await
+        .expect_err("shutdown must preserve flush failure");
+
+    assert_worker_error(&shutdown_error, DIRECT_FLUSH_FAILURE);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn primitive_worker_panic_closes_submission_and_surfaces_join_failure() {
+    let sink = AsyncDiagnosticSink::spawn(PanicSink, 8, BackpressurePolicy::Block)
+        .expect("async diagnostic sink should spawn");
+
+    assert_eq!(
+        sink.emit(reporter().error("primitive diagnostic that triggers worker panic",),)
+            .await
+            .expect("queue acceptance does not imply delivery success",),
+        SubmitOutcome::Enqueued
+    );
+
+    let closed = sink
+        .flush()
+        .await
+        .expect_err("panicked worker must close the queue");
+
+    assert_eq!(closed, AsyncSinkError::Closed);
+
+    let later = sink
+        .emit(reporter().error("primitive diagnostic after worker panic"))
+        .await
+        .expect_err("closed worker must reject later submission");
+
+    assert_eq!(later, AsyncSinkError::Closed);
+
+    let shutdown = sink
+        .shutdown()
+        .await
+        .expect_err("worker panic must surface at lifecycle join");
+
+    assert!(
+        matches!(shutdown, AsyncSinkError::Join { .. }),
+        "expected Join error after worker panic, got {shutdown:?}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

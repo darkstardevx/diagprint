@@ -94,12 +94,6 @@ cargo test \
 
 section "FAILURE INJECTION + ASYNC CONCURRENCY"
 
-cargo test \
-    -p diagprint-async \
-    --test failure_injection \
-    -- \
-    --test-threads=1
-
 for attempt in 1 2 3
 do
     echo
