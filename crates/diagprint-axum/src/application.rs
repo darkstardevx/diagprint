@@ -16,7 +16,8 @@ use std::error::Error;
 /// - RFC 9457 Problem Details metadata.
 ///
 /// `diagprint-axum` deliberately does not infer HTTP status from diagnostic
-/// severity and does not expose [`Error::to_string`] automatically.
+/// severity and does not expose the error's [`Display`](std::fmt::Display)
+/// representation automatically.
 pub trait ApplicationError: Error {
     /// Returns the HTTP status associated with this application error.
     fn http_status(&self) -> StatusCode;
