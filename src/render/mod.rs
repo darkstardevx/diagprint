@@ -1,3 +1,5 @@
+mod audit_transcript;
+mod compiler_text;
 mod github_actions;
 mod github_actions_delta;
 
@@ -13,6 +15,8 @@ mod source_context;
 mod terminal;
 mod theme;
 
+pub use audit_transcript::AuditTranscriptRenderer;
+pub use compiler_text::CompilerTextRenderer;
 pub use github_actions::GithubActionsRenderer;
 pub use github_actions_delta::GithubActionsDeltaRenderer;
 
@@ -38,11 +42,6 @@ pub trait Renderer {
     fn render(&self, diagnostic: &Diagnostic) -> String;
 }
 
-/// Renders multiple diagnostics as one logical output document.
-///
-/// Implementations must produce a valid representation for the corresponding
-/// format rather than merely concatenating representations when that would
-/// make the result invalid.
 pub trait ReportRenderer {
     fn render_report<'a>(&self, diagnostics: impl IntoIterator<Item = &'a Diagnostic>) -> String;
 }
@@ -60,6 +59,12 @@ fn render_joined<'a>(
 }
 
 impl ReportRenderer for PlainRenderer {
+    fn render_report<'a>(&self, diagnostics: impl IntoIterator<Item = &'a Diagnostic>) -> String {
+        render_joined(self, diagnostics, "\n")
+    }
+}
+
+impl ReportRenderer for CompilerTextRenderer {
     fn render_report<'a>(&self, diagnostics: impl IntoIterator<Item = &'a Diagnostic>) -> String {
         render_joined(self, diagnostics, "\n")
     }

@@ -1,6 +1,6 @@
 use diagprint::{
     ArtifactWriter, DiagnosticReport, Reporter, SourceCache,
-    render::{MarkdownRenderer, PlainRenderer},
+    render::{AuditTranscriptRenderer, CompilerTextRenderer, MarkdownRenderer, PlainRenderer},
 };
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -44,7 +44,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .label("src/main.rs", 2, Some(18), Some(11), Some("string literal"));
 
     let mut report = DiagnosticReport::new();
-
     report.push(warning).push(error);
 
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
@@ -53,24 +52,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let markdown = MarkdownRenderer.render_report_artifact_with_sources(&report, &sources)?;
 
-    let markdown_destination = format!("target/diagprint-markdown-{nonce}");
-
-    let markdown_persisted =
-        writer.write_rendered(&markdown, &markdown_destination, "report.md")?;
+    let markdown_persisted = writer.write_rendered(
+        &markdown,
+        format!("target/diagprint-markdown-{nonce}"),
+        "report.md",
+    )?;
 
     println!("Markdown: {}", markdown_persisted.artifact_path().display());
 
-    println!("           {}", markdown_persisted.receipt_path().display());
-
     let plain = PlainRenderer.render_report_artifact(&report)?;
 
-    let plain_destination = format!("target/diagprint-plain-{nonce}");
-
-    let plain_persisted = writer.write_rendered(&plain, &plain_destination, "report.txt")?;
+    let plain_persisted = writer.write_rendered(
+        &plain,
+        format!("target/diagprint-plain-{nonce}"),
+        "report.txt",
+    )?;
 
     println!("Plain:    {}", plain_persisted.artifact_path().display());
 
-    println!("           {}", plain_persisted.receipt_path().display());
+    let compiler = CompilerTextRenderer.render_report_artifact(&report)?;
+
+    let compiler_persisted = writer.write_rendered(
+        &compiler,
+        format!("target/diagprint-compiler-{nonce}"),
+        "report.txt",
+    )?;
+
+    println!("Compiler: {}", compiler_persisted.artifact_path().display());
+
+    let audit = AuditTranscriptRenderer.render_report_artifact(&report)?;
+
+    let audit_persisted = writer.write_rendered(
+        &audit,
+        format!("target/diagprint-audit-{nonce}"),
+        "report.audit",
+    )?;
+
+    println!("Audit:    {}", audit_persisted.artifact_path().display());
 
     #[cfg(feature = "html")]
     {
@@ -79,27 +97,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .with_title("diagprint rendered artifact example")
             .render_report_artifact_with_sources(&report, &sources)?;
 
-        let html_destination = format!("target/diagprint-html-{nonce}");
-
-        let html_persisted = writer.write_rendered(&html, &html_destination, "report.html")?;
+        let html_persisted = writer.write_rendered(
+            &html,
+            format!("target/diagprint-html-{nonce}"),
+            "report.html",
+        )?;
 
         println!("HTML:     {}", html_persisted.artifact_path().display());
-
-        println!("           {}", html_persisted.receipt_path().display());
-
-        println!();
-        println!("Semantic report digest: {}", html.receipt().report);
     }
 
     println!();
+    println!("Semantic report digest: {}", audit.receipt().report);
+
     println!(
-        "Markdown artifact digest: {}",
+        "Markdown artifact:      {}",
         markdown.receipt().artifact_digest
     );
 
     println!(
-        "Plain artifact digest:    {}",
+        "Plain artifact:         {}",
         plain.receipt().artifact_digest
+    );
+
+    println!(
+        "Compiler artifact:      {}",
+        compiler.receipt().artifact_digest
+    );
+
+    println!(
+        "Audit artifact:         {}",
+        audit.receipt().artifact_digest
     );
 
     Ok(())

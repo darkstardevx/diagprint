@@ -1,4 +1,7 @@
-use super::{MarkdownRenderer, MarkdownSourceOptions, PlainRenderer, ReportRenderer};
+use super::{
+    AuditTranscriptRenderer, CompilerTextRenderer, MarkdownRenderer, MarkdownSourceOptions,
+    PlainRenderer, ReportRenderer,
+};
 
 #[cfg(feature = "html")]
 use super::{HtmlRenderer, HtmlSourceOptions};
@@ -23,6 +26,8 @@ pub enum RenderedFormat {
     Html,
     Markdown,
     PlainText,
+    CompilerText,
+    AuditTranscript,
 }
 
 impl RenderedFormat {
@@ -32,6 +37,8 @@ impl RenderedFormat {
             Self::Html => "html",
             Self::Markdown => "markdown",
             Self::PlainText => "plain_text",
+            Self::CompilerText => "compiler_text",
+            Self::AuditTranscript => "audit_transcript",
         }
     }
 
@@ -39,17 +46,27 @@ impl RenderedFormat {
     pub const fn artifact_schema(self) -> &'static str {
         match self {
             Self::Html => "diagprint.report.html/v1",
+
             Self::Markdown => "diagprint.report.markdown/v1",
+
             Self::PlainText => "diagprint.report.text/v1",
+
+            Self::CompilerText => "diagprint.report.compiler-text/v1",
+
+            Self::AuditTranscript => "diagprint.report.audit/v1",
         }
     }
 
-    /// Internet media type for this rendered representation.
+    /// Internet media type for this representation.
     pub const fn media_type(self) -> &'static str {
         match self {
             Self::Html => "text/html; charset=utf-8",
+
             Self::Markdown => "text/markdown; charset=utf-8",
-            Self::PlainText => "text/plain; charset=utf-8",
+
+            Self::PlainText | Self::CompilerText | Self::AuditTranscript => {
+                "text/plain; charset=utf-8"
+            }
         }
     }
 
@@ -59,6 +76,8 @@ impl RenderedFormat {
             Self::Html => "html",
             Self::Markdown => "md",
             Self::PlainText => "txt",
+            Self::CompilerText => "txt",
+            Self::AuditTranscript => "audit",
         }
     }
 }
@@ -69,13 +88,8 @@ impl RenderedFormat {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RenderedSourceMode {
-    /// No source text was embedded.
     None,
-
-    /// Source text was resolved from a live [`SourceCache`].
     Cache,
-
-    /// Source text was resolved from an immutable [`SourceSnapshot`].
     Snapshot,
 }
 
@@ -115,10 +129,6 @@ impl RenderedSourceDescriptor {
 }
 
 /// Receipt for one exact rendered diagnostic report.
-///
-/// `report` identifies the semantic diagnostic contents.
-///
-/// `artifact_digest` identifies the exact external byte representation.
 #[derive(Debug, Clone, Serialize)]
 pub struct RenderedArtifactReceipt {
     pub schema: &'static str,
@@ -166,13 +176,28 @@ pub struct RenderedArtifact {
 }
 
 impl RenderedArtifact {
-    fn new(
+    pub(super) fn new(
         report: &DiagnosticReport,
         format: RenderedFormat,
         rendered: String,
         source: RenderedSourceDescriptor,
     ) -> Result<Self, CanonicalizationError> {
         let report_digest = report.digest()?;
+
+        Ok(Self::new_with_report_digest(
+            report_digest,
+            format,
+            rendered,
+            source,
+        ))
+    }
+
+    fn new_with_report_digest(
+        report_digest: ReportDigest,
+        format: RenderedFormat,
+        rendered: String,
+        source: RenderedSourceDescriptor,
+    ) -> Self {
         let bytes = rendered.into_bytes();
 
         let receipt = RenderedArtifactReceipt {
@@ -190,44 +215,36 @@ impl RenderedArtifact {
             source,
         };
 
-        Ok(Self { bytes, receipt })
+        Self { bytes, receipt }
     }
 
-    /// Exact rendered artifact bytes.
     pub fn bytes(&self) -> &[u8] {
         &self.bytes
     }
 
-    /// Integrity and semantic identity receipt.
     pub fn receipt(&self) -> &RenderedArtifactReceipt {
         &self.receipt
     }
 
-    /// Rendered format represented by this artifact.
     pub const fn format(&self) -> RenderedFormat {
         self.receipt.format
     }
 
-    /// Consumes the artifact and returns its exact bytes.
     pub fn into_bytes(self) -> Vec<u8> {
         self.bytes
     }
 
-    /// Returns the rendered artifact as UTF-8 text.
-    ///
-    /// All currently supported rendered formats are UTF-8 text formats.
     pub fn as_str(&self) -> Result<&str, std::str::Utf8Error> {
         std::str::from_utf8(&self.bytes)
     }
 
-    /// Verifies the retained bytes against their receipt.
     pub fn verify(&self) -> Result<(), ArtifactVerificationError> {
         self.receipt.verify_bytes(&self.bytes)
     }
 }
 
 impl PlainRenderer {
-    /// Renders a diagnostic report into a verified plain-text artifact.
+    /// Renders a verified plain-text report artifact.
     pub fn render_report_artifact(
         &self,
         report: &DiagnosticReport,
@@ -243,9 +260,44 @@ impl PlainRenderer {
     }
 }
 
+impl CompilerTextRenderer {
+    /// Renders a verified compiler/editor-text report artifact.
+    pub fn render_report_artifact(
+        &self,
+        report: &DiagnosticReport,
+    ) -> Result<RenderedArtifact, CanonicalizationError> {
+        let rendered = ReportRenderer::render_report(self, report.iter());
+
+        RenderedArtifact::new(
+            report,
+            RenderedFormat::CompilerText,
+            rendered,
+            RenderedSourceDescriptor::none(),
+        )
+    }
+}
+
+impl AuditTranscriptRenderer {
+    /// Renders a verified deterministic audit-transcript artifact.
+    pub fn render_report_artifact(
+        &self,
+        report: &DiagnosticReport,
+    ) -> Result<RenderedArtifact, CanonicalizationError> {
+        let report_digest = report.digest()?;
+
+        let rendered = self.render_report_with_digest(report, report_digest);
+
+        Ok(RenderedArtifact::new_with_report_digest(
+            report_digest,
+            RenderedFormat::AuditTranscript,
+            rendered,
+            RenderedSourceDescriptor::none(),
+        ))
+    }
+}
+
 impl MarkdownRenderer {
-    /// Renders a diagnostic report into a verified Markdown artifact without
-    /// embedding source contents.
+    /// Renders a verified Markdown artifact without source contents.
     pub fn render_report_artifact(
         &self,
         report: &DiagnosticReport,
@@ -260,7 +312,7 @@ impl MarkdownRenderer {
         )
     }
 
-    /// Renders a verified Markdown artifact with source text from a live cache.
+    /// Renders a verified Markdown artifact with live cached source.
     pub fn render_report_artifact_with_sources(
         &self,
         report: &DiagnosticReport,
@@ -278,8 +330,7 @@ impl MarkdownRenderer {
         )
     }
 
-    /// Renders a verified Markdown artifact against an immutable source
-    /// snapshot.
+    /// Renders a verified Markdown artifact against a source snapshot.
     pub fn render_report_artifact_with_snapshot(
         &self,
         report: &DiagnosticReport,
@@ -300,8 +351,7 @@ impl MarkdownRenderer {
 
 #[cfg(feature = "html")]
 impl HtmlRenderer {
-    /// Renders a diagnostic report into a verified standalone HTML artifact
-    /// without embedding source contents.
+    /// Renders a verified standalone HTML artifact without source contents.
     pub fn render_report_artifact(
         &self,
         report: &DiagnosticReport,
@@ -316,8 +366,7 @@ impl HtmlRenderer {
         )
     }
 
-    /// Renders a verified standalone HTML artifact with source text from a
-    /// live cache.
+    /// Renders a verified standalone HTML artifact with live cached source.
     pub fn render_report_artifact_with_sources(
         &self,
         report: &DiagnosticReport,
@@ -335,8 +384,7 @@ impl HtmlRenderer {
         )
     }
 
-    /// Renders a verified standalone HTML artifact against an immutable source
-    /// snapshot.
+    /// Renders a verified standalone HTML artifact against a source snapshot.
     pub fn render_report_artifact_with_snapshot(
         &self,
         report: &DiagnosticReport,

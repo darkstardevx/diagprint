@@ -1,4 +1,5 @@
 use crate::{Applicability, Edit, FixError, Fixer, RollbackFailure, Suggestion};
+use serde::Serialize;
 use std::{
     error::Error,
     fmt, fs,
@@ -269,6 +270,40 @@ impl FixPlanReport {
     }
 }
 
+/// Stable schema identifier for deterministic fix-plan descriptors.
+pub const FIX_PLAN_DESCRIPTOR_V1_SCHEMA: &str = "diagprint.fix-plan.descriptor/v1";
+
+/// Deterministic, serializable description of one [`FixPlan`].
+///
+/// This descriptor contains the full remediation intent, including guarded
+/// edits and verification descriptions. It can therefore contain source paths
+/// and edit contents.
+///
+/// Receipts hash this descriptor rather than embedding it directly. Higher
+/// level containers such as diagnostic capsules can decide separately whether
+/// the descriptor itself may be exported.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct FixPlanDescriptor {
+    pub schema: &'static str,
+
+    pub title: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub explanation: Option<String>,
+
+    pub applicability: Applicability,
+
+    pub preconditions: Vec<String>,
+
+    pub edits: Vec<Vec<String>>,
+
+    pub verifications: Vec<String>,
+
+    pub backups: bool,
+
+    pub backup_suffix: String,
+}
+
 /// A transactional remediation plan composed of explicit
 /// filesystem edits, preconditions, and deterministic
 /// post-apply verification checks.
@@ -391,6 +426,40 @@ impl FixPlan {
 
     pub fn applicability_value(&self) -> Applicability {
         self.applicability
+    }
+
+    /// Returns a deterministic serializable description of this plan.
+    ///
+    /// The descriptor is suitable for hashing, persistence, audit evidence,
+    /// and optional inclusion in a diagnostic capsule.
+    pub fn descriptor(&self) -> FixPlanDescriptor {
+        FixPlanDescriptor {
+            schema: FIX_PLAN_DESCRIPTOR_V1_SCHEMA,
+
+            title: self.title.clone(),
+
+            explanation: self.explanation.clone(),
+
+            applicability: self.applicability,
+
+            preconditions: self
+                .preconditions
+                .iter()
+                .map(FileCheck::description)
+                .collect(),
+
+            edits: self.edits.iter().map(Edit::preview_lines).collect(),
+
+            verifications: self
+                .verifications
+                .iter()
+                .map(FileCheck::description)
+                .collect(),
+
+            backups: self.backups,
+
+            backup_suffix: self.backup_suffix.clone(),
+        }
     }
 
     pub fn preview(&self) -> FixPlanPreview {

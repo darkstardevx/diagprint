@@ -193,6 +193,7 @@ mod artifact;
 mod artifact_writer;
 mod attribute;
 mod canonical;
+mod capsule;
 mod captured;
 mod cargo;
 mod compiler;
@@ -209,6 +210,7 @@ mod intelligence;
 pub mod interop;
 mod redaction;
 mod remediation;
+mod remediation_receipt;
 mod report;
 mod reporter;
 mod result_ext;
@@ -232,6 +234,8 @@ pub mod integrations;
 #[cfg(feature = "terminal-docs")]
 pub mod docs;
 
+pub mod project_scan;
+
 pub mod render;
 
 pub use artifact::{
@@ -244,6 +248,14 @@ pub use artifact_writer::{ArtifactWriteError, ArtifactWriter, PersistedArtifact}
 pub use attribute::{DiagnosticAttribute, DiagnosticValue};
 
 pub use canonical::{CANONICAL_V1_NAMESPACE, CanonicalizationError, CanonicalizationVersion};
+
+pub use capsule::{
+    CAPSULE_PROVENANCE_V1_SCHEMA, CAPSULE_SOURCE_INDEX_V1_SCHEMA, CapsuleEntryKind,
+    CapsuleManifestEntry, CapsulePolicyDescriptor, CapsuleProvenance, CapsuleSourceEntry,
+    CapsuleSourceIndex, DIAGNOSTIC_CAPSULE_V1_SCHEMA, DiagnosticCapsule, DiagnosticCapsuleError,
+    DiagnosticCapsuleManifest, DiagnosticCapsulePolicy, DiagnosticCapsuleVerification,
+    PersistedDiagnosticCapsule,
+};
 
 pub use captured::CapturedDiagnostic;
 
@@ -281,7 +293,8 @@ pub use fingerprint::{
 pub use fixer::{FixCheck, FixError, FixPreview, FixReport, Fixer, RollbackFailure};
 
 pub use fixplan::{
-    FileCheck, FileCheckFailure, FixPlan, FixPlanCheck, FixPlanError, FixPlanPreview, FixPlanReport,
+    FIX_PLAN_DESCRIPTOR_V1_SCHEMA, FileCheck, FileCheckFailure, FixPlan, FixPlanCheck,
+    FixPlanDescriptor, FixPlanError, FixPlanPreview, FixPlanReport,
 };
 
 pub use interop::{
@@ -298,6 +311,11 @@ pub use redaction::{
 pub use export::{
     ExportAttributes, ExportDiagnostic, ExportDocumentationLink, ExportLabel, ExportPath,
     ExportPolicy, ExportRemediation, ExportSourceLocation, ExportSuggestion, ExportText, ExportUrl,
+};
+
+pub use remediation_receipt::{
+    REMEDIATION_RECEIPT_V1_SCHEMA, RemediationEffect, RemediationOutcome, RemediationPlanReceipt,
+    RemediationReceipt, RemediationReceiptError, RemediationStatus,
 };
 
 pub use report::{DiagnosticReport, ReportStatus, SeverityCounts};
@@ -346,3 +364,11 @@ pub use integrations::TracingLayer;
 pub use docs::{TerminalDocError, TerminalDocViewer};
 
 pub type Result<T> = std::io::Result<T>;
+
+mod history;
+
+pub use history::{
+    DIAGNOSTIC_HISTORY_RUN_V1_SCHEMA, DIAGNOSTIC_LINEAGE_V1_SCHEMA, DiagnosticHistory,
+    DiagnosticHistoryError, DiagnosticHistoryRun, DiagnosticHistoryTransition, DiagnosticLineage,
+    DiagnosticLineageStep, HistoryDeltaCounts, HistoryObservation, HistorySeverityCounts,
+};
