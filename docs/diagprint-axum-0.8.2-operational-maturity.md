@@ -150,7 +150,7 @@ Operational Maturity workflow before Milestone 2 began.
 Milestone 2 deliberately attacks delivery and lifecycle failure paths without
 changing the runtime API.
 
-At the `diagprint-async` layer it verifies:
+Through the public `diagprint-async` API from the `diagprint-axum` operational test suite it verifies:
 
 - an underlying `DiagnosticSink::emit` failure becomes a sticky
   `AsyncSinkError::Worker`;
@@ -192,3 +192,63 @@ Milestone 2 remains test- and operations-only unless this fault injection
 exposes a genuine implementation defect. A failing test is not repaired by
 weakening the assertion unless the documented public contract itself is
 intentionally changed.
+
+
+
+The worker lifecycle failure tests live under `diagprint-axum/tests` rather
+than modifying `diagprint-async`. They exercise the frozen companion crate
+through its existing public API while preserving the Axum branch-isolation
+contract. Emit failure, flush failure, worker panic, sticky error state, queue
+closure, and shutdown/join behavior remain covered.
+
+### Milestone 3 — supply chain and API provenance
+
+Milestone 3 hardens the dependency, build-workflow, and public-API trust
+boundary without expanding runtime behavior.
+
+The dependency policy uses `cargo-deny` against both the default and
+`async-delivery` `diagprint-axum` graphs. It checks advisories, yanked and
+unsound packages, licenses, wildcard dependency declarations, and package
+sources.
+
+A second RustSec implementation, `cargo-audit`, independently scans a fresh
+standalone consumer lockfile for the async-delivery graph.
+
+Canonical dependency provenance snapshots record exact package versions,
+sources, registry checksums, and activated features for both the default and
+async-delivery graphs. Any graph drift therefore becomes visible in review.
+
+Public API provenance uses `cargo-public-api 0.52.0` with
+`nightly-2025-11-22`.
+
+That dated nightly is intentional. Rustdoc JSON format 57 introduced the
+`ExternalCrate::path` field required by the parser used by the pinned
+cargo-public-api installation. Earlier format-55 JSON from
+`nightly-2025-08-02` is rejected because that field is absent.
+
+The current default and all-feature API snapshots are committed and compared
+against both current source and the immutable `diagprint-axum-v0.8.1` release
+tag.
+
+For the 0.8.2 operational-maturity line, public API equality with 0.8.1 is
+intentionally stricter than ordinary patch SemVer compatibility: even
+compatible API additions require a deliberate policy change.
+
+Every external GitHub Action is pinned to a reviewed full-length commit SHA.
+The policy also requires explicit workflow permissions, disables persisted
+checkout credentials, rejects `pull_request_target`, and rejects `write-all`.
+
+Dependabot discovers candidate Cargo and GitHub Actions updates, but discovery
+does not bypass provenance review.
+
+The dedicated Axum Supply Chain workflow runs daily so newly published
+advisories can fail the security gate even when repository source and the
+lockfile have not changed.
+
+
+The dated public-API toolchain is pinned to rustdoc JSON format 57 or later
+because that schema introduced `ExternalCrate::path`, which is required by the
+pinned parser. This prevents the provenance check from silently depending on a
+moving nightly while also avoiding the incompatible format-55 schema.
+
+Milestone 3 changes no `diagprint-axum` or `diagprint-async` runtime source.

@@ -28,6 +28,18 @@ The project follows Semantic Versioning.
 - Added repeated failure-injection and concurrency execution to the local
   operational gate and dedicated Axum operational CI.
 
+- Added an Axum-scoped `cargo-deny` policy for advisories, yanked and
+  unsound packages, licenses, wildcard dependencies, and dependency sources.
+- Added an independent `cargo-audit` scan against a fresh
+  `diagprint-axum` async-delivery consumer lockfile.
+- Added canonical default and async dependency provenance snapshots recording
+  exact versions, sources, registry checksums, and activated features.
+- Added exact default and all-feature public API snapshots and require the
+  0.8.2 operational line to remain identical to the immutable published
+  `0.8.1` API.
+- Added a dedicated daily Axum supply-chain workflow and Dependabot update
+  discovery for Cargo, the fuzz workspace, and GitHub Actions.
+
 ### Security
 
 - Extended release hardening into continuous development by making privacy
@@ -43,6 +55,17 @@ The project follows Semantic Versioning.
 - Added exact-delivery assertions proving rejected and dropped diagnostics never
   reach the underlying sink while every accepted `Block` submission is
   delivered exactly once with request correlation intact.
+
+- Pinned every external GitHub Action to a reviewed full-length commit SHA
+  and added policy rejecting mutable or unreviewed action references.
+- Disabled persisted Git credentials on CI checkouts, rejected
+  `pull_request_target` and `write-all`, and required explicit workflow
+  permissions.
+- Added dependency graph drift detection so version, source, checksum, and
+  activated-feature changes require explicit review.
+- Pinned public API generation to rustdoc JSON format 57 via
+  `nightly-2025-11-22`, avoiding the incompatible older format that lacks
+  `ExternalCrate::path`.
 
 ### Planned
 

@@ -1,0 +1,287 @@
+pub mod diagprint_axum
+pub use diagprint_axum::AsyncDiagnosticSink
+pub use diagprint_axum::AsyncSinkError
+pub use diagprint_axum::BackpressurePolicy
+pub use diagprint_axum::ReportSubmitError
+pub use diagprint_axum::SubmissionSummary
+pub use diagprint_axum::SubmitOutcome
+pub enum diagprint_axum::AsyncEmissionOutcome
+pub diagprint_axum::AsyncEmissionOutcome::Dropped
+pub diagprint_axum::AsyncEmissionOutcome::Enqueued
+pub diagprint_axum::AsyncEmissionOutcome::Failed(diagprint_async::AsyncSinkError)
+impl diagprint_axum::AsyncEmissionOutcome
+pub fn diagprint_axum::AsyncEmissionOutcome::error(&self) -> core::option::Option<&diagprint_async::AsyncSinkError>
+pub fn diagprint_axum::AsyncEmissionOutcome::is_dropped(&self) -> bool
+pub fn diagprint_axum::AsyncEmissionOutcome::is_enqueued(&self) -> bool
+pub fn diagprint_axum::AsyncEmissionOutcome::is_failed(&self) -> bool
+pub enum diagprint_axum::EmissionOutcome
+pub diagprint_axum::EmissionOutcome::Emitted
+pub diagprint_axum::EmissionOutcome::Failed(diagprint::sink::SinkError)
+impl diagprint_axum::EmissionOutcome
+pub fn diagprint_axum::EmissionOutcome::error(&self) -> core::option::Option<&diagprint::sink::SinkError>
+pub fn diagprint_axum::EmissionOutcome::is_emitted(&self) -> bool
+pub fn diagprint_axum::EmissionOutcome::is_failed(&self) -> bool
+pub enum diagprint_axum::ProblemExtensionError
+pub diagprint_axum::ProblemExtensionError::DuplicateKey(alloc::string::String)
+pub diagprint_axum::ProblemExtensionError::InvalidName(alloc::string::String)
+pub diagprint_axum::ProblemExtensionError::ReservedName(alloc::string::String)
+impl core::error::Error for diagprint_axum::ProblemExtensionError
+impl core::fmt::Display for diagprint_axum::ProblemExtensionError
+pub fn diagprint_axum::ProblemExtensionError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum diagprint_axum::RejectionKind
+pub diagprint_axum::RejectionKind::Extension
+pub diagprint_axum::RejectionKind::Form
+pub diagprint_axum::RejectionKind::Json
+pub diagprint_axum::RejectionKind::Path
+pub diagprint_axum::RejectionKind::Query
+impl diagprint_axum::RejectionKind
+pub const fn diagprint_axum::RejectionKind::as_str(self) -> &'static str
+pub const fn diagprint_axum::RejectionKind::diagnostic_code(self) -> &'static str
+pub struct diagprint_axum::AsyncDiagnosticState
+impl diagprint_axum::AsyncDiagnosticState
+pub async fn diagprint_axum::AsyncDiagnosticState::emit_problem<E>(&self, &E, &diagprint_axum::RequestContext) -> diagprint_axum::AsyncEmission<diagprint_axum::ProblemDetailsResponse> where E: diagprint_axum::ApplicationError + ?core::marker::Sized
+pub fn diagprint_axum::AsyncDiagnosticState::new(diagprint::reporter::Reporter, alloc::sync::Arc<diagprint_async::AsyncDiagnosticSink>) -> Self
+pub const fn diagprint_axum::AsyncDiagnosticState::reporter(&self) -> &diagprint::reporter::Reporter
+pub fn diagprint_axum::AsyncDiagnosticState::shared_sink(&self) -> alloc::sync::Arc<diagprint_async::AsyncDiagnosticSink>
+pub fn diagprint_axum::AsyncDiagnosticState::sink(&self) -> &diagprint_async::AsyncDiagnosticSink
+pub fn diagprint_axum::AsyncDiagnosticState::with_sink(diagprint::reporter::Reporter, diagprint_async::AsyncDiagnosticSink) -> Self
+impl core::fmt::Debug for diagprint_axum::AsyncDiagnosticState
+pub fn diagprint_axum::AsyncDiagnosticState::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct diagprint_axum::AsyncEmission<T>
+impl<T> diagprint_axum::AsyncEmission<T>
+pub fn diagprint_axum::AsyncEmission<T>::into_parts(self) -> (T, diagprint_axum::AsyncEmissionOutcome)
+pub fn diagprint_axum::AsyncEmission<T>::into_value(self) -> T
+pub const fn diagprint_axum::AsyncEmission<T>::outcome(&self) -> &diagprint_axum::AsyncEmissionOutcome
+pub const fn diagprint_axum::AsyncEmission<T>::value(&self) -> &T
+impl<T> axum_core::response::into_response::IntoResponse for diagprint_axum::AsyncEmission<T> where T: axum_core::response::into_response::IntoResponse
+pub fn diagprint_axum::AsyncEmission<T>::into_response(self) -> axum_core::response::Response
+pub struct diagprint_axum::ClientErrorBody
+pub diagprint_axum::ClientErrorBody::code: core::option::Option<alloc::string::String>
+pub diagprint_axum::ClientErrorBody::message: alloc::string::String
+pub diagprint_axum::ClientErrorBody::report_id: core::option::Option<alloc::string::String>
+pub diagprint_axum::ClientErrorBody::status: u16
+pub struct diagprint_axum::ClientErrorEnvelope
+pub diagprint_axum::ClientErrorEnvelope::error: diagprint_axum::ClientErrorBody
+pub struct diagprint_axum::DiagnosticResponse
+impl diagprint_axum::DiagnosticResponse
+pub fn diagprint_axum::DiagnosticResponse::client_body(&self) -> diagprint_axum::ClientErrorEnvelope
+pub const fn diagprint_axum::DiagnosticResponse::diagnostic(&self) -> &diagprint::diagnostic::Diagnostic
+pub fn diagprint_axum::DiagnosticResponse::into_diagnostic(self) -> diagprint::diagnostic::Diagnostic
+pub fn diagprint_axum::DiagnosticResponse::new(http::status::StatusCode, diagprint::diagnostic::Diagnostic) -> Self
+pub const fn diagprint_axum::DiagnosticResponse::policy(&self) -> &diagprint_axum::ResponsePolicy
+pub const fn diagprint_axum::DiagnosticResponse::status(&self) -> http::status::StatusCode
+pub fn diagprint_axum::DiagnosticResponse::with_policy(self, diagprint_axum::ResponsePolicy) -> Self
+impl axum_core::response::into_response::IntoResponse for diagprint_axum::DiagnosticResponse
+pub fn diagprint_axum::DiagnosticResponse::into_response(self) -> axum_core::response::Response
+impl core::convert::From<(http::status::StatusCode, diagprint::diagnostic::Diagnostic)> for diagprint_axum::DiagnosticResponse
+pub fn diagprint_axum::DiagnosticResponse::from((http::status::StatusCode, diagprint::diagnostic::Diagnostic)) -> Self
+impl core::convert::From<diagprint_axum::DiagnosticResponse> for diagprint_axum::ProblemDetailsResponse
+pub fn diagprint_axum::ProblemDetailsResponse::from(diagprint_axum::DiagnosticResponse) -> Self
+impl diagprint_axum::AsyncDiagnosticEmissionExt for diagprint_axum::DiagnosticResponse
+pub async fn diagprint_axum::DiagnosticResponse::emit_to_async(self, &diagprint_async::AsyncDiagnosticSink) -> diagprint_axum::AsyncEmission<Self>
+impl diagprint_axum::DiagnosticEmissionExt for diagprint_axum::DiagnosticResponse
+pub fn diagprint_axum::DiagnosticResponse::emit_to(self, &dyn diagprint::sink::DiagnosticSink) -> diagprint_axum::Emission<Self>
+impl diagprint_axum::ProblemDetailsResponseExt for diagprint_axum::DiagnosticResponse
+pub fn diagprint_axum::DiagnosticResponse::into_problem_details(self) -> diagprint_axum::ProblemDetailsResponse
+pub struct diagprint_axum::DiagnosticState
+impl diagprint_axum::DiagnosticState
+pub fn diagprint_axum::DiagnosticState::emit_problem<E>(&self, &E, &diagprint_axum::RequestContext) -> diagprint_axum::Emission<diagprint_axum::ProblemDetailsResponse> where E: diagprint_axum::ApplicationError + ?core::marker::Sized
+pub fn diagprint_axum::DiagnosticState::new(diagprint::reporter::Reporter, alloc::sync::Arc<dyn diagprint::sink::DiagnosticSink>) -> Self
+pub const fn diagprint_axum::DiagnosticState::reporter(&self) -> &diagprint::reporter::Reporter
+pub fn diagprint_axum::DiagnosticState::shared_sink(&self) -> alloc::sync::Arc<dyn diagprint::sink::DiagnosticSink>
+pub fn diagprint_axum::DiagnosticState::sink(&self) -> &dyn diagprint::sink::DiagnosticSink
+pub fn diagprint_axum::DiagnosticState::with_sink<S>(diagprint::reporter::Reporter, S) -> Self where S: diagprint::sink::DiagnosticSink + 'static
+impl core::fmt::Debug for diagprint_axum::DiagnosticState
+pub fn diagprint_axum::DiagnosticState::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct diagprint_axum::Emission<T>
+impl<T> diagprint_axum::Emission<T>
+pub fn diagprint_axum::Emission<T>::into_parts(self) -> (T, diagprint_axum::EmissionOutcome)
+pub fn diagprint_axum::Emission<T>::into_value(self) -> T
+pub const fn diagprint_axum::Emission<T>::outcome(&self) -> &diagprint_axum::EmissionOutcome
+pub const fn diagprint_axum::Emission<T>::value(&self) -> &T
+impl<T> axum_core::response::into_response::IntoResponse for diagprint_axum::Emission<T> where T: axum_core::response::into_response::IntoResponse
+pub fn diagprint_axum::Emission<T>::into_response(self) -> axum_core::response::Response
+pub struct diagprint_axum::InvalidRequestId
+impl core::error::Error for diagprint_axum::InvalidRequestId
+impl core::fmt::Display for diagprint_axum::InvalidRequestId
+pub fn diagprint_axum::InvalidRequestId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct diagprint_axum::MissingRequestContext
+impl axum_core::response::into_response::IntoResponse for diagprint_axum::MissingRequestContext
+pub fn diagprint_axum::MissingRequestContext::into_response(self) -> axum_core::response::Response
+impl core::error::Error for diagprint_axum::MissingRequestContext
+impl core::fmt::Display for diagprint_axum::MissingRequestContext
+pub fn diagprint_axum::MissingRequestContext::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct diagprint_axum::ProblemDetails
+pub diagprint_axum::ProblemDetails::code: core::option::Option<alloc::string::String>
+pub diagprint_axum::ProblemDetails::detail: alloc::string::String
+pub diagprint_axum::ProblemDetails::instance: core::option::Option<alloc::string::String>
+pub diagprint_axum::ProblemDetails::report_id: core::option::Option<alloc::string::String>
+pub diagprint_axum::ProblemDetails::request_id: core::option::Option<alloc::string::String>
+pub diagprint_axum::ProblemDetails::status: u16
+pub diagprint_axum::ProblemDetails::title: alloc::string::String
+pub diagprint_axum::ProblemDetails::type_uri: alloc::string::String
+impl diagprint_axum::ProblemDetails
+pub fn diagprint_axum::ProblemDetails::extensions(&self) -> &alloc::collections::btree::map::BTreeMap<alloc::string::String, serde_json::value::Value>
+pub struct diagprint_axum::ProblemDetailsPolicy
+impl diagprint_axum::ProblemDetailsPolicy
+pub fn diagprint_axum::ProblemDetailsPolicy::about_blank() -> Self
+pub fn diagprint_axum::ProblemDetailsPolicy::expose_internal_extensions(self, bool) -> Self
+pub fn diagprint_axum::ProblemDetailsPolicy::include_request_id(self, bool) -> Self
+pub fn diagprint_axum::ProblemDetailsPolicy::instance(&self) -> core::option::Option<&str>
+pub const fn diagprint_axum::ProblemDetailsPolicy::internal_extensions_exposed(&self) -> bool
+pub fn diagprint_axum::ProblemDetailsPolicy::title(&self) -> core::option::Option<&str>
+pub fn diagprint_axum::ProblemDetailsPolicy::type_uri(&self) -> &str
+pub fn diagprint_axum::ProblemDetailsPolicy::with_instance(self, impl core::convert::Into<alloc::string::String>) -> Self
+pub fn diagprint_axum::ProblemDetailsPolicy::with_title(self, impl core::convert::Into<alloc::string::String>) -> Self
+pub fn diagprint_axum::ProblemDetailsPolicy::with_type_uri(self, impl core::convert::Into<alloc::string::String>) -> Self
+impl core::default::Default for diagprint_axum::ProblemDetailsPolicy
+pub fn diagprint_axum::ProblemDetailsPolicy::default() -> Self
+pub struct diagprint_axum::ProblemDetailsResponse
+impl diagprint_axum::ProblemDetailsResponse
+pub const fn diagprint_axum::ProblemDetailsResponse::diagnostic_response(&self) -> &diagprint_axum::DiagnosticResponse
+pub fn diagprint_axum::ProblemDetailsResponse::into_diagnostic_response(self) -> diagprint_axum::DiagnosticResponse
+pub fn diagprint_axum::ProblemDetailsResponse::new(diagprint_axum::DiagnosticResponse) -> Self
+pub fn diagprint_axum::ProblemDetailsResponse::problem_details(&self) -> diagprint_axum::ProblemDetails
+pub fn diagprint_axum::ProblemDetailsResponse::problem_policy(&self) -> &diagprint_axum::ProblemDetailsPolicy
+pub const fn diagprint_axum::ProblemDetailsResponse::status(&self) -> http::status::StatusCode
+pub fn diagprint_axum::ProblemDetailsResponse::with_extension(self, impl core::convert::Into<alloc::string::String>, serde_json::value::Value) -> core::result::Result<Self, diagprint_axum::ProblemExtensionError>
+pub fn diagprint_axum::ProblemDetailsResponse::with_internal_extension(self, impl core::convert::Into<alloc::string::String>, serde_json::value::Value) -> core::result::Result<Self, diagprint_axum::ProblemExtensionError>
+pub fn diagprint_axum::ProblemDetailsResponse::with_problem_policy(self, diagprint_axum::ProblemDetailsPolicy) -> Self
+pub fn diagprint_axum::ProblemDetailsResponse::with_request_id(self, impl core::convert::Into<alloc::string::String>) -> Self
+impl axum_core::response::into_response::IntoResponse for diagprint_axum::ProblemDetailsResponse
+pub fn diagprint_axum::ProblemDetailsResponse::into_response(self) -> axum_core::response::Response
+impl core::convert::From<diagprint_axum::DiagnosticResponse> for diagprint_axum::ProblemDetailsResponse
+pub fn diagprint_axum::ProblemDetailsResponse::from(diagprint_axum::DiagnosticResponse) -> Self
+impl diagprint_axum::AsyncDiagnosticEmissionExt for diagprint_axum::ProblemDetailsResponse
+pub async fn diagprint_axum::ProblemDetailsResponse::emit_to_async(self, &diagprint_async::AsyncDiagnosticSink) -> diagprint_axum::AsyncEmission<Self>
+impl diagprint_axum::DiagnosticEmissionExt for diagprint_axum::ProblemDetailsResponse
+pub fn diagprint_axum::ProblemDetailsResponse::emit_to(self, &dyn diagprint::sink::DiagnosticSink) -> diagprint_axum::Emission<Self>
+pub struct diagprint_axum::RequestContext
+impl diagprint_axum::RequestContext
+pub fn diagprint_axum::RequestContext::annotate_diagnostic(&self, diagprint::diagnostic::Diagnostic) -> diagprint::diagnostic::Diagnostic
+pub fn diagprint_axum::RequestContext::matched_route(&self) -> core::option::Option<&str>
+pub fn diagprint_axum::RequestContext::method(&self) -> &http::method::Method
+pub fn diagprint_axum::RequestContext::new(diagprint_axum::RequestId, http::method::Method, core::option::Option<alloc::string::String>) -> Self
+pub fn diagprint_axum::RequestContext::request_id(&self) -> &diagprint_axum::RequestId
+impl<S> axum_core::extract::FromRequestParts<S> for diagprint_axum::RequestContext where S: core::marker::Send + core::marker::Sync
+pub type diagprint_axum::RequestContext::Rejection = diagprint_axum::MissingRequestContext
+pub async fn diagprint_axum::RequestContext::from_request_parts(&mut http::request::Parts, &S) -> core::result::Result<Self, Self::Rejection>
+pub struct diagprint_axum::RequestId(_)
+impl diagprint_axum::RequestId
+pub fn diagprint_axum::RequestId::as_str(&self) -> &str
+pub fn diagprint_axum::RequestId::generate() -> Self
+pub fn diagprint_axum::RequestId::into_inner(self) -> alloc::string::String
+pub fn diagprint_axum::RequestId::new(impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, diagprint_axum::InvalidRequestId>
+impl core::fmt::Display for diagprint_axum::RequestId
+pub fn diagprint_axum::RequestId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct diagprint_axum::ResponsePolicy
+impl diagprint_axum::ResponsePolicy
+pub fn diagprint_axum::ResponsePolicy::client_error_message(self, impl core::convert::Into<alloc::string::String>) -> Self
+pub fn diagprint_axum::ResponsePolicy::expose_diagnostic_code(self, bool) -> Self
+pub fn diagprint_axum::ResponsePolicy::expose_diagnostic_message(self, bool) -> Self
+pub fn diagprint_axum::ResponsePolicy::include_report_id(self, bool) -> Self
+pub fn diagprint_axum::ResponsePolicy::redacted() -> Self
+pub fn diagprint_axum::ResponsePolicy::server_error_message(self, impl core::convert::Into<alloc::string::String>) -> Self
+impl core::default::Default for diagprint_axum::ResponsePolicy
+pub fn diagprint_axum::ResponsePolicy::default() -> Self
+pub const diagprint_axum::ABOUT_BLANK: &str
+pub const diagprint_axum::MAX_REQUEST_ID_LEN: usize
+pub const diagprint_axum::PROBLEM_JSON_MEDIA_TYPE: &str
+pub const diagprint_axum::REQUEST_ID_HEADER: &str
+pub trait diagprint_axum::ApplicationError: core::error::Error
+pub fn diagprint_axum::ApplicationError::http_status(&self) -> http::status::StatusCode
+pub fn diagprint_axum::ApplicationError::problem_policy(&self) -> diagprint_axum::ProblemDetailsPolicy
+pub fn diagprint_axum::ApplicationError::response_policy(&self) -> diagprint_axum::ResponsePolicy
+pub fn diagprint_axum::ApplicationError::to_diagnostic(&self, &diagprint::reporter::Reporter) -> diagprint::diagnostic::Diagnostic
+pub trait diagprint_axum::ApplicationErrorExt: diagprint_axum::ApplicationError
+pub fn diagprint_axum::ApplicationErrorExt::to_diagnostic_response(&self, &diagprint::reporter::Reporter) -> diagprint_axum::DiagnosticResponse
+pub fn diagprint_axum::ApplicationErrorExt::to_diagnostic_response_with_context(&self, &diagprint::reporter::Reporter, &diagprint_axum::RequestContext) -> diagprint_axum::DiagnosticResponse
+pub fn diagprint_axum::ApplicationErrorExt::to_problem_response(&self, &diagprint::reporter::Reporter) -> diagprint_axum::ProblemDetailsResponse
+pub fn diagprint_axum::ApplicationErrorExt::to_problem_response_with_context(&self, &diagprint::reporter::Reporter, &diagprint_axum::RequestContext) -> diagprint_axum::ProblemDetailsResponse
+impl<T> diagprint_axum::ApplicationErrorExt for T where T: diagprint_axum::ApplicationError + ?core::marker::Sized
+pub fn T::to_diagnostic_response(&self, &diagprint::reporter::Reporter) -> diagprint_axum::DiagnosticResponse
+pub fn T::to_diagnostic_response_with_context(&self, &diagprint::reporter::Reporter, &diagprint_axum::RequestContext) -> diagprint_axum::DiagnosticResponse
+pub fn T::to_problem_response(&self, &diagprint::reporter::Reporter) -> diagprint_axum::ProblemDetailsResponse
+pub fn T::to_problem_response_with_context(&self, &diagprint::reporter::Reporter, &diagprint_axum::RequestContext) -> diagprint_axum::ProblemDetailsResponse
+pub trait diagprint_axum::ApplicationResultExt: core::marker::Sized
+pub type diagprint_axum::ApplicationResultExt::Value
+pub fn diagprint_axum::ApplicationResultExt::emit_problem(self, &diagprint_axum::DiagnosticState, &diagprint_axum::RequestContext) -> diagprint_axum::EmittedProblemResult<Self::Value>
+impl<T, E> diagprint_axum::ApplicationResultExt for core::result::Result<T, E> where E: diagprint_axum::ApplicationError
+pub type core::result::Result<T, E>::Value = T
+pub fn core::result::Result<T, E>::emit_problem(self, &diagprint_axum::DiagnosticState, &diagprint_axum::RequestContext) -> diagprint_axum::EmittedProblemResult<Self::Value>
+pub trait diagprint_axum::AsyncApplicationResultExt: core::marker::Sized
+pub type diagprint_axum::AsyncApplicationResultExt::Value
+pub fn diagprint_axum::AsyncApplicationResultExt::emit_problem_async<'a>(self, &'a diagprint_axum::AsyncDiagnosticState, &diagprint_axum::RequestContext) -> impl core::future::future::Future<Output = diagprint_axum::AsyncEmittedProblemResult<Self::Value>> + core::marker::Send + 'a where Self::Value: core::marker::Send + 'a
+impl<T, E> diagprint_axum::AsyncApplicationResultExt for core::result::Result<T, E> where E: diagprint_axum::ApplicationError
+pub type core::result::Result<T, E>::Value = T
+pub fn core::result::Result<T, E>::emit_problem_async<'a>(self, &'a diagprint_axum::AsyncDiagnosticState, &diagprint_axum::RequestContext) -> impl core::future::future::Future<Output = diagprint_axum::AsyncEmittedProblemResult<Self::Value>> + core::marker::Send + 'a where T: core::marker::Send + 'a
+pub trait diagprint_axum::AsyncDiagnosticEmissionExt: core::marker::Sized
+pub async fn diagprint_axum::AsyncDiagnosticEmissionExt::emit_to_async(self, &diagprint_async::AsyncDiagnosticSink) -> diagprint_axum::AsyncEmission<Self>
+impl diagprint_axum::AsyncDiagnosticEmissionExt for diagprint::diagnostic::Diagnostic
+pub async fn diagprint::diagnostic::Diagnostic::emit_to_async(self, &diagprint_async::AsyncDiagnosticSink) -> diagprint_axum::AsyncEmission<Self>
+impl diagprint_axum::AsyncDiagnosticEmissionExt for diagprint_axum::DiagnosticResponse
+pub async fn diagprint_axum::DiagnosticResponse::emit_to_async(self, &diagprint_async::AsyncDiagnosticSink) -> diagprint_axum::AsyncEmission<Self>
+impl diagprint_axum::AsyncDiagnosticEmissionExt for diagprint_axum::ProblemDetailsResponse
+pub async fn diagprint_axum::ProblemDetailsResponse::emit_to_async(self, &diagprint_async::AsyncDiagnosticSink) -> diagprint_axum::AsyncEmission<Self>
+pub trait diagprint_axum::AxumRejectionExt: diagprint_axum::rejection::sealed::Sealed
+pub fn diagprint_axum::AxumRejectionExt::rejection_detail(&self) -> alloc::string::String
+pub fn diagprint_axum::AxumRejectionExt::rejection_kind(&self) -> diagprint_axum::RejectionKind
+pub fn diagprint_axum::AxumRejectionExt::rejection_status(&self) -> http::status::StatusCode
+pub fn diagprint_axum::AxumRejectionExt::to_diagnostic(&self, &diagprint::reporter::Reporter) -> diagprint::diagnostic::Diagnostic
+pub fn diagprint_axum::AxumRejectionExt::to_diagnostic_response(&self, &diagprint::reporter::Reporter) -> diagprint_axum::DiagnosticResponse
+pub fn diagprint_axum::AxumRejectionExt::to_diagnostic_response_with_policy(&self, &diagprint::reporter::Reporter, diagprint_axum::ResponsePolicy) -> diagprint_axum::DiagnosticResponse
+impl diagprint_axum::AxumRejectionExt for axum::extract::rejection::ExtensionRejection
+pub fn axum::extract::rejection::ExtensionRejection::rejection_detail(&self) -> alloc::string::String
+pub fn axum::extract::rejection::ExtensionRejection::rejection_kind(&self) -> diagprint_axum::RejectionKind
+pub fn axum::extract::rejection::ExtensionRejection::rejection_status(&self) -> http::status::StatusCode
+pub fn axum::extract::rejection::ExtensionRejection::to_diagnostic(&self, &diagprint::reporter::Reporter) -> diagprint::diagnostic::Diagnostic
+pub fn axum::extract::rejection::ExtensionRejection::to_diagnostic_response(&self, &diagprint::reporter::Reporter) -> diagprint_axum::DiagnosticResponse
+pub fn axum::extract::rejection::ExtensionRejection::to_diagnostic_response_with_policy(&self, &diagprint::reporter::Reporter, diagprint_axum::ResponsePolicy) -> diagprint_axum::DiagnosticResponse
+impl diagprint_axum::AxumRejectionExt for axum::extract::rejection::FormRejection
+pub fn axum::extract::rejection::FormRejection::rejection_detail(&self) -> alloc::string::String
+pub fn axum::extract::rejection::FormRejection::rejection_kind(&self) -> diagprint_axum::RejectionKind
+pub fn axum::extract::rejection::FormRejection::rejection_status(&self) -> http::status::StatusCode
+pub fn axum::extract::rejection::FormRejection::to_diagnostic(&self, &diagprint::reporter::Reporter) -> diagprint::diagnostic::Diagnostic
+pub fn axum::extract::rejection::FormRejection::to_diagnostic_response(&self, &diagprint::reporter::Reporter) -> diagprint_axum::DiagnosticResponse
+pub fn axum::extract::rejection::FormRejection::to_diagnostic_response_with_policy(&self, &diagprint::reporter::Reporter, diagprint_axum::ResponsePolicy) -> diagprint_axum::DiagnosticResponse
+impl diagprint_axum::AxumRejectionExt for axum::extract::rejection::JsonRejection
+pub fn axum::extract::rejection::JsonRejection::rejection_detail(&self) -> alloc::string::String
+pub fn axum::extract::rejection::JsonRejection::rejection_kind(&self) -> diagprint_axum::RejectionKind
+pub fn axum::extract::rejection::JsonRejection::rejection_status(&self) -> http::status::StatusCode
+pub fn axum::extract::rejection::JsonRejection::to_diagnostic(&self, &diagprint::reporter::Reporter) -> diagprint::diagnostic::Diagnostic
+pub fn axum::extract::rejection::JsonRejection::to_diagnostic_response(&self, &diagprint::reporter::Reporter) -> diagprint_axum::DiagnosticResponse
+pub fn axum::extract::rejection::JsonRejection::to_diagnostic_response_with_policy(&self, &diagprint::reporter::Reporter, diagprint_axum::ResponsePolicy) -> diagprint_axum::DiagnosticResponse
+impl diagprint_axum::AxumRejectionExt for axum::extract::rejection::PathRejection
+pub fn axum::extract::rejection::PathRejection::rejection_detail(&self) -> alloc::string::String
+pub fn axum::extract::rejection::PathRejection::rejection_kind(&self) -> diagprint_axum::RejectionKind
+pub fn axum::extract::rejection::PathRejection::rejection_status(&self) -> http::status::StatusCode
+pub fn axum::extract::rejection::PathRejection::to_diagnostic(&self, &diagprint::reporter::Reporter) -> diagprint::diagnostic::Diagnostic
+pub fn axum::extract::rejection::PathRejection::to_diagnostic_response(&self, &diagprint::reporter::Reporter) -> diagprint_axum::DiagnosticResponse
+pub fn axum::extract::rejection::PathRejection::to_diagnostic_response_with_policy(&self, &diagprint::reporter::Reporter, diagprint_axum::ResponsePolicy) -> diagprint_axum::DiagnosticResponse
+impl diagprint_axum::AxumRejectionExt for axum::extract::rejection::QueryRejection
+pub fn axum::extract::rejection::QueryRejection::rejection_detail(&self) -> alloc::string::String
+pub fn axum::extract::rejection::QueryRejection::rejection_kind(&self) -> diagprint_axum::RejectionKind
+pub fn axum::extract::rejection::QueryRejection::rejection_status(&self) -> http::status::StatusCode
+pub fn axum::extract::rejection::QueryRejection::to_diagnostic(&self, &diagprint::reporter::Reporter) -> diagprint::diagnostic::Diagnostic
+pub fn axum::extract::rejection::QueryRejection::to_diagnostic_response(&self, &diagprint::reporter::Reporter) -> diagprint_axum::DiagnosticResponse
+pub fn axum::extract::rejection::QueryRejection::to_diagnostic_response_with_policy(&self, &diagprint::reporter::Reporter, diagprint_axum::ResponsePolicy) -> diagprint_axum::DiagnosticResponse
+pub trait diagprint_axum::DiagnosticEmissionExt: core::marker::Sized
+pub fn diagprint_axum::DiagnosticEmissionExt::emit_to(self, &dyn diagprint::sink::DiagnosticSink) -> diagprint_axum::Emission<Self>
+impl diagprint_axum::DiagnosticEmissionExt for diagprint::diagnostic::Diagnostic
+pub fn diagprint::diagnostic::Diagnostic::emit_to(self, &dyn diagprint::sink::DiagnosticSink) -> diagprint_axum::Emission<Self>
+impl diagprint_axum::DiagnosticEmissionExt for diagprint_axum::DiagnosticResponse
+pub fn diagprint_axum::DiagnosticResponse::emit_to(self, &dyn diagprint::sink::DiagnosticSink) -> diagprint_axum::Emission<Self>
+impl diagprint_axum::DiagnosticEmissionExt for diagprint_axum::ProblemDetailsResponse
+pub fn diagprint_axum::ProblemDetailsResponse::emit_to(self, &dyn diagprint::sink::DiagnosticSink) -> diagprint_axum::Emission<Self>
+pub trait diagprint_axum::DiagnosticResponseExt
+pub fn diagprint_axum::DiagnosticResponseExt::into_http_response(self, http::status::StatusCode) -> diagprint_axum::DiagnosticResponse
+impl diagprint_axum::DiagnosticResponseExt for diagprint::diagnostic::Diagnostic
+pub fn diagprint::diagnostic::Diagnostic::into_http_response(self, http::status::StatusCode) -> diagprint_axum::DiagnosticResponse
+pub trait diagprint_axum::ProblemDetailsResponseExt
+pub fn diagprint_axum::ProblemDetailsResponseExt::into_problem_details(self) -> diagprint_axum::ProblemDetailsResponse
+impl diagprint_axum::ProblemDetailsResponseExt for diagprint_axum::DiagnosticResponse
+pub fn diagprint_axum::DiagnosticResponse::into_problem_details(self) -> diagprint_axum::ProblemDetailsResponse
+pub async fn diagprint_axum::request_context_middleware(axum_core::extract::Request, axum::middleware::from_fn::Next) -> axum_core::response::Response
+pub type diagprint_axum::AsyncEmittedProblemResult<T> = core::result::Result<T, diagprint_axum::AsyncEmission<diagprint_axum::ProblemDetailsResponse>>
+pub type diagprint_axum::DiagnosticResult<T> = core::result::Result<T, diagprint_axum::DiagnosticResponse>
+pub type diagprint_axum::EmittedProblemResult<T> = core::result::Result<T, diagprint_axum::Emission<diagprint_axum::ProblemDetailsResponse>>

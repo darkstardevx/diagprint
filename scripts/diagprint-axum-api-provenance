@@ -1,0 +1,133 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+release_tag="diagprint-axum-v0.8.1"
+release_source="530d267c82cceff3b81e859fdc8abc364892fab1"
+nightly="nightly-2025-11-22"
+
+manifest="crates/diagprint-axum/Cargo.toml"
+
+default_snapshot="docs/security/diagprint-axum-0.8.2-public-api-default.txt"
+async_snapshot="docs/security/diagprint-axum-0.8.2-public-api-all-features.txt"
+
+fail() {
+    echo "ERROR: $*" >&2
+    exit 1
+}
+
+[[ "$(git rev-list -n 1 "$release_tag")" == "$release_source" ]] ||
+    fail "immutable 0.8.1 release tag moved"
+
+command -v cargo-public-api >/dev/null 2>&1 ||
+    fail "cargo-public-api is required"
+
+rustup toolchain list |
+    grep -q "^${nightly}" ||
+    fail "$nightly is required"
+
+tmp="$(mktemp -d)"
+baseline="$tmp/baseline"
+
+cleanup() {
+    git worktree remove \
+        --force \
+        "$baseline" \
+        >/dev/null 2>&1 || true
+
+    rm -rf "$tmp"
+}
+
+trap cleanup EXIT
+
+current_default="$tmp/current-default.txt"
+current_async="$tmp/current-async.txt"
+baseline_default="$tmp/baseline-default.txt"
+baseline_async="$tmp/baseline-async.txt"
+
+CARGO_TARGET_DIR="$tmp/current-target-default" \
+cargo +"$nightly" public-api \
+    --manifest-path "$manifest" \
+    --no-default-features \
+    -sss \
+    > "$current_default"
+
+CARGO_TARGET_DIR="$tmp/current-target-async" \
+cargo +"$nightly" public-api \
+    --manifest-path "$manifest" \
+    --all-features \
+    -sss \
+    > "$current_async"
+
+cmp \
+    "$default_snapshot" \
+    "$current_default" ||
+{
+    echo
+    echo "ERROR: committed default public API snapshot drifted"
+    diff -u \
+        "$default_snapshot" \
+        "$current_default" || true
+    exit 1
+}
+
+cmp \
+    "$async_snapshot" \
+    "$current_async" ||
+{
+    echo
+    echo "ERROR: committed all-feature public API snapshot drifted"
+    diff -u \
+        "$async_snapshot" \
+        "$current_async" || true
+    exit 1
+}
+
+git worktree add \
+    --detach \
+    "$baseline" \
+    "$release_tag" \
+    >/dev/null
+
+CARGO_TARGET_DIR="$tmp/baseline-target-default" \
+cargo +"$nightly" public-api \
+    --manifest-path \
+    "$baseline/crates/diagprint-axum/Cargo.toml" \
+    --no-default-features \
+    -sss \
+    > "$baseline_default"
+
+CARGO_TARGET_DIR="$tmp/baseline-target-async" \
+cargo +"$nightly" public-api \
+    --manifest-path \
+    "$baseline/crates/diagprint-axum/Cargo.toml" \
+    --all-features \
+    -sss \
+    > "$baseline_async"
+
+cmp \
+    "$baseline_default" \
+    "$current_default" ||
+{
+    echo
+    echo "ERROR: 0.8.2 default public API differs from immutable 0.8.1"
+    diff -u \
+        "$baseline_default" \
+        "$current_default" || true
+    exit 1
+}
+
+cmp \
+    "$baseline_async" \
+    "$current_async" ||
+{
+    echo
+    echo "ERROR: 0.8.2 all-feature public API differs from immutable 0.8.1"
+    diff -u \
+        "$baseline_async" \
+        "$current_async" || true
+    exit 1
+}
+
+echo "PASS: committed public API snapshots are current"
+echo "PASS: default API exactly matches published 0.8.1"
+echo "PASS: all-feature API exactly matches published 0.8.1"

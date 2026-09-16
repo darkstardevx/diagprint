@@ -1,0 +1,179 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+branch="axum-v0.8.2"
+
+manifest="crates/diagprint-axum/Cargo.toml"
+
+release_tag="diagprint-axum-v0.8.1"
+release_source="530d267c82cceff3b81e859fdc8abc364892fab1"
+
+default_dependencies="docs/security/diagprint-axum-0.8.2-dependencies-default.txt"
+async_dependencies="docs/security/diagprint-axum-0.8.2-dependencies-async.txt"
+
+rule() {
+    printf '%*s\n' 78 '' | tr ' ' '='
+}
+
+section() {
+    echo
+    rule
+    echo " $1"
+    rule
+    echo
+}
+
+fail() {
+    echo
+    echo "ERROR: $*" >&2
+    exit 1
+}
+
+[[ "$(git branch --show-current)" == "$branch" ]] ||
+    fail "expected branch $branch"
+
+[[ "$(git rev-list -n 1 "$release_tag")" == "$release_source" ]] ||
+    fail "immutable 0.8.1 tag moved"
+
+for command in \
+    cargo-deny \
+    cargo-audit \
+    cargo-public-api
+do
+    command -v "$command" >/dev/null 2>&1 ||
+        fail "required supply-chain tool missing: $command"
+done
+
+section "GITHUB ACTION PROVENANCE"
+
+./scripts/check-github-actions-pins
+
+section "CARGO-DENY DEFAULT GRAPH"
+
+cargo deny \
+    --manifest-path "$manifest" \
+    --locked \
+    --no-default-features \
+    check \
+    advisories \
+    licenses \
+    bans \
+    sources
+
+section "CARGO-DENY ASYNC GRAPH"
+
+cargo deny \
+    --manifest-path "$manifest" \
+    --locked \
+    --all-features \
+    check \
+    advisories \
+    licenses \
+    bans \
+    sources
+
+section "INDEPENDENT RUSTSEC AUDIT"
+
+tmp="$(mktemp -d)"
+
+cleanup() {
+    rm -rf "$tmp"
+}
+
+trap cleanup EXIT
+
+repo="$(pwd)"
+
+mkdir -p "$tmp/consumer/src"
+
+cat > "$tmp/consumer/Cargo.toml" <<TOML
+[package]
+name = "diagprint-axum-security-audit"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+diagprint-axum = { path = "$repo/crates/diagprint-axum", default-features = false, features = ["async-delivery"] }
+
+[workspace]
+TOML
+
+cat > "$tmp/consumer/src/main.rs" <<'RS'
+fn main() {}
+RS
+
+cargo generate-lockfile \
+    --manifest-path \
+    "$tmp/consumer/Cargo.toml"
+
+cargo audit \
+    --file \
+    "$tmp/consumer/Cargo.lock" \
+    --deny unsound \
+    --deny yanked
+
+echo "PASS: independent RustSec audit"
+
+section "DEPENDENCY PROVENANCE SNAPSHOTS"
+
+generated_default="$tmp/dependencies-default.txt"
+generated_async="$tmp/dependencies-async.txt"
+
+./scripts/diagprint-axum-dependency-snapshot \
+    default \
+    > "$generated_default"
+
+./scripts/diagprint-axum-dependency-snapshot \
+    async \
+    > "$generated_async"
+
+cmp \
+    "$default_dependencies" \
+    "$generated_default" ||
+{
+    echo
+    echo "ERROR: default dependency provenance drifted"
+    diff -u \
+        "$default_dependencies" \
+        "$generated_default" || true
+    exit 1
+}
+
+cmp \
+    "$async_dependencies" \
+    "$generated_async" ||
+{
+    echo
+    echo "ERROR: async dependency provenance drifted"
+    diff -u \
+        "$async_dependencies" \
+        "$generated_async" || true
+    exit 1
+}
+
+echo "PASS: default dependency graph matches reviewed snapshot"
+echo "PASS: async dependency graph matches reviewed snapshot"
+
+section "PUBLIC API PROVENANCE"
+
+./scripts/diagprint-axum-api-provenance
+
+section "SUPPLY CHAIN GREEN"
+
+echo "  ✓ immutable workflow actions"
+echo "  ✓ non-persisted checkout credentials"
+echo "  ✓ explicit workflow permissions"
+echo "  ✓ cargo-deny advisory policy"
+echo "  ✓ cargo-deny license policy"
+echo "  ✓ cargo-deny source policy"
+echo "  ✓ wildcard dependency denial"
+echo "  ✓ independent RustSec audit"
+echo "  ✓ dependency graph provenance"
+echo "  ✓ dependency checksums recorded"
+echo "  ✓ default API snapshot"
+echo "  ✓ all-feature API snapshot"
+echo "  ✓ exact API equality with 0.8.1"
+echo
+rule
+echo " ✅ DIAGPRINT-AXUM SUPPLY CHAIN + API PROVENANCE GREEN"
+rule

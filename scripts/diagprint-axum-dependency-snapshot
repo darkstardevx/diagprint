@@ -1,0 +1,198 @@
+#!/usr/bin/env python3
+
+from pathlib import Path
+import json
+import subprocess
+import sys
+import tomllib
+
+if len(sys.argv) != 2:
+    raise SystemExit(
+        "usage: diagprint-axum-dependency-snapshot "
+        "<default|async>"
+    )
+
+mode = sys.argv[1]
+
+if mode not in {"default", "async"}:
+    raise SystemExit(
+        "mode must be 'default' or 'async'"
+    )
+
+repo = Path.cwd().resolve()
+
+manifest = (
+    repo
+    / "crates"
+    / "diagprint-axum"
+    / "Cargo.toml"
+)
+
+command = [
+    "cargo",
+    "metadata",
+    "--format-version",
+    "1",
+    "--locked",
+    "--manifest-path",
+    str(manifest),
+    "--no-default-features",
+]
+
+if mode == "async":
+    command.extend(
+        [
+            "--features",
+            "async-delivery",
+        ]
+    )
+
+metadata = json.loads(
+    subprocess.check_output(
+        command,
+        text=True,
+    )
+)
+
+packages = {
+    package["id"]: package
+    for package in metadata["packages"]
+}
+
+nodes = {
+    node["id"]: node
+    for node in metadata["resolve"]["nodes"]
+}
+
+root_ids = [
+    package["id"]
+    for package in metadata["packages"]
+    if package["name"] == "diagprint-axum"
+    and Path(
+        package["manifest_path"]
+    ).resolve() == manifest
+]
+
+assert len(root_ids) == 1
+
+root_id = root_ids[0]
+
+seen = set()
+stack = [root_id]
+
+while stack:
+    package_id = stack.pop()
+
+    if package_id in seen:
+        continue
+
+    seen.add(package_id)
+
+    node = nodes[package_id]
+
+    for dependency in node["deps"]:
+        kinds = dependency["dep_kinds"]
+
+        production = any(
+            kind["kind"] != "dev"
+            for kind in kinds
+        )
+
+        if production:
+            stack.append(
+                dependency["pkg"]
+            )
+
+with (
+    repo / "Cargo.lock"
+).open("rb") as handle:
+    lock = tomllib.load(handle)
+
+checksums = {}
+
+for package in lock["package"]:
+    source = package.get("source")
+
+    key = (
+        package["name"],
+        package["version"],
+        source,
+    )
+
+    checksums[key] = package.get(
+        "checksum",
+        "-",
+    )
+
+records = []
+
+for package_id in seen:
+    package = packages[package_id]
+    node = nodes[package_id]
+
+    source = package.get("source")
+
+    if source is None:
+        package_dir = Path(
+            package["manifest_path"]
+        ).resolve().parent
+
+        try:
+            relative = package_dir.relative_to(
+                repo
+            )
+
+            source_label = (
+                f"path:{relative.as_posix()}"
+            )
+        except ValueError:
+            source_label = "path:<external>"
+    else:
+        source_label = source
+
+    checksum = checksums.get(
+        (
+            package["name"],
+            package["version"],
+            source,
+        ),
+        "-",
+    )
+
+    features = ",".join(
+        sorted(
+            node.get(
+                "features",
+                [],
+            )
+        )
+    )
+
+    records.append(
+        (
+            package["name"],
+            package["version"],
+            source_label,
+            checksum,
+            features,
+        )
+    )
+
+records.sort()
+
+print(
+    "diagprint-axum dependency provenance"
+)
+
+print(
+    f"mode={mode}"
+)
+
+print(
+    "columns=name|version|source|checksum|features"
+)
+
+for record in records:
+    print(
+        "|".join(record)
+    )

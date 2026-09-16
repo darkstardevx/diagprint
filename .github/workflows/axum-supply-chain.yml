@@ -1,0 +1,95 @@
+name: Axum Supply Chain
+
+on:
+  push:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "deny.toml"
+      - "src/**"
+      - "crates/diagprint-async/**"
+      - "crates/diagprint-axum/**"
+      - "scripts/check-github-actions-pins"
+      - "scripts/diagprint-axum-api-provenance"
+      - "scripts/diagprint-axum-dependency-snapshot"
+      - "scripts/diagprint-axum-supply-chain"
+      - "docs/security/**"
+      - ".github/dependabot.yml"
+      - ".github/workflows/**"
+
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "deny.toml"
+      - "src/**"
+      - "crates/diagprint-async/**"
+      - "crates/diagprint-axum/**"
+      - "scripts/check-github-actions-pins"
+      - "scripts/diagprint-axum-api-provenance"
+      - "scripts/diagprint-axum-dependency-snapshot"
+      - "scripts/diagprint-axum-supply-chain"
+      - "docs/security/**"
+      - ".github/dependabot.yml"
+      - ".github/workflows/**"
+
+  schedule:
+    - cron: "23 13 * * *"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+
+jobs:
+  supply-chain:
+    name: Dependency and API provenance
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: stable
+
+      - name: Install pinned rustdoc JSON nightly
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: nightly-2025-11-22
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - name: Install cargo-deny
+        run: >-
+          cargo +stable install
+          cargo-deny
+          --locked
+          --version 0.20.2
+
+      - name: Install cargo-audit
+        run: >-
+          cargo +stable install
+          cargo-audit
+          --locked
+          --version 0.22.2
+
+      - name: Install cargo-public-api
+        run: >-
+          cargo +stable install
+          cargo-public-api
+          --locked
+          --version 0.52.0
+
+      - name: Verify supply chain and API provenance
+        run: ./scripts/diagprint-axum-supply-chain

@@ -1,0 +1,222 @@
+#!/usr/bin/env python3
+
+from pathlib import Path
+import re
+import sys
+
+APPROVED = {
+    "actions/checkout":
+        "3d3c42e5aac5ba805825da76410c181273ba90b1",
+
+    "dtolnay/rust-toolchain":
+        "02cb101ec7c40f2c49e1d9714d64511d8e1b74de",
+
+    "Swatinem/rust-cache":
+        "6323deb102c322ba6fcbdcafc7e3dddab59af2b6",
+
+    "obi1kenobi/cargo-semver-checks-action":
+        "6b69fcf40e9b5fb17adeb57e4b6ecd020649a239",
+}
+
+FULL_SHA = re.compile(
+    r"^[0-9a-f]{40}$"
+)
+
+USES = re.compile(
+    r"\buses:\s*([^\s#]+)"
+)
+
+
+def indent_of(line: str) -> int:
+    return len(line) - len(
+        line.lstrip()
+    )
+
+
+def step_block(
+    lines: list[str],
+    uses_index: int,
+) -> list[str]:
+    """
+    Return the remainder of the current GitHub Actions step.
+
+    `uses:` and `with:` are sibling keys, so both normally have
+    the same indentation. The old checker incorrectly stopped at
+    `with:` because it treated equal indentation as a new step.
+
+    A new step begins when indentation drops below the `uses:`
+    key indentation, normally at the next `- name:` / `- uses:`.
+    """
+    uses_indent = indent_of(
+        lines[uses_index]
+    )
+
+    block = []
+
+    for line in lines[
+        uses_index + 1:
+    ]:
+        if not line.strip():
+            block.append(line)
+            continue
+
+        indent = indent_of(line)
+
+        if indent < uses_indent:
+            break
+
+        block.append(line)
+
+    return block
+
+
+failures = []
+
+workflow_dir = Path(
+    ".github/workflows"
+)
+
+workflows = sorted(
+    workflow_dir.glob("*.y*ml")
+)
+
+if not workflows:
+    failures.append(
+        "no workflow files found"
+    )
+
+for path in workflows:
+    text = path.read_text()
+    lines = text.splitlines()
+
+    if "pull_request_target:" in text:
+        failures.append(
+            f"{path}: pull_request_target is prohibited"
+        )
+
+    if re.search(
+        r"(?m)^\s*permissions:\s*write-all\s*$",
+        text,
+    ):
+        failures.append(
+            f"{path}: write-all permission is prohibited"
+        )
+
+    if "permissions:" not in text:
+        failures.append(
+            f"{path}: explicit permissions block is required"
+        )
+
+    for index, line in enumerate(lines):
+        match = USES.search(line)
+
+        if match is None:
+            continue
+
+        reference = match.group(1)
+
+        if reference.startswith("./"):
+            continue
+
+        if reference.startswith(
+            "docker://"
+        ):
+            failures.append(
+                f"{path}:{index + 1}: "
+                "docker actions require a separately "
+                "reviewed digest policy"
+            )
+            continue
+
+        if "@" not in reference:
+            failures.append(
+                f"{path}:{index + 1}: "
+                f"action has no ref: {reference}"
+            )
+            continue
+
+        action, ref = reference.rsplit(
+            "@",
+            1,
+        )
+
+        if not FULL_SHA.fullmatch(ref):
+            failures.append(
+                f"{path}:{index + 1}: "
+                f"{action} is not pinned to a "
+                f"full commit SHA: {ref}"
+            )
+            continue
+
+        expected = APPROVED.get(
+            action
+        )
+
+        if expected is None:
+            failures.append(
+                f"{path}:{index + 1}: "
+                f"unreviewed external action: "
+                f"{action}@{ref}"
+            )
+            continue
+
+        if ref != expected:
+            failures.append(
+                f"{path}:{index + 1}: "
+                f"{action} SHA changed without "
+                "provenance review:\n"
+                f"  expected {expected}\n"
+                f"  found    {ref}"
+            )
+
+        if action == "actions/checkout":
+            block = step_block(
+                lines,
+                index,
+            )
+
+            if not any(
+                item.strip()
+                == "persist-credentials: false"
+                for item in block
+            ):
+                failures.append(
+                    f"{path}:{index + 1}: "
+                    "actions/checkout must set "
+                    "persist-credentials: false"
+                )
+
+if failures:
+    print(
+        "GitHub Actions provenance policy failed:",
+        file=sys.stderr,
+    )
+
+    for failure in failures:
+        print(
+            f"  - {failure}",
+            file=sys.stderr,
+        )
+
+    raise SystemExit(1)
+
+print(
+    "PASS: every external GitHub Action is pinned "
+    "to a reviewed full commit SHA"
+)
+
+print(
+    "PASS: actions/checkout credentials are not persisted"
+)
+
+print(
+    "PASS: no pull_request_target workflow exists"
+)
+
+print(
+    "PASS: every workflow declares explicit permissions"
+)
+
+print(
+    "PASS: no workflow grants write-all"
+)
