@@ -74,6 +74,20 @@ The project follows Semantic Versioning.
   error values retain request correlation, privacy filtering, and explicit
   delivery outcomes.
 
+### Security
+
+- Added adversarial privacy-contract coverage proving default RFC 9457
+  responses redact internal messages, codes, attributes, notes, help, causes,
+  labels, source paths, application metadata, and internal extensions.
+- Added regression coverage proving reserved Problem Details members cannot be
+  replaced, public and internal extensions cannot shadow one another, invalid
+  inbound request IDs are replaced rather than reflected, and missing request
+  context fails closed without exposing application wiring details.
+- Added an exact-release audit that requires clean-tree package consumers,
+  asynchronous delivery-contract tests, byte-for-byte reproducible `.crate`
+  generation, source-SHA anchoring through `.cargo_vcs_info.json`, packaged
+  file hygiene checks, and content-manifest reproducibility before release.
+
 ## [diagprint-axum 0.8.0] - 2026-09-16
 
 ### Added

@@ -291,6 +291,12 @@ check_package_contents() {
         exit 1
     fi
 
+    if ! grep -qx 'tests/security_contract.rs' <<<"$package_list"; then
+        echo
+        echo "FAILED: tests/security_contract.rs is missing from the package"
+        exit 1
+    fi
+
     echo
     echo "PASS: required package contents are present"
 }

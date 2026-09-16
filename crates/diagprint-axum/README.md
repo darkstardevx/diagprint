@@ -95,6 +95,37 @@ to add a separate `diagprint-async` dependency merely to construct
 A normal `diagprint-axum` dependency therefore does not pull the asynchronous
 delivery layer into the application's normal dependency graph.
 
+## Security and privacy contract
+
+`diagprint-axum` treats every HTTP response as an externalization boundary.
+
+The default response contract is fail-closed:
+
+- internal diagnostic messages are not exposed;
+- diagnostic codes are not exposed;
+- structured diagnostic attributes are not exposed;
+- notes, help, causes, labels, and source paths are not exposed;
+- application, process, host, and session metadata are not exposed;
+- explicitly registered internal Problem Details extensions are not exposed;
+- invalid inbound request IDs are replaced rather than reflected;
+- missing request context fails closed with HTTP 500 without exposing wiring
+  details;
+- Problem Details responses use `Cache-Control: no-store`;
+- Problem Details responses use `application/problem+json`.
+
+Public disclosure remains explicit. Enabling diagnostic-message exposure,
+diagnostic-code exposure, internal-extension exposure, or adding public
+Problem Details members creates an intentional API boundary.
+
+Values placed in public extension members, custom problem titles, problem type
+URIs, or problem-instance values are application-controlled public data.
+Applications must not place credentials, authorization material, private user
+data, raw query strings, stack traces, filesystem secrets, or other sensitive
+state into those explicitly public fields.
+
+The release gates include adversarial regression coverage for these defaults so
+future refactors cannot silently broaden the client-visible surface.
+
 ## Privacy model
 
 HTTP responses are externalization boundaries.

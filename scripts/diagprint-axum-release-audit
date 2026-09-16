@@ -1,0 +1,396 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+package="diagprint-axum"
+version="0.8.1"
+branch="axum-v0.8.1"
+registry="${DIAGPRINT_AXUM_REGISTRY:-crates-io}"
+tag="diagprint-axum-v${version}"
+
+rule() {
+    printf '%*s\n' 78 '' | tr ' ' '='
+}
+
+section() {
+    echo
+    rule
+    echo " $1"
+    rule
+    echo
+}
+
+fail() {
+    echo
+    echo "ERROR: $*" >&2
+    exit 1
+}
+
+for command in \
+    cargo \
+    git \
+    python3 \
+    sha256sum \
+    cmp \
+    tar
+do
+    command -v "$command" >/dev/null 2>&1 ||
+        fail "required command not found: $command"
+done
+
+[[ -f Cargo.toml ]] ||
+    fail "run this from the diagprint repository root"
+
+[[ -f scripts/diagprint-axum-rc ]] ||
+    fail "RC audit script is missing"
+
+[[ "$(git branch --show-current)" == "$branch" ]] ||
+    fail "expected branch $branch"
+
+if [[ -n "$(git status --porcelain)" ]]; then
+    git status --short
+    fail "release audit requires a clean committed tree"
+fi
+
+revision="$(git rev-parse HEAD)"
+
+section "DIAGPRINT-AXUM EXACT RELEASE AUDIT"
+
+echo "Package  : $package"
+echo "Version  : $version"
+echo "Branch   : $branch"
+echo "Revision : $revision"
+echo "Registry : $registry"
+echo "Tag      : $tag"
+echo
+
+section "SOURCE SAFETY CONTRACT"
+
+grep -Fq \
+    '#![forbid(unsafe_code)]' \
+    crates/diagprint-axum/src/lib.rs ||
+    fail "diagprint-axum no longer forbids unsafe code"
+
+echo "PASS: crate forbids unsafe code"
+
+section "ADVERSARIAL PRIVACY CONTRACT"
+
+cargo test \
+    -p "$package" \
+    --no-default-features \
+    --test security_contract
+
+echo
+echo "PASS: default privacy boundary"
+
+section "ASYNC DELIVERY CONTRACT"
+
+cargo test \
+    -p "$package" \
+    --no-default-features \
+    --features async-delivery \
+    --test async_emission
+
+cargo test \
+    -p "$package" \
+    --no-default-features \
+    --features async-delivery \
+    --test async_state
+
+cargo test \
+    -p "$package" \
+    --no-default-features \
+    --features async-delivery \
+    --test async_result
+
+echo
+echo "PASS: queue acceptance remains distinct from delivery"
+echo "PASS: Reject backpressure contract"
+echo "PASS: DropNewest contract"
+echo "PASS: shared queue/worker contract"
+echo "PASS: explicit flush/shutdown ownership"
+echo "PASS: async result Send-boundary contract"
+
+section "COMPLETE RELEASE CANDIDATE AUDIT"
+
+./scripts/diagprint-axum-rc
+
+section "BYTE-FOR-BYTE PACKAGE REPRODUCIBILITY"
+
+tmp_root="$(mktemp -d)"
+
+cleanup() {
+    rm -rf "$tmp_root"
+}
+
+trap cleanup EXIT
+
+target_a="$tmp_root/target-a"
+target_b="$tmp_root/target-b"
+
+CARGO_TARGET_DIR="$target_a" \
+cargo package \
+    --no-verify \
+    --registry "$registry" \
+    -p "$package"
+
+CARGO_TARGET_DIR="$target_b" \
+cargo package \
+    --no-verify \
+    --registry "$registry" \
+    -p "$package"
+
+crate_a="$target_a/package/${package}-${version}.crate"
+crate_b="$target_b/package/${package}-${version}.crate"
+
+[[ -f "$crate_a" ]] ||
+    fail "first reproducibility artifact missing"
+
+[[ -f "$crate_b" ]] ||
+    fail "second reproducibility artifact missing"
+
+sha_a="$(
+    sha256sum "$crate_a" |
+    awk '{print $1}'
+)"
+
+sha_b="$(
+    sha256sum "$crate_b" |
+    awk '{print $1}'
+)"
+
+echo "Artifact A SHA-256: $sha_a"
+echo "Artifact B SHA-256: $sha_b"
+
+[[ "$sha_a" == "$sha_b" ]] ||
+    fail "package SHA-256 differs between clean builds"
+
+cmp -s "$crate_a" "$crate_b" ||
+    fail "package artifacts are not byte-for-byte identical"
+
+echo
+echo "PASS: package bytes are reproducible"
+
+section "UNPACKED CONTENT REPRODUCIBILITY"
+
+unpack_a="$tmp_root/unpack-a"
+unpack_b="$tmp_root/unpack-b"
+
+mkdir -p "$unpack_a" "$unpack_b"
+
+tar -xzf "$crate_a" -C "$unpack_a"
+tar -xzf "$crate_b" -C "$unpack_b"
+
+root_a="$unpack_a/${package}-${version}"
+root_b="$unpack_b/${package}-${version}"
+
+[[ -d "$root_a" ]] ||
+    fail "first unpacked package root missing"
+
+[[ -d "$root_b" ]] ||
+    fail "second unpacked package root missing"
+
+manifest_a="$tmp_root/content-a.sha256"
+manifest_b="$tmp_root/content-b.sha256"
+
+(
+    cd "$unpack_a"
+    find . -type f -print0 |
+        sort -z |
+        xargs -0 sha256sum
+) > "$manifest_a"
+
+(
+    cd "$unpack_b"
+    find . -type f -print0 |
+        sort -z |
+        xargs -0 sha256sum
+) > "$manifest_b"
+
+cmp -s "$manifest_a" "$manifest_b" ||
+    {
+        diff -u "$manifest_a" "$manifest_b" || true
+        fail "unpacked package content differs between builds"
+    }
+
+content_manifest_sha="$(
+    sha256sum "$manifest_a" |
+    awk '{print $1}'
+)"
+
+echo "Content manifest SHA-256: $content_manifest_sha"
+echo
+echo "PASS: unpacked file content is reproducible"
+
+section "SOURCE REVISION ANCHOR"
+
+PACKAGED_ROOT="$root_a" \
+EXPECTED_REVISION="$revision" \
+python3 <<'PY'
+from pathlib import Path
+import json
+import os
+
+root = Path(os.environ["PACKAGED_ROOT"])
+expected = os.environ["EXPECTED_REVISION"]
+
+path = root / ".cargo_vcs_info.json"
+
+assert path.is_file(), (
+    ".cargo_vcs_info.json is missing "
+    "from packaged artifact"
+)
+
+data = json.loads(path.read_text())
+
+git = data["git"]
+
+assert git["sha1"] == expected, (
+    f"artifact git SHA {git['sha1']} "
+    f"does not match candidate {expected}"
+)
+
+assert git["dirty"] is False, (
+    "packaged artifact reports a dirty source tree"
+)
+
+assert data.get("path_in_vcs") == (
+    "crates/diagprint-axum"
+), data.get("path_in_vcs")
+
+print("PASS: artifact is anchored to exact candidate SHA")
+print("PASS: artifact records clean source state")
+print("PASS: path_in_vcs is correct")
+PY
+
+section "PACKAGE FILE HYGIENE"
+
+PACKAGED_ROOT="$root_a" python3 <<'PY'
+from pathlib import Path
+import os
+
+root = Path(os.environ["PACKAGED_ROOT"])
+
+forbidden_basenames = {
+    ".env",
+    ".env.local",
+    ".env.production",
+    "credentials",
+    "credentials.toml",
+    "id_rsa",
+    "id_ed25519",
+}
+
+forbidden_suffixes = {
+    ".pem",
+    ".key",
+    ".p12",
+    ".pfx",
+}
+
+violations = []
+
+for path in root.rglob("*"):
+    relative = path.relative_to(root)
+
+    lowered_parts = {
+        part.lower()
+        for part in relative.parts
+    }
+
+    if ".git" in lowered_parts:
+        violations.append(
+            f"git metadata: {relative}"
+        )
+
+    if "target" in lowered_parts:
+        violations.append(
+            f"build output: {relative}"
+        )
+
+    if path.is_file():
+        lower_name = path.name.lower()
+
+        if lower_name in forbidden_basenames:
+            violations.append(
+                f"sensitive filename: {relative}"
+            )
+
+        if path.suffix.lower() in forbidden_suffixes:
+            violations.append(
+                f"sensitive key/certificate file: {relative}"
+            )
+
+if violations:
+    raise SystemExit(
+        "forbidden packaged files:\n"
+        + "\n".join(
+            f"- {item}"
+            for item in violations
+        )
+    )
+
+print("PASS: no .git metadata")
+print("PASS: no target/build output")
+print("PASS: no common environment-secret files")
+print("PASS: no private-key/certificate file patterns")
+PY
+
+section "RELEASE TAG SAFETY"
+
+if git show-ref \
+    --verify \
+    --quiet \
+    "refs/tags/$tag"
+then
+    fail "release tag already exists locally"
+fi
+
+set +e
+git ls-remote \
+    --exit-code \
+    --tags \
+    origin \
+    "refs/tags/$tag" \
+    >/dev/null 2>&1
+remote_status=$?
+set -e
+
+case "$remote_status" in
+    2)
+        echo "PASS: release tag remains uncreated"
+        ;;
+    0)
+        fail "release tag already exists remotely"
+        ;;
+    *)
+        fail "could not reliably verify remote tag state"
+        ;;
+esac
+
+section "EXACT RELEASE SNAPSHOT"
+
+echo "Candidate source SHA:"
+echo "  $revision"
+echo
+echo "Reproducible artifact SHA-256:"
+echo "  $sha_a"
+echo
+echo "Reproducible content-manifest SHA-256:"
+echo "  $content_manifest_sha"
+echo
+echo "Registry:"
+echo "  $registry"
+echo
+echo "Tag:"
+echo "  $tag"
+echo "  NOT CREATED"
+echo
+echo "Publication:"
+echo "  RC audit performed crates.io dry run only"
+echo "  NO REAL PUBLISH"
+echo
+
+rule
+echo " ✅ EXACT RELEASE CONTRACT GREEN"
+rule
+echo
