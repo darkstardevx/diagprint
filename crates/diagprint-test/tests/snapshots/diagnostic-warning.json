@@ -1,0 +1,11 @@
+{
+  "application": "diagprint-test",
+  "cause": null,
+  "code": "lint::unused",
+  "help": null,
+  "labels": [],
+  "message": "unused binding",
+  "notes": [],
+  "severity": "warning",
+  "suggestions": []
+}

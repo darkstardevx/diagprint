@@ -118,3 +118,128 @@ macro_rules! assert_report_snapshot {
         $crate::assert_report_matches_snapshot(&($report), $expected);
     }};
 }
+
+/// Internal helper used by file-backed snapshot assertion macros.
+///
+/// Snapshot updates are enabled with:
+///
+/// `DIAGPRINT_UPDATE_SNAPSHOTS=1`
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __diagprint_snapshot_update_enabled {
+    () => {{
+        match ::std::env::var("DIAGPRINT_UPDATE_SNAPSHOTS") {
+            Ok(value) => {
+                let value = value.to_ascii_lowercase();
+
+                match value.as_str() {
+                    "1" | "true" | "yes" | "on" | "always" => true,
+                    "" | "0" | "false" | "no" | "off" | "never" => false,
+                    other => {
+                        panic!(
+                            "invalid DIAGPRINT_UPDATE_SNAPSHOTS value {other:?}; \
+                             expected one of: 1, true, yes, on, always, \
+                             0, false, no, off, never"
+                        );
+                    }
+                }
+            }
+
+            Err(::std::env::VarError::NotPresent) => false,
+
+            Err(::std::env::VarError::NotUnicode(_)) => {
+                panic!("DIAGPRINT_UPDATE_SNAPSHOTS contains non-Unicode data");
+            }
+        }
+    }};
+}
+
+/// Asserts that a diagnostic matches a JSON snapshot file.
+///
+/// The path is resolved relative to the calling crate's `CARGO_MANIFEST_DIR`.
+///
+/// Set `DIAGPRINT_UPDATE_SNAPSHOTS=1` to create or replace the snapshot file
+/// with the current deterministic representation.
+#[macro_export]
+macro_rules! assert_diagnostic_file_snapshot {
+    ($diagnostic:expr, $path:literal $(,)?) => {{
+        let __diagnostic = &($diagnostic);
+        let __path = ::std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join($path);
+
+        if $crate::__diagprint_snapshot_update_enabled!() {
+            let __snapshot = $crate::diagnostic_snapshot(__diagnostic);
+
+            if let Some(__parent) = __path.parent() {
+                ::std::fs::create_dir_all(__parent).unwrap_or_else(|error| {
+                    panic!(
+                        "failed to create diagprint snapshot directory {}: {error}",
+                        __parent.display(),
+                    )
+                });
+            }
+
+            ::std::fs::write(&__path, format!("{__snapshot}\n")).unwrap_or_else(|error| {
+                panic!(
+                    "failed to write diagprint diagnostic snapshot {}: {error}",
+                    __path.display(),
+                )
+            });
+        } else {
+            let __expected = ::std::fs::read_to_string(&__path).unwrap_or_else(|error| {
+                panic!(
+                    "failed to read diagprint diagnostic snapshot {}: {error}\n\
+                         set DIAGPRINT_UPDATE_SNAPSHOTS=1 to create or update it",
+                    __path.display(),
+                )
+            });
+
+            $crate::assert_diagnostic_matches_snapshot(__diagnostic, &__expected);
+        }
+    }};
+}
+
+/// Asserts that a diagnostic report matches a JSON snapshot file.
+///
+/// The path is resolved relative to the calling crate's `CARGO_MANIFEST_DIR`.
+///
+/// Report diagnostics are sorted deterministically before serialization.
+///
+/// Set `DIAGPRINT_UPDATE_SNAPSHOTS=1` to create or replace the snapshot file
+/// with the current deterministic representation.
+#[macro_export]
+macro_rules! assert_report_file_snapshot {
+    ($report:expr, $path:literal $(,)?) => {{
+        let __report = &($report);
+        let __path = ::std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join($path);
+
+        if $crate::__diagprint_snapshot_update_enabled!() {
+            let __snapshot = $crate::report_snapshot(__report);
+
+            if let Some(__parent) = __path.parent() {
+                ::std::fs::create_dir_all(__parent).unwrap_or_else(|error| {
+                    panic!(
+                        "failed to create diagprint snapshot directory {}: {error}",
+                        __parent.display(),
+                    )
+                });
+            }
+
+            ::std::fs::write(&__path, format!("{__snapshot}\n")).unwrap_or_else(|error| {
+                panic!(
+                    "failed to write diagprint report snapshot {}: {error}",
+                    __path.display(),
+                )
+            });
+        } else {
+            let __expected = ::std::fs::read_to_string(&__path).unwrap_or_else(|error| {
+                panic!(
+                    "failed to read diagprint report snapshot {}: {error}\n\
+                         set DIAGPRINT_UPDATE_SNAPSHOTS=1 to create or update it",
+                    __path.display(),
+                )
+            });
+
+            $crate::assert_report_matches_snapshot(__report, &__expected);
+        }
+    }};
+}
