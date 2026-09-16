@@ -5,6 +5,10 @@ documentation, testing, and release infrastructure from the beginning.
 
 This is a project requirement.
 
+For the step-by-step commands, explanations, troubleshooting flow, and links
+to the official Rust, Cargo, Git, rustup, and GitHub documentation, see
+[`COMPANION_CRATE_WORKFLOW.md`](COMPANION_CRATE_WORKFLOW.md).
+
 ## Purpose
 
 Companion crates extend the diagprint diagnostics lifecycle into specific
