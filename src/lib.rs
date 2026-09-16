@@ -1,13 +1,13 @@
 //! # diagprint
 //!
-//! `diagprint` provides structured diagnostics, rich terminal rendering,
-//! persistent reports, guarded remediation, compiler/Cargo intelligence,
-//! version-aware documentation, and Rust ecosystem interoperability.
+//! `diagprint` is a Rust diagnostics lifecycle framework for carrying
+//! structured diagnostics through creation, enrichment, rendering, editor and
+//! CI integration, guarded remediation, verification, export, and telemetry.
 //!
 //! The crate deliberately separates diagnostic data from presentation and
 //! mutation:
 //!
-//! - [`Diagnostic`] describes what happened.
+//! - [`struct@Diagnostic`] describes what happened.
 //! - [`CapturedDiagnostic`] pairs a diagnostic with its immutable source snapshot.
 //! - [`Suggestion`] describes a possible resolution.
 //! - [`Fixer`] validates and applies guarded structured edits.
@@ -22,6 +22,22 @@
 //! - [`CargoStreamImporter`] consumes Cargo build-message streams.
 //!
 //! Calling a renderer never modifies source files.
+//!
+//! ## Canonical identity
+//!
+//! `diagprint.canonical/v1` defines stable, schema-versioned identity for
+//! diagnostics and reports without depending on JSON field ordering or volatile
+//! runtime metadata. [`DiagnosticFingerprint`] identifies a logical diagnostic,
+//! [`DiagnosticDigest`] identifies meaningful diagnostic content, and
+//! [`ReportDigest`] identifies report content independently of insertion order.
+//! [`DiagnosticDelta`] uses those identities to classify diagnostics across
+//! reports as new, resolved, persisting, or changed while preserving duplicate
+//! diagnostic instances.
+//! [`DeltaPolicy`] evaluates those semantic differences for baseline-aware CI
+//! without making existing diagnostic debt appear newly introduced.
+//!
+//! Canonical v1 is immutable: incompatible identity changes require a new
+//! canonicalization version rather than silently changing existing digests.
 //!
 //! ## Diagnostic intelligence
 //!
@@ -59,7 +75,7 @@
 //! This supports editor buffers, generated files, parser inputs, compiler
 //! virtual files, and other source text which may never exist on disk.
 //!
-//! Source contents are not serialized into [`Diagnostic`] JSON output.
+//! Source contents are not serialized into [`struct@Diagnostic`] JSON output.
 //!
 //! ## Generic interoperability
 //!
@@ -156,6 +172,8 @@
 //!
 //! ## Feature flags
 //!
+//! - `artifact-store` — append-only artifact generations with filesystem locking.
+//! - `derive` — derive `DiagnosticMetadata` from typed errors.
 //! - `anyhow` — Anyhow context-chain integration.
 //! - `ariadne` — structured Ariadne/diagprint bridge.
 //! - `annotate-snippets` — structured annotate-snippets/diagprint bridge.
@@ -163,6 +181,7 @@
 //! - `codespan-reporting` — codespan-reporting diagnostic integration.
 //! - `tracing` — structured tracing-event integration.
 //! - `compression` — gzip and Zstandard report compression.
+//! - `html` — HTML diagnostic and report rendering.
 //! - `cybercore` — Cybercore theme-schema integration.
 //! - `terminal-docs` — terminal documentation retrieval and syntax
 //!   highlighting.
@@ -172,19 +191,34 @@
 //!
 //! All optional features are disabled by default.
 
+mod artifact;
+mod artifact_writer;
+mod attribute;
+mod canonical;
+mod capsule;
 mod captured;
 mod cargo;
 mod compiler;
+mod delta;
+mod delta_artifact;
+mod delta_policy;
 mod diagnostic;
 mod documentation;
+mod export;
+mod fingerprint;
 mod fixer;
 mod fixplan;
 mod intelligence;
 pub mod interop;
+mod redaction;
 mod remediation;
+mod remediation_receipt;
+mod report;
 mod reporter;
+mod result_ext;
 mod rotation;
 mod severity;
+mod sink;
 mod source;
 mod suggestion;
 mod typed;
@@ -202,9 +236,33 @@ pub mod integrations;
 #[cfg(feature = "terminal-docs")]
 pub mod docs;
 
+pub mod project_scan;
+
 pub mod render;
 
+pub use artifact::{
+    ArtifactDigest, ArtifactEncoding, ArtifactVerificationError, DELTA_V1_MEDIA_TYPE,
+    ExportPolicyDescriptor, ExportReceipt, ExportedArtifact, RECEIPT_V1_SCHEMA, ReceiptEvaluation,
+};
+
+pub use artifact_writer::{ArtifactWriteError, ArtifactWriter, PersistedArtifact};
+
+pub use attribute::{DiagnosticAttribute, DiagnosticValue};
+
+pub use canonical::{CANONICAL_V1_NAMESPACE, CanonicalizationError, CanonicalizationVersion};
+
+pub use capsule::{
+    CAPSULE_PROVENANCE_V1_SCHEMA, CAPSULE_SOURCE_INDEX_V1_SCHEMA, CapsuleEntryKind,
+    CapsuleManifestEntry, CapsulePolicyDescriptor, CapsuleProvenance, CapsuleSourceEntry,
+    CapsuleSourceIndex, DIAGNOSTIC_CAPSULE_V1_SCHEMA, DiagnosticCapsule, DiagnosticCapsuleError,
+    DiagnosticCapsuleManifest, DiagnosticCapsulePolicy, DiagnosticCapsuleVerification,
+    PersistedDiagnosticCapsule,
+};
+
 pub use captured::CapturedDiagnostic;
+
+#[cfg(feature = "derive")]
+pub use diagprint_derive::Diagnostic;
 
 pub use cargo::{
     CargoArtifact, CargoBuildFinished, CargoBuildScript, CargoBuildSummary,
@@ -217,12 +275,28 @@ pub use compiler::{CompilerImportError, CompilerImporter};
 
 pub use diagnostic::{Cause, Diagnostic, Label, LabelKind, SourceLocation};
 
+pub use delta::{DeltaCounts, DeltaKind, DiagnosticChange, DiagnosticDelta};
+
+pub use delta_artifact::{
+    DELTA_V1_SCHEMA, DeltaArtifact, DeltaArtifactCounts, DeltaArtifactEntry,
+    DeltaArtifactEvaluation, DeltaArtifactFingerprintPolicy, DeltaArtifactPolicy,
+    DeltaArtifactViolation,
+};
+
+pub use delta_policy::{DeltaEvaluation, DeltaPolicy, DeltaRule, DeltaViolation};
+
 pub use documentation::{DocumentationError, DocumentationResolver};
+
+pub use fingerprint::{
+    DiagnosticDigest, DiagnosticFingerprint, DigestAlgorithm, FingerprintPolicy, FingerprintSource,
+    IDENTITY_ATTRIBUTE, ReportDigest,
+};
 
 pub use fixer::{FixCheck, FixError, FixPreview, FixReport, Fixer, RollbackFailure};
 
 pub use fixplan::{
-    FileCheck, FileCheckFailure, FixPlan, FixPlanCheck, FixPlanError, FixPlanPreview, FixPlanReport,
+    FIX_PLAN_DESCRIPTOR_V1_SCHEMA, FileCheck, FileCheckFailure, FixPlan, FixPlanCheck,
+    FixPlanDescriptor, FixPlanError, FixPlanPreview, FixPlanReport,
 };
 
 pub use interop::{
@@ -230,13 +304,33 @@ pub use interop::{
     InteropLabel,
 };
 
-pub use render::{SeverityTheme, Style, Theme};
+pub use render::{GithubActionsDeltaRenderer, ReportRenderer, SeverityTheme, Style, Theme};
+
+pub use redaction::{
+    REDACTED, RedactionPolicy, Sensitive, is_sensitive_key, sanitize_path, sanitize_url,
+};
+
+pub use export::{
+    ExportAttributes, ExportDiagnostic, ExportDocumentationLink, ExportLabel, ExportPath,
+    ExportPolicy, ExportRemediation, ExportSourceLocation, ExportSuggestion, ExportText, ExportUrl,
+};
+
+pub use remediation_receipt::{
+    REMEDIATION_RECEIPT_V1_SCHEMA, RemediationEffect, RemediationOutcome, RemediationPlanReceipt,
+    RemediationReceipt, RemediationReceiptError, RemediationStatus,
+};
+
+pub use report::{DiagnosticReport, ReportStatus, SeverityCounts};
+
+pub use result_ext::{CapturedDiagnosticResult, DiagnosticResult, ResultDiagnosticExt};
 
 pub use reporter::{Compression, Reporter, ReporterBuilder};
 
 pub use rotation::{RotationCadence, RotationPolicy, RotationState};
 
 pub use severity::Severity;
+
+pub use sink::{DiagnosticSink, JsonLinesSink, SinkError, SinkErrorKind, SinkResult, WriterSink};
 
 pub use source::{SourceCache, SourceEntry, SourceProvider, SourceRevision, SourceSnapshot};
 
@@ -272,3 +366,13 @@ pub use integrations::TracingLayer;
 pub use docs::{TerminalDocError, TerminalDocViewer};
 
 pub type Result<T> = std::io::Result<T>;
+
+mod history;
+
+pub use history::{
+    DIAGNOSTIC_HISTORY_RUN_V1_SCHEMA, DIAGNOSTIC_LINEAGE_V1_SCHEMA, DiagnosticHistory,
+    DiagnosticHistoryError, DiagnosticHistoryRun, DiagnosticHistoryTransition, DiagnosticLineage,
+    DiagnosticLineageStep, HistoryDeltaCounts, HistoryObservation, HistorySeverityCounts,
+};
+
+pub use history::{DIAGNOSTIC_HISTORY_HEAD_V1_SCHEMA, DIAGNOSTIC_HISTORY_RUN_V2_SCHEMA};

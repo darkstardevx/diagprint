@@ -1,0 +1,5 @@
+error: duplicate diag code
+ --> tests/ui/duplicate_code.rs:4:23
+  |
+4 | #[diag(code = "E001", code = "E002")]
+  |                       ^^^^

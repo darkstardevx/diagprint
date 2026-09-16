@@ -34,10 +34,11 @@ impl InteropDiagnosticSource for Producer {
 }
 
 fn reporter() -> Reporter {
-    Reporter::builder()
-        .application("interop-tests")
-        .build()
-        .unwrap()
+    let Ok(reporter) = Reporter::builder().application("interop-tests").build() else {
+        panic!("interop test reporter failed to build");
+    };
+
+    reporter
 }
 
 #[test]

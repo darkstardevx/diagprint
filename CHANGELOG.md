@@ -8,10 +8,153 @@ The project follows Semantic Versioning.
 
 ### Planned
 
-- Nonblocking and asynchronous report output.
-- Async terminal documentation retrieval.
-- Additional renderers.
-- Richer structured diff presentation.
+- Add framework and application adapters, beginning with `diagprint-axum`,
+  while keeping framework dependencies outside the core crate.
+- Add asynchronous terminal documentation retrieval without introducing an
+  async runtime dependency into the core crate.
+- Add richer structured diff presentation for remediation previews and
+  machine-generated fixes.
+- Add additional lifecycle-specific renderers, exporters, and integrations
+  where they extend the create → enrich → render → remediate → verify →
+  export/telemetry pipeline without bloating the default dependency graph.
+
+## [0.7.1] - 2026-09-16
+
+### Fixed
+
+- Corrected installation examples to reference the 0.7 release line.
+- Documented the complete current optional-feature surface.
+- Finalized the v0.7.0 release changelog after publication.
+- Corrected `diagprint-test` from planned work to completed v0.7 work.
+
+## [0.7.0] - 2026-09-16
+
+### Added
+
+- Added the `diagprint-test` companion crate with diagnostic/report assertions,
+  canonical identity assertions, and snapshot-oriented test helpers.
+- Added project scanning with static, standard, and deep profiles and built-in
+  analyzers for workspace, manifests, source inventory, unsafe usage,
+  dependencies, configuration, documentation, licenses, security, Git,
+  compiler output, Clippy, tests, and remediation.
+- Added diagnostic capsules with exact-byte hashes, canonical report anchors,
+  provenance, export policy, remediation records, and optional source
+  snapshots.
+- Added hash-chained diagnostic history v2 with head verification, lineage,
+  transition analysis, CLI inspection, and capsule/history anchoring.
+- Added append-only artifact generations with chained manifests and filesystem
+  locking behind the `artifact-store` feature.
+- Added HTML diagnostic/report rendering behind the `html` feature.
+- Added `diagprint.receipt/v1` export receipts which bind exact external
+  artifact bytes to their SHA-256 digest, byte length, artifact schema,
+  encoding, canonical baseline/candidate report identity, and export boundary.
+- Added `ArtifactDigest` as an exact-byte identity distinct from canonical
+  `ReportDigest`, so semantically equivalent compact and pretty artifacts remain
+  independently verifiable.
+- Added verified compact and pretty `diagprint.delta/v1` export APIs with
+  optional CI evaluation receipts and tamper detection.
+- Export receipts record privacy-safe `ExportPolicy` configuration without
+  serializing repository root paths or diagnostic/remediation payloads.
+
+- Added `GithubActionsDeltaRenderer` for presenting `diagprint.delta/v1`
+  artifacts as GitHub Actions summaries, policy violations, and semantic
+  new/changed diagnostic annotations.
+- GitHub delta presentation consumes only privacy-filtered delta artifacts,
+  keeping internal diagnostics behind the shared `ExportPolicy` boundary.
+- Resolved and persisting annotations are opt-in to avoid noisy CI output,
+  while new and changed diagnostics are surfaced by default.
+
+- Added `diagprint.delta/v1`, a portable privacy-aware semantic delta artifact
+  carrying canonical baseline/candidate report identity, matching policy,
+  deterministic per-diagnostic classifications, and optional CI evaluation.
+- Delta artifacts reuse the shared `ExportPolicy` boundary instead of directly
+  serializing internal diagnostics, preventing source-cache contents,
+  remediation payloads, suggested command contents, and default-sensitive
+  metadata from leaking into external artifacts.
+- Delta artifacts record the fingerprint and CI policies that produced their
+  classifications and decisions so downstream tooling can inspect the exact
+  comparison and failure boundary.
+
+- Added `DeltaPolicy`, `DeltaEvaluation`, and machine-readable `DeltaRule`
+  violations for baseline-aware CI decisions over `DiagnosticDelta`.
+- Added a baseline-aware CI preset which rejects brand-new Error/Fatal
+  diagnostics and severity regressions reaching Error/Fatal without failing
+  merely because pre-existing error content changed.
+- Added independent policy controls for any difference, new diagnostics,
+  multiset-aware threshold introductions, and severity increases, with
+  conventional CI exit-code evaluation.
+
+- Added `DiagnosticDelta` semantic report comparison with `New`, `Resolved`,
+  `Persisting`, and `Changed` classifications backed by
+  `diagprint.canonical/v1` fingerprints and content digests.
+- Diagnostic deltas preserve duplicate diagnostics as multisets, prefer exact
+  digest matches before changed-pair matching, and carry canonical baseline
+  and candidate `ReportDigest` values.
+- Added threshold-aware delta queries for diagnostics newly introduced at a
+  severity threshold and for severity increases, enabling future baseline-aware
+  CI policies without treating existing diagnostic debt as newly introduced.
+
+- Added `diagprint.canonical/v1`, a schema-versioned canonical identity contract with SHA-256 diagnostic fingerprints, diagnostic content digests, and order-independent report digests.
+- Added producer-controlled `diagprint.identity` attributes and configurable fingerprint source policy so logical diagnostic identity can remain stable across wording, severity, and exact-location changes.
+- Added canonical v1 regression vectors and a normative compatibility spec; future incompatible canonicalization changes must introduce a new version.
+- Added policy-aware GitHub Actions and SARIF rendering with repository-relative or omitted source paths and optional text redaction, while preserving historical renderer behavior by default.
+- Added a shared `ExportPolicy` with explicit controls for free-form text, source paths, structured attributes, remediation metadata, documentation URLs, and process metadata; existing JSON/JSONL behavior retains conservative safe defaults.
+- Added repository-relative source-path export with fail-closed filename fallback for locations outside the configured root.
+- Added opt-in structured attribute export modes including common sensitive-key redaction while preserving non-sensitive typed values.
+- Added an export-safe diagnostic representation used by JSON and JSON Lines output; default external serialization omits arbitrary attribute values, remediation source text, and suggested command contents while retaining structural counts.
+- Added dependency-free path, URL, and common sensitive-key sanitization primitives for external diagnostic boundaries.
+- Added explicit OpenTelemetry attribute privacy controls with `AttributeExport::{Omit, Redact, Full}`; arbitrary structured diagnostic attributes are omitted by default.
+- Full OpenTelemetry attribute export preserves supported typed values and losslessly falls back to decimal strings for integers outside OpenTelemetry's signed 64-bit range.
+- Added typed `DiagnosticAttribute` / `DiagnosticValue` metadata so structured booleans, integers, floating-point values, and strings no longer need to be flattened into diagnostic notes.
+- The tracing adapter now preserves ordinary event fields as typed diagnostic attributes while retaining reserved diag.code, diag.help, diag.note, message, and error-chain handling.
+- Added opt-in `TracingLayer::with_span_path_attribute` support for recording the active tracing span hierarchy as the structured `tracing.span_path` diagnostic attribute using the event scope provided by `tracing-subscriber`.
+- Added the `diagprint-otel` companion crate for privacy-aware OpenTelemetry diagnostic events and tracing span integration.
+- Telemetry export is metadata-first by default: diagnostic messages are redacted while help, notes, causes, source paths, hostname, and PID are omitted unless explicitly enabled.
+- Added native OpenTelemetry Span and tracing-opentelemetry recording for single diagnostics and DiagnosticReport batches without coupling diagprint to a collector or exporter SDK.
+- Added the runtime-independent `DiagnosticSink` contract with buffered writer and newline-delimited JSON production sinks.
+- Added the `diagprint-async` companion crate with strictly bounded diagnostic queues, ordered flush/shutdown, worker failure propagation, and explicit Block, Reject, and severity-aware DropNewest backpressure.
+- Async DropNewest queues protect diagnostics above their configured drop threshold instead of silently discarding them under overload.
+- Added first-class batch/report output with deterministic report status and configurable severity-based exit decisions.
+- Added valid multi-diagnostic JSON, Markdown, GitHub Actions, and SARIF report rendering plus Reporter batch emission APIs.
+- Added grouped LSP report publishing and report-wide CodeAction generation against immutable source snapshots.
+- Added the `diagprint-lsp` companion crate with revision-aware LSP diagnostic conversion, UTF-8/UTF-16/UTF-32 position encoding, external document-version tracking, and safe versioned CodeActions.
+- LSP remediation fails closed for stale guards, missing document versions, invalid ranges, overlapping edits, placeholder/manual fixes, and suggested commands.
+- Introduced a Cargo workspace with the optional `diagprint-derive` procedural
+  macro crate.
+- Expanded `diagprint-derive` with enum and variant metadata, inheritance/overrides,
+  structured suggestions, and fail-closed rejection of machine-applicable suggestions
+  that do not carry guarded edits.
+- Added derive-based typed diagnostic metadata with structured primary and
+  secondary source labels.
+- Added `DiagnosticReport` and `SeverityCounts` for aggregation, filtering,
+  deterministic ordering, and severity summaries.
+- Added `ResultDiagnosticExt` for converting typed `Result` errors directly
+  into diagnostics or revision-aware captured diagnostics.
+- Added safe-by-default `Sensitive<T>` values and explicit redaction policy
+  primitives for future exporters and integrations.
+
+
+
+### Fixed
+
+- Corrected the tracing integration so structured active span hierarchy is exposed as `tracing.span_path` rather than being misrepresented as `tracing-error::SpanTrace`.
+- Removed the unused `tracing-error` feature, dependency, and `TracingErrorLayer` re-export.
+- Bounded retained tracing emission failures so a permanently failing output destination cannot cause unbounded diagnostic-layer memory growth.
+- Reserved the generated `tracing.span_path` attribute when structured span-path capture is enabled, preventing event-field collisions from overriding library-generated context.
+- Reporter stdout emission now propagates `io::Error` instead of relying on panic-prone standard printing macros.
+- JSON and SARIF renderers now expose fallible serialization entry points; the existing string-rendering APIs degrade to valid format-specific error documents instead of panicking on serialization failure.
+- Removed avoidable internal panic sites from cause-chain construction, documentation version resolution, ANSI truncation, and SARIF rule lookup.
+- Source revision exhaustion remains deliberately fail-stop rather than wrapping or saturating, preserving the guarantee that stale source revisions are never silently reused.
+- URL sanitization now strips credentials from scheme-relative hierarchical URLs in addition to ordinary hierarchical URLs.
+- CI now enforces strict rustdoc warnings, tracing-only feature coverage, full MSRV tests, and root feature-isolation checks.
+- Pinned `yoke-derive` to 0.8.2 on the `terminal-docs` feature path so fresh dependency resolution remains compatible with the Rust 1.85 MSRV; 0.8.3 is currently selectable by Cargo's MSRV-aware resolver but does not compile on Rust 1.85.
+
+### Security
+
+- Diagnostic-history chains, mutable heads, and capsule anchors provide local
+  integrity evidence rather than authenticated tamper-proof storage. A writer
+  with access to all retained state can recompute the chain and head; detecting
+  that class of rewrite requires an independently retained anchor.
 
 ## [0.6.0] - 2026-09-15
 

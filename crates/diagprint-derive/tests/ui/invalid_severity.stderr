@@ -1,0 +1,5 @@
+error: severity must be trace, debug, info, warning, error, or fatal
+ --> tests/ui/invalid_severity.rs:4:19
+  |
+4 | #[diag(severity = catastrophic)]
+  |                   ^^^^^^^^^^^^

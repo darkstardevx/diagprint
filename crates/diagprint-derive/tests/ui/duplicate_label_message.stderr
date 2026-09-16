@@ -1,0 +1,5 @@
+error: duplicate label message
+ --> tests/ui/duplicate_label_message.rs:8:9
+  |
+8 |         message = "second"
+  |         ^^^^^^^

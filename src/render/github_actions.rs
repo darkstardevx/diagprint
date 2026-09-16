@@ -1,5 +1,5 @@
 use super::Renderer;
-use crate::{Diagnostic, Label, LabelKind, Severity};
+use crate::{Diagnostic, ExportPolicy, Label, LabelKind, Severity};
 
 /// Renders diagnostics as GitHub Actions workflow-command annotations.
 ///
@@ -11,6 +11,12 @@ use crate::{Diagnostic, Label, LabelKind, Severity};
 ///
 /// Secondary labels are emitted as `notice` annotations so related source
 /// locations remain visible without being reported as additional failures.
+///
+/// [`Renderer::render`] preserves the historical GitHub Actions behavior,
+/// including source paths exactly as supplied by the diagnostic.
+///
+/// Use [`GithubActionsRenderer::render_with_policy`] when output crosses a
+/// privacy boundary and path/text handling must be explicit.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct GithubActionsRenderer;
 
@@ -18,7 +24,9 @@ impl GithubActionsRenderer {
     fn command(severity: Severity) -> &'static str {
         match severity {
             Severity::Trace | Severity::Debug | Severity::Info => "notice",
+
             Severity::Warning => "warning",
+
             Severity::Error | Severity::Fatal => "error",
         }
     }
@@ -80,41 +88,68 @@ impl GithubActionsRenderer {
         message
     }
 
-    fn render_annotation(diagnostic: &Diagnostic, label: Option<&Label>) -> String {
+    fn push_location_properties(properties: &mut Vec<String>, label: &Label, file: &str) {
+        let location = &label.location;
+
+        properties.push(format!("file={}", Self::escape_property(file)));
+
+        properties.push(format!("line={}", location.line));
+
+        if let Some(column) = location.column {
+            properties.push(format!("col={column}"));
+
+            if let Some(length) = label.length {
+                if length > 0 {
+                    let length = u32::try_from(length).unwrap_or(u32::MAX);
+
+                    let end_column = column.saturating_add(length.saturating_sub(1));
+
+                    properties.push(format!("endColumn={end_column}"));
+                }
+            }
+        }
+    }
+
+    fn render_annotation(
+        diagnostic: &Diagnostic,
+        label: Option<&Label>,
+        policy: Option<&ExportPolicy>,
+    ) -> String {
         let command = match label.map(|label| label.kind) {
             Some(LabelKind::Secondary) => "notice",
+
             _ => Self::command(diagnostic.severity),
         };
 
         let mut properties = Vec::new();
 
         if let Some(label) = label {
-            let location = &label.location;
-
-            properties.push(format!("file={}", Self::escape_property(&location.file)));
-
-            properties.push(format!("line={}", location.line));
-
-            if let Some(column) = location.column {
-                properties.push(format!("col={column}"));
-
-                if let Some(length) = label.length {
-                    if length > 0 {
-                        let length = u32::try_from(length).unwrap_or(u32::MAX);
-
-                        let end_column = column.saturating_add(length.saturating_sub(1));
-
-                        properties.push(format!("endColumn={end_column}"));
+            match policy {
+                Some(policy) => {
+                    if let Some(file) = policy.apply_path(&label.location.file) {
+                        Self::push_location_properties(&mut properties, label, &file);
                     }
+                }
+
+                None => {
+                    Self::push_location_properties(&mut properties, label, &label.location.file);
                 }
             }
         }
 
         if let Some(title) = Self::title(diagnostic, label) {
-            properties.push(format!("title={}", Self::escape_property(&title)));
+            properties.push(format!("title={}", Self::escape_property(&title,)));
         }
 
-        let message = Self::escape_data(&Self::message(diagnostic, label));
+        let message = Self::message(diagnostic, label);
+
+        let message = match policy {
+            Some(policy) => policy.apply_text(&message),
+
+            None => message,
+        };
+
+        let message = Self::escape_data(&message);
 
         if properties.is_empty() {
             format!("::{command}::{message}")
@@ -122,18 +157,35 @@ impl GithubActionsRenderer {
             format!("::{command} {}::{message}", properties.join(","))
         }
     }
-}
 
-impl Renderer for GithubActionsRenderer {
-    fn render(&self, diagnostic: &Diagnostic) -> String {
+    /// Renders a GitHub Actions annotation using an explicit export policy.
+    ///
+    /// In particular, [`crate::ExportPath::RepositoryRelative`] can retain
+    /// source navigation while avoiding disclosure of absolute machine paths.
+    pub fn render_with_policy(&self, diagnostic: &Diagnostic, policy: &ExportPolicy) -> String {
         if diagnostic.labels.is_empty() {
-            return Self::render_annotation(diagnostic, None);
+            return Self::render_annotation(diagnostic, None, Some(policy));
         }
 
         diagnostic
             .labels
             .iter()
-            .map(|label| Self::render_annotation(diagnostic, Some(label)))
+            .map(|label| Self::render_annotation(diagnostic, Some(label), Some(policy)))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+}
+
+impl Renderer for GithubActionsRenderer {
+    fn render(&self, diagnostic: &Diagnostic) -> String {
+        if diagnostic.labels.is_empty() {
+            return Self::render_annotation(diagnostic, None, None);
+        }
+
+        diagnostic
+            .labels
+            .iter()
+            .map(|label| Self::render_annotation(diagnostic, Some(label), None))
             .collect::<Vec<_>>()
             .join("\n")
     }

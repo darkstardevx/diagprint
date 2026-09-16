@@ -1,8 +1,9 @@
 use crate::{
-    CapturedDiagnostic, Diagnostic, Severity, SourceCache, SourceProvider, SourceSnapshot,
+    CapturedDiagnostic, Diagnostic, DiagnosticReport, Severity, SourceCache, SourceProvider,
+    SourceSnapshot,
     render::{
         GithubActionsRenderer, JsonRenderer, MarkdownRenderer, PlainRenderer, Renderer,
-        TerminalRenderer, Theme,
+        ReportRenderer, SarifRenderer, TerminalRenderer, Theme,
     },
     rotation::{RotationCadence, RotationPolicy, RotationState},
 };
@@ -115,12 +116,20 @@ impl Reporter {
             return Ok(false);
         }
 
-        print!(
-            "{}",
-            self.terminal
-                .render_with_sources(diagnostic, &self.source_cache)
-        );
-        io::stdout().flush()?;
+        {
+            let stdout = io::stdout();
+
+            let mut stdout = stdout.lock();
+
+            write!(
+                stdout,
+                "{}",
+                self.terminal
+                    .render_with_sources(diagnostic, &self.source_cache,)
+            )?;
+
+            stdout.flush()?;
+        }
 
         if let Some(path) = &self.file {
             self.write(path, &PlainRenderer.render(diagnostic))?;
@@ -143,12 +152,19 @@ impl Reporter {
             return Ok(false);
         }
 
-        print!(
-            "{}",
-            self.terminal.render_with_snapshot(diagnostic, sources)
-        );
+        {
+            let stdout = io::stdout();
 
-        io::stdout().flush()?;
+            let mut stdout = stdout.lock();
+
+            write!(
+                stdout,
+                "{}",
+                self.terminal.render_with_snapshot(diagnostic, sources,)
+            )?;
+
+            stdout.flush()?;
+        }
 
         if let Some(path) = &self.file {
             self.write(path, &PlainRenderer.render(diagnostic))?;
@@ -160,6 +176,61 @@ impl Reporter {
     /// Emits a captured diagnostic using its immutable source snapshot.
     pub fn emit_captured(&self, captured: &CapturedDiagnostic) -> io::Result<bool> {
         self.emit_with_snapshot(captured.diagnostic(), captured.sources())
+    }
+
+    /// Emits every diagnostic in a report using the normal terminal renderer.
+    ///
+    /// Returns the number of diagnostics which passed the reporter's minimum
+    /// severity filter.
+    pub fn emit_report(&self, report: &DiagnosticReport) -> io::Result<usize> {
+        let mut emitted = 0;
+
+        for diagnostic in report {
+            if self.emit(diagnostic)? {
+                emitted += 1;
+            }
+        }
+
+        Ok(emitted)
+    }
+
+    /// Emits every diagnostic in a report against one immutable source
+    /// snapshot.
+    pub fn emit_report_with_snapshot(
+        &self,
+        report: &DiagnosticReport,
+        sources: &SourceSnapshot,
+    ) -> io::Result<usize> {
+        let mut emitted = 0;
+
+        for diagnostic in report {
+            if self.emit_with_snapshot(diagnostic, sources)? {
+                emitted += 1;
+            }
+        }
+
+        Ok(emitted)
+    }
+
+    /// Emits one valid GitHub Actions batch.
+    pub fn emit_github_actions_report(&self, report: &DiagnosticReport) -> io::Result<usize> {
+        self.emit_rendered_report(report, &GithubActionsRenderer)
+    }
+
+    /// Emits one JSON array containing every diagnostic which passes the
+    /// reporter's minimum severity filter.
+    pub fn emit_json_report(&self, report: &DiagnosticReport) -> io::Result<usize> {
+        self.emit_rendered_report(report, &JsonRenderer)
+    }
+
+    /// Emits one Markdown document containing the filtered report.
+    pub fn emit_markdown_report(&self, report: &DiagnosticReport) -> io::Result<usize> {
+        self.emit_rendered_report(report, &MarkdownRenderer)
+    }
+
+    /// Emits one complete SARIF 2.1.0 document containing the filtered report.
+    pub fn emit_sarif_report(&self, report: &DiagnosticReport) -> io::Result<usize> {
+        self.emit_rendered_report(report, &SarifRenderer)
     }
 
     /// Emits GitHub Actions workflow-command annotations.
@@ -175,6 +246,39 @@ impl Reporter {
         self.emit_with(diagnostic, &MarkdownRenderer)
     }
 
+    fn emit_rendered_report(
+        &self,
+        report: &DiagnosticReport,
+        renderer: &impl ReportRenderer,
+    ) -> io::Result<usize> {
+        let diagnostics = report
+            .iter()
+            .filter(|diagnostic| diagnostic.severity >= self.min_severity)
+            .collect::<Vec<_>>();
+
+        if diagnostics.is_empty() {
+            return Ok(0);
+        }
+
+        let rendered = renderer.render_report(diagnostics.iter().copied());
+
+        {
+            let stdout = io::stdout();
+
+            let mut stdout = stdout.lock();
+
+            writeln!(stdout, "{rendered}")?;
+
+            stdout.flush()?;
+        }
+
+        if let Some(path) = &self.file {
+            self.write(path, &rendered)?;
+        }
+
+        Ok(diagnostics.len())
+    }
+
     fn emit_with(&self, diagnostic: &Diagnostic, renderer: &impl Renderer) -> io::Result<bool> {
         if diagnostic.severity < self.min_severity {
             return Ok(false);
@@ -182,7 +286,15 @@ impl Reporter {
 
         let rendered = renderer.render(diagnostic);
 
-        println!("{rendered}");
+        {
+            let stdout = io::stdout();
+
+            let mut stdout = stdout.lock();
+
+            writeln!(stdout, "{rendered}")?;
+
+            stdout.flush()?;
+        }
 
         if let Some(path) = &self.file {
             self.write(path, &rendered)?;

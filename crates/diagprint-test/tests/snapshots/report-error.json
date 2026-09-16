@@ -1,0 +1,13 @@
+[
+  {
+    "application": "diagprint-test",
+    "cause": null,
+    "code": "parse::failed",
+    "help": null,
+    "labels": [],
+    "message": "parse failed",
+    "notes": [],
+    "severity": "error",
+    "suggestions": []
+  }
+]

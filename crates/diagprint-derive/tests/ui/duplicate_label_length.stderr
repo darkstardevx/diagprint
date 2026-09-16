@@ -1,0 +1,5 @@
+error: duplicate label length
+ --> tests/ui/duplicate_label_length.rs:8:9
+  |
+8 |         length = length
+  |         ^^^^^^

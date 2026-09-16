@@ -10,7 +10,7 @@ use crate::{Diagnostic, SourceCache, SourceSnapshot};
 /// Constructing a captured diagnostic binds any unversioned labels whose source
 /// exists in the supplied snapshot to that source's captured revision.
 ///
-/// Source text remains outside [`Diagnostic`] itself and is therefore not
+/// Source text remains outside [`struct@Diagnostic`] itself and is therefore not
 /// serialized into diagnostic JSON.
 #[derive(Debug, Clone)]
 pub struct CapturedDiagnostic {

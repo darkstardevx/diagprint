@@ -125,7 +125,12 @@ fn truncate_visible(s: &str, max_width: usize) -> String {
     while let Some(ch) = chars.next() {
         if ch == '\x1b' && chars.peek() == Some(&'[') {
             output.push(ch);
-            output.push(chars.next().expect("ANSI sequence prefix disappeared"));
+
+            if let Some(prefix) = chars.next() {
+                output.push(prefix);
+            } else {
+                break;
+            }
 
             for ansi_ch in chars.by_ref() {
                 output.push(ansi_ch);
@@ -902,6 +907,20 @@ impl TerminalRenderer {
 
             for source_line in self.source(diagnostic, width, sources) {
                 output.push_str(&self.row(&source_line, width));
+            }
+        }
+
+        if !diagnostic.attributes.is_empty() {
+            output.push_str(&self.row("", width));
+
+            for attribute in &diagnostic.attributes {
+                output.push_str(&self.prefixed_rows(
+                    "FIELD  ",
+                    &self.theme.metadata_label,
+                    &format!("{}={}", attribute.name, attribute.value,),
+                    &self.theme.metadata_value,
+                    width,
+                ));
             }
         }
 

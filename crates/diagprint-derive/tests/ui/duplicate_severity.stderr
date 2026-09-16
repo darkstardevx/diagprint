@@ -1,0 +1,5 @@
+error: duplicate diag severity
+ --> tests/ui/duplicate_severity.rs:4:28
+  |
+4 | #[diag(severity = warning, severity = error)]
+  |                            ^^^^^^^^

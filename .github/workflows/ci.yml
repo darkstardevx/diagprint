@@ -22,7 +22,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -35,11 +35,35 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
+      - name: Check diff whitespace
+        run: git diff --check
+
       - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: >
+          cargo clippy
+          --workspace
+          --all-targets
+          --
+          -D warnings
 
       - name: Clippy all features
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: >
+          cargo clippy
+          --workspace
+          --all-targets
+          --all-features
+          --
+          -D warnings
+
+      - name: Clippy tracing feature in isolation
+        run: >
+          cargo clippy
+          -p diagprint
+          --no-default-features
+          --features tracing
+          --all-targets
+          --
+          -D warnings
 
   test:
     name: Tests
@@ -47,7 +71,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -56,25 +80,176 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Check default features
-        run: cargo check --all-targets
+        run: >
+          cargo check
+          --workspace
+          --all-targets
 
       - name: Test default features
-        run: cargo test --all-targets
+        run: >
+          cargo test
+          --workspace
+          --all-targets
 
       - name: Test default rustdoc
-        run: cargo test --doc
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        run: >
+          cargo test
+          --workspace
+          --doc
 
       - name: Check all features
-        run: cargo check --all-targets --all-features
+        run: >
+          cargo check
+          --workspace
+          --all-targets
+          --all-features
 
       - name: Test all features
-        run: cargo test --all-targets --all-features
+        run: >
+          cargo test
+          --workspace
+          --all-targets
+          --all-features
 
       - name: Test all-feature rustdoc
-        run: cargo test --doc --all-features
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        run: >
+          cargo test
+          --workspace
+          --doc
+          --all-features
 
-      - name: Inspect package contents
-        run: cargo package --list
+      - name: Build strict rustdoc
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        run: >
+          cargo doc
+          --workspace
+          --no-deps
+          --all-features
+
+      - name: Check tracing feature in isolation
+        run: >
+          cargo check
+          -p diagprint
+          --no-default-features
+          --features tracing
+          --all-targets
+
+      - name: Test tracing feature in isolation
+        run: >
+          cargo test
+          -p diagprint
+          --no-default-features
+          --features tracing
+          --test tracing_integration
+
+      - name: Check root feature matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for feature in \
+            artifact-store \
+            derive \
+            compression \
+            cybercore \
+            html \
+            terminal-docs \
+            anyhow \
+            tracing \
+            miette \
+            codespan-reporting \
+            ariadne \
+            annotate-snippets
+          do
+            echo "===== feature: $feature ====="
+
+            cargo check \
+              -p diagprint \
+              --no-default-features \
+              --features "$feature" \
+              --all-targets
+          done
+
+      - name: Remove trybuild scratch state
+        if: always()
+        run: rm -rf target/tests
+
+  package:
+    name: Package readiness
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Inspect all package contents
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          packages=(
+            diagprint
+            diagprint-derive
+            diagprint-lsp
+            diagprint-async
+            diagprint-otel
+            diagprint-test
+          )
+
+          for package in "${packages[@]}"
+          do
+            echo
+            echo "===== package contents: $package ====="
+
+            cargo package \
+              --list \
+              -p "$package"
+          done
+
+      - name: Reject generated state from core package
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          package_list="$(
+            cargo package \
+              --list \
+              -p diagprint
+          )"
+
+          if grep -Eq '^\.diagprint(/|$)' <<<"$package_list"
+          then
+            echo "ERROR: .diagprint generated state is present in the diagprint package"
+            exit 1
+          fi
+
+          if grep -Eq '^reports(/|$)' <<<"$package_list"
+          then
+            echo "ERROR: generated reports are present in the diagprint package"
+            exit 1
+          fi
+
+          echo "Generated diagnostic state is excluded from the core package."
+
+      - name: Build first-stage publishable archive
+        run: >
+          cargo package
+          --no-verify
+          -p diagprint-derive
+
+      - name: Show first-stage archive
+        run: ls -lh target/package/diagprint-derive-0.7.0.crate
 
   msrv:
     name: MSRV 1.85
@@ -85,7 +260,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Rust 1.85
         uses: dtolnay/rust-toolchain@master
@@ -95,15 +270,49 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
-      # The repository lockfile is generated by the current stable toolchain
-      # and can contain transitive releases whose MSRV is newer than diagprint's.
-      # Library consumers do not inherit this lockfile, so resolve afresh using
-      # Cargo's MSRV-aware fallback policy.
       - name: Resolve dependencies for MSRV
         run: rm -f Cargo.lock
 
       - name: Check all targets and features on MSRV
-        run: cargo check --all-targets --all-features
+        run: >
+          cargo check
+          --workspace
+          --all-targets
+          --all-features
 
-      - name: Check rustdoc examples on MSRV
-        run: cargo test --doc --all-features
+      - name: Test all targets and features on MSRV
+        run: >
+          cargo test
+          --workspace
+          --all-targets
+          --all-features
+
+      - name: Test rustdoc examples on MSRV
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        run: >
+          cargo test
+          --workspace
+          --doc
+          --all-features
+
+      - name: Build rustdoc on MSRV
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        run: >
+          cargo doc
+          --workspace
+          --no-deps
+          --all-features
+
+      - name: Check tracing feature alone on MSRV
+        run: >
+          cargo check
+          -p diagprint
+          --no-default-features
+          --features tracing
+          --all-targets
+
+      - name: Remove trybuild scratch state
+        if: always()
+        run: rm -rf target/tests

@@ -1,0 +1,5 @@
+error: diagprint::Diagnostic structs currently require named fields
+ --> tests/ui/tuple_struct.rs:4:1
+  |
+4 | struct BadDiagnostic(u32);
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^

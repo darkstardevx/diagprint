@@ -1,0 +1,31 @@
+[package]
+name = "diagprint-otel"
+version = "0.7.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Privacy-aware OpenTelemetry integration for diagprint."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/darkstardevx/diagprint"
+homepage = "https://github.com/darkstardevx/diagprint"
+documentation = "https://docs.rs/diagprint-otel"
+readme = "README.md"
+keywords = ["diagnostics", "opentelemetry", "telemetry", "tracing", "errors"]
+categories = ["development-tools::debugging"]
+
+[dependencies.diagprint]
+version = "0.7.0"
+path = "../.."
+
+[dependencies.opentelemetry]
+version = "0.32.0"
+default-features = false
+features = ["trace"]
+
+[dependencies.tracing]
+version = "0.1.35"
+default-features = false
+features = ["std"]
+
+[dependencies.tracing-opentelemetry]
+version = "0.33.0"
+default-features = false

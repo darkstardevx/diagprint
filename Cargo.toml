@@ -1,9 +1,9 @@
 [package]
 name = "diagprint"
-version = "0.6.0"
+version = "0.7.1"
 edition = "2024"
 rust-version = "1.85"
-description = "Pretty, structured diagnostics and reports for Rust applications."
+description = "A Rust diagnostics lifecycle framework for structured diagnostics, rendering, remediation, CI, editors, and telemetry."
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/darkstardevx/diagprint"
 homepage = "https://github.com/darkstardevx/diagprint"
@@ -13,6 +13,7 @@ keywords = ["diagnostics", "errors", "logging", "terminal", "reporting"]
 categories = ["command-line-utilities", "development-tools::debugging"]
 
 exclude = [
+    "/.diagprint/",
     "/.github/",
     "/.gitignore",
     "/reports/",
@@ -20,6 +21,10 @@ exclude = [
 
 [features]
 default = []
+
+artifact-store = ["dep:fs2"]
+
+derive = ["dep:diagprint-derive"]
 
 compression = [
     "dep:flate2",
@@ -30,11 +35,19 @@ cybercore = [
     "dep:cybercore",
 ]
 
+html = [
+    "dep:syntect",
+]
+
 terminal-docs = [
     "dep:reqwest",
     "dep:html2text",
     "dep:scraper",
     "dep:syntect",
+
+    # MSRV guard: yoke-derive 0.8.3 is currently selected by fresh
+    # dependency resolution but does not compile on Rust 1.85.
+    "dep:yoke-derive",
 ]
 
 anyhow = [
@@ -67,63 +80,95 @@ chrono = { version = "0.4", features = ["clock", "serde"] }
 hostname = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
 toml = "1.1"
 uuid = { version = "1", features = ["v7", "serde"] }
 unicode-width = "0.2"
 terminal_size = "0.4"
 
+[dependencies.fs2]
+version = "0.4"
+optional = true
+
+[dependencies.diagprint-derive]
+version = "0.7.0"
+path = "crates/diagprint-derive"
+optional = true
+
 [dependencies.anyhow]
 version = "1"
 optional = true
+
 [dependencies.tracing]
 version = "0.1"
 optional = true
+
 [dependencies.tracing-subscriber]
 version = "0.3"
 optional = true
+
 [dependencies.miette]
 version = "7.6"
 optional = true
 default-features = false
+
 [dependencies.codespan-reporting]
 version = "0.13.1"
 optional = true
 default-features = false
 features = ["std"]
+
 [dependencies.ariadne]
 version = "0.6"
 optional = true
 default-features = false
+
 [dependencies.annotate-snippets]
 version = "0.12.16"
 optional = true
+
 [dependencies.flate2]
 version = "1"
 optional = true
+
 [dependencies.zstd]
 version = "0.13"
 optional = true
+
 [dependencies.cybercore]
 version = "0.4.0"
 git = "https://github.com/darkstardevx/cybercore.git"
 optional = true
+
 [dependencies.reqwest]
 version = "0.13"
 optional = true
 default-features = false
 features = ["blocking", "rustls", "charset"]
+
 [dependencies.html2text]
 version = "0.17"
 optional = true
+
 [dependencies.scraper]
 # scraper 0.26+ uses let-chains unavailable on diagprint's Rust 1.85 MSRV.
 version = "=0.25.0"
 optional = true
+
 [dependencies.syntect]
 version = "5.3"
 optional = true
 default-features = false
 features = ["default-fancy"]
+
+[dependencies.yoke-derive]
+# Keep terminal-docs compatible with diagprint's Rust 1.85 MSRV.
+# 0.8.3 currently uses syntax/API unavailable on Rust 1.85 even though
+# Cargo's MSRV-aware resolver can select that release.
+version = "=0.8.2"
+optional = true
+default-features = false
+
 [dev-dependencies]
 thiserror = "2"
 
@@ -158,3 +203,13 @@ required-features = ["ariadne"]
 [[example]]
 name = "annotate_snippets_integration"
 required-features = ["annotate-snippets"]
+
+[workspace]
+members = [
+    "crates/diagprint-derive",
+    "crates/diagprint-lsp",
+    "crates/diagprint-async",
+    "crates/diagprint-otel",
+    "crates/diagprint-test",
+]
+resolver = "3"

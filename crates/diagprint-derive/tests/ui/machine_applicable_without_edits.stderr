@@ -1,0 +1,9 @@
+error: machine_applicable suggestions require guarded edits; derive-generated edits are not supported yet
+ --> tests/ui/machine_applicable_without_edits.rs:4:8
+  |
+4 |   #[diag(suggestion(
+  |  ________^
+5 | |     title = "apply automatically",
+6 | |     applicability = machine_applicable
+7 | | ))]
+  | |_^

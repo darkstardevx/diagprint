@@ -1,4 +1,7 @@
-use crate::{Severity, SourceCache, SourceRevision, SourceSnapshot, Suggestion};
+use crate::{
+    DiagnosticAttribute, DiagnosticValue, Severity, SourceCache, SourceRevision, SourceSnapshot,
+    Suggestion,
+};
 use chrono::{DateTime, Local};
 use serde::Serialize;
 use std::error::Error;
@@ -67,12 +70,10 @@ impl Cause {
         let mut next = error.source();
 
         while let Some(error) = next {
-            tail.source = Some(Box::new(Cause::new(error.to_string())));
-
             tail = tail
                 .source
-                .as_mut()
-                .expect("cause was inserted immediately before access");
+                .insert(Box::new(Cause::new(error.to_string())))
+                .as_mut();
 
             next = error.source();
         }
@@ -114,6 +115,9 @@ pub struct Diagnostic {
     pub code: Option<String>,
     pub message: String,
 
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub attributes: Vec<DiagnosticAttribute>,
+
     pub labels: Vec<Label>,
     pub notes: Vec<String>,
     pub help: Option<String>,
@@ -145,6 +149,8 @@ impl Diagnostic {
             code: None,
             message: message.into(),
 
+            attributes: Vec::new(),
+
             labels: Vec::new(),
             notes: Vec::new(),
             help: None,
@@ -156,6 +162,19 @@ impl Diagnostic {
 
     pub fn code(mut self, value: impl Into<String>) -> Self {
         self.code = Some(value.into());
+        self
+    }
+
+    /// Adds one structured diagnostic attribute.
+    pub fn attribute(mut self, name: impl Into<String>, value: impl Into<DiagnosticValue>) -> Self {
+        self.attributes.push(DiagnosticAttribute::new(name, value));
+
+        self
+    }
+
+    /// Adds multiple structured diagnostic attributes.
+    pub fn attributes(mut self, attributes: impl IntoIterator<Item = DiagnosticAttribute>) -> Self {
+        self.attributes.extend(attributes);
         self
     }
 
@@ -381,6 +400,11 @@ impl Diagnostic {
 
             sources.revision(&label.location.file) != Some(expected)
         })
+    }
+
+    pub fn labels(mut self, labels: impl IntoIterator<Item = Label>) -> Self {
+        self.labels.extend(labels);
+        self
     }
 
     pub fn suggestion(mut self, suggestion: Suggestion) -> Self {

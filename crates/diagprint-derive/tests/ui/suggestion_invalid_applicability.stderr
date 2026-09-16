@@ -1,0 +1,5 @@
+error: applicability must be manual, maybe_incorrect, has_placeholders, or machine_applicable
+ --> tests/ui/suggestion_invalid_applicability.rs:6:21
+  |
+6 |     applicability = definitely_safe
+  |                     ^^^^^^^^^^^^^^^
