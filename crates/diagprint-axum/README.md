@@ -346,6 +346,93 @@ hints.
 Internal extensions are appropriate for application-controlled diagnostic or
 debugging state that should remain private unless deliberately exposed.
 
+## Request context and correlation
+
+`diagprint-axum` provides request-context middleware for correlating HTTP
+requests with internal diagnostics without capturing sensitive request data.
+
+Apply the middleware after declaring routes:
+
+    use axum::{Router, middleware, routing::get};
+    use diagprint_axum::request_context_middleware;
+
+    let app = Router::new()
+        .route("/users/{id}", get(handler))
+        .route_layer(
+            middleware::from_fn(request_context_middleware)
+        );
+
+The middleware:
+
+- preserves a valid inbound `x-request-id`;
+- generates a UUIDv7 request ID when the header is missing or invalid;
+- stores a `RequestContext` in request extensions;
+- records the HTTP method;
+- records Axum's matched route pattern when available;
+- propagates the selected request ID through the response header.
+
+A handler can retrieve the context with Axum's `Extension` extractor:
+
+    use axum::Extension;
+    use diagprint_axum::RequestContext;
+
+    async fn handler(
+        Extension(context): Extension<RequestContext>,
+    ) {
+        let request_id = context.request_id();
+    }
+
+Request context deliberately does not retain:
+
+- raw request paths;
+- query strings;
+- request bodies;
+- cookies;
+- authorization headers;
+- arbitrary request headers.
+
+This means a route such as:
+
+    /users/42?token=secret
+
+can be represented internally as the matched route:
+
+    /users/{id}
+
+without retaining either the concrete user identifier or query-string secret.
+
+### Request IDs and report IDs
+
+Request IDs and diagprint report IDs represent different identities.
+
+A request ID correlates one HTTP request.
+
+A report ID identifies one structured diagnostic.
+
+One HTTP request can therefore produce multiple diagnostics with distinct
+report IDs while all share the same request ID.
+
+### Application errors with request context
+
+Application-error adapters can attach request context directly:
+
+    let response = error
+        .to_problem_response_with_context(
+            &reporter,
+            &request_context,
+        );
+
+This adds safe request attributes to the internal diagnostic:
+
+    http.request_id
+    http.method
+    http.route
+
+and includes the request ID in the RFC 9457 response while keeping the
+diagnostic report ID distinct.
+
+Request-context adaptation does not emit, log, or persist diagnostics.
+
 ## Application error adapters
 
 Application and domain errors can implement `ApplicationError` to define one

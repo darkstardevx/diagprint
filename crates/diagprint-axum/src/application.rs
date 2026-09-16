@@ -1,6 +1,6 @@
 use crate::{
     DiagnosticResponse, ProblemDetailsPolicy, ProblemDetailsResponse, ProblemDetailsResponseExt,
-    ResponsePolicy,
+    RequestContext, ResponsePolicy,
 };
 use axum::http::StatusCode;
 use diagprint::{Diagnostic, Reporter};
@@ -52,6 +52,18 @@ pub trait ApplicationErrorExt: ApplicationError {
             .with_policy(self.response_policy())
     }
 
+    /// Converts this application error into a diagnostic response and attaches
+    /// privacy-safe HTTP request context to the internal diagnostic.
+    fn to_diagnostic_response_with_context(
+        &self,
+        reporter: &Reporter,
+        context: &RequestContext,
+    ) -> DiagnosticResponse {
+        let diagnostic = context.annotate_diagnostic(self.to_diagnostic(reporter));
+
+        DiagnosticResponse::new(self.http_status(), diagnostic).with_policy(self.response_policy())
+    }
+
     /// Converts this application error into an RFC 9457 Problem Details
     /// response.
     ///
@@ -62,6 +74,25 @@ pub trait ApplicationErrorExt: ApplicationError {
         self.to_diagnostic_response(reporter)
             .into_problem_details()
             .with_problem_policy(self.problem_policy())
+    }
+
+    /// Converts this application error into RFC 9457 Problem Details while
+    /// correlating the HTTP request and internal diagnostic.
+    ///
+    /// The request ID is:
+    ///
+    /// - attached to the internal diagnostic as `http.request_id`;
+    /// - included in the Problem Details document as `request_id`;
+    /// - kept distinct from the diagnostic's `report_id`.
+    fn to_problem_response_with_context(
+        &self,
+        reporter: &Reporter,
+        context: &RequestContext,
+    ) -> ProblemDetailsResponse {
+        self.to_diagnostic_response_with_context(reporter, context)
+            .into_problem_details()
+            .with_problem_policy(self.problem_policy())
+            .with_request_id(context.request_id().as_str())
     }
 }
 
