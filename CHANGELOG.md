@@ -46,6 +46,20 @@ The project follows Semantic Versioning.
 - Added example compilation and package-content checks to the
   `diagprint-axum` validation gates, and added a concise README Quick Start.
 
+- Added `ApplicationResultExt::emit_problem` and
+  `EmittedProblemResult<T>` so ordinary `Result<T, E>` values can preserve
+  successful values while explicitly adapting and emitting
+  `E: ApplicationError` through `DiagnosticState`.
+- Added feature-gated `AsyncApplicationResultExt::emit_problem_async` and
+  `AsyncEmittedProblemResult<T>` for the same handler pattern with bounded
+  asynchronous submission and unchanged `Enqueued`, `Dropped`, and `Failed`
+  semantics. Application errors are adapted before the asynchronous boundary,
+  avoiding unnecessary `Send` or `Sync` requirements on the error type itself.
+- Updated the packaged sync and async examples and added real-router result
+  integration coverage proving successful values do not emit or submit while
+  error values retain request correlation, privacy filtering, and explicit
+  delivery outcomes.
+
 ### Planned
 
 - Add framework and application adapters, beginning with `diagprint-axum`,

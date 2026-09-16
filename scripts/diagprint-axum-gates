@@ -261,9 +261,21 @@ check_package_contents() {
         exit 1
     fi
 
+    if ! grep -qx 'src/async_result.rs' <<<"$package_list"; then
+        echo
+        echo "FAILED: src/async_result.rs is missing from the package"
+        exit 1
+    fi
+
     if ! grep -qx 'src/state.rs' <<<"$package_list"; then
         echo
         echo "FAILED: src/state.rs is missing from the package"
+        exit 1
+    fi
+
+    if ! grep -qx 'src/result.rs' <<<"$package_list"; then
+        echo
+        echo "FAILED: src/result.rs is missing from the package"
         exit 1
     fi
 

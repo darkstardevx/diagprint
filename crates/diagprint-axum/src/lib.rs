@@ -29,7 +29,19 @@
 //! This remains an explicit side effect. Storing a sink in application state
 //! does not cause responses, errors, or diagnostics to emit automatically.
 //!
-//! ## Asynchronous application-state ergonomics
+//! ## Handler result ergonomics
+//!
+//! [`ApplicationResultExt::emit_problem`] converts `Result<T, E>` values whose
+//! error implements [`ApplicationError`] into an [`EmittedProblemResult`]
+//! while keeping synchronous emission explicit.
+//!
+//! `Ok(T)` values pass through unchanged and perform no emission.
+//!
+//! With `async-delivery` enabled,
+//! `AsyncApplicationResultExt::emit_problem_async` provides the bounded async
+//! counterpart. Queue acceptance remains distinct from completed delivery.
+//!
+////! ## Asynchronous application-state ergonomics
 //!
 //! With `async-delivery` enabled, `AsyncDiagnosticState` groups a cloneable
 //! [`diagprint::Reporter`] with one shared bounded
@@ -76,11 +88,15 @@ mod async_emission;
 #[cfg(feature = "async-delivery")]
 mod async_state;
 
+#[cfg(feature = "async-delivery")]
+mod async_result;
+
 mod context;
 mod emission;
 mod problem;
 mod rejection;
 mod response;
+mod result;
 mod state;
 
 pub use application::{ApplicationError, ApplicationErrorExt};
@@ -90,6 +106,9 @@ pub use async_emission::{AsyncDiagnosticEmissionExt, AsyncEmission, AsyncEmissio
 
 #[cfg(feature = "async-delivery")]
 pub use async_state::AsyncDiagnosticState;
+
+#[cfg(feature = "async-delivery")]
+pub use async_result::{AsyncApplicationResultExt, AsyncEmittedProblemResult};
 
 #[cfg(feature = "async-delivery")]
 pub use diagprint_async::{
@@ -115,5 +134,7 @@ pub use response::{
     ClientErrorBody, ClientErrorEnvelope, DiagnosticResponse, DiagnosticResponseExt,
     DiagnosticResult, ResponsePolicy,
 };
+
+pub use result::{ApplicationResultExt, EmittedProblemResult};
 
 pub use state::DiagnosticState;

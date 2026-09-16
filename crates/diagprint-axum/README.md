@@ -568,6 +568,73 @@ receives only the representation permitted by `ResponsePolicy` and
 A sink failure remains `EmissionOutcome::Failed` and does not replace the
 application's Problem Details response.
 
+## Result ergonomics
+
+Most applications already return domain-level `Result<T, E>` values from
+service or repository functions.
+
+When `E` implements `ApplicationError`, `ApplicationResultExt` converts only
+the error side into correlated Problem Details and performs the explicit
+synchronous diagnostic emission:
+
+    fn load_order(id: u64) -> Result<Order, OrderError> {
+        // domain or repository work
+        # todo!()
+    }
+
+    async fn handler(
+        State(state): State<AppState>,
+        context: RequestContext,
+        Path(id): Path<u64>,
+    ) -> EmittedProblemResult<Order> {
+        load_order(id)
+            .emit_problem(
+                &state.diagnostics,
+                &context,
+            )
+    }
+
+`Ok(T)` is returned unchanged. It does not emit a diagnostic.
+
+`Err(E)` is converted through the same `DiagnosticState::emit_problem`
+boundary used by the lower-level API. Sink failure remains observable through
+`EmissionOutcome` and does not replace the Problem Details response.
+
+With `async-delivery`, `AsyncApplicationResultExt` provides the bounded async
+counterpart:
+
+    async fn handler(
+        State(state): State<AppState>,
+        context: RequestContext,
+        Path(id): Path<u64>,
+    ) -> AsyncEmittedProblemResult<Order> {
+        load_order(id)
+            .emit_problem_async(
+                &state.diagnostics,
+                &context,
+            )
+            .await
+    }
+
+The async adapter preserves the existing submission meanings:
+
+- `Enqueued` means queue acceptance, not completed delivery;
+- `Dropped` means the configured backpressure policy deliberately dropped the
+  diagnostic;
+- `Failed` retains queue, worker, or submission failure.
+
+The application error is converted into its correlated Problem Details response
+before the returned future crosses the asynchronous submission boundary.
+Consequently, an `ApplicationError` does not need to implement `Send` or
+`Sync` merely to use `emit_problem_async`.
+
+The successful `T` must be `Send`, because that value can be carried by the
+returned handler future across an `.await`.
+
+Neither adapter implements automatic logging or blanket `IntoResponse`
+behavior for application errors. The call site still chooses explicitly
+whether synchronous emission or bounded asynchronous submission occurs.
+
 ## Asynchronous diagnostic delivery
 
 The optional `async-delivery` feature connects `diagprint-axum` to the bounded

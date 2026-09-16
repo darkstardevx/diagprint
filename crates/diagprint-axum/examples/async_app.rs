@@ -16,8 +16,8 @@ use axum::{
 };
 use diagprint::{Diagnostic, DiagnosticSink, Reporter, SinkResult};
 use diagprint_axum::{
-    ApplicationError, AsyncDiagnosticSink, AsyncDiagnosticState, AsyncEmission,
-    AsyncEmissionOutcome, BackpressurePolicy, ProblemDetailsResponse, REQUEST_ID_HEADER,
+    ApplicationError, AsyncApplicationResultExt, AsyncDiagnosticSink, AsyncDiagnosticState,
+    AsyncEmissionOutcome, AsyncEmittedProblemResult, BackpressurePolicy, REQUEST_ID_HEADER,
     RequestContext, request_context_middleware,
 };
 use http_body_util::BodyExt;
@@ -76,18 +76,22 @@ struct AppState {
     diagnostics: AsyncDiagnosticState,
 }
 
+fn load_order(id: u64) -> Result<String, OrderNotFound> {
+    if id == 7 {
+        Ok("order 7 is ready".to_owned())
+    } else {
+        Err(OrderNotFound { id })
+    }
+}
+
 async fn order_handler(
     State(state): State<AppState>,
     context: RequestContext,
     Path(id): Path<u64>,
-) -> Result<String, AsyncEmission<ProblemDetailsResponse>> {
-    if id == 7 {
-        return Ok("order 7 is ready".to_owned());
-    }
-
-    let error = OrderNotFound { id };
-
-    Err(state.diagnostics.emit_problem(&error, &context).await)
+) -> AsyncEmittedProblemResult<String> {
+    load_order(id)
+        .emit_problem_async(&state.diagnostics, &context)
+        .await
 }
 
 #[tokio::main(flavor = "current_thread")]
