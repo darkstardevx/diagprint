@@ -8,6 +8,18 @@ The project follows Semantic Versioning.
 
 ### Added
 
+- Added the optional `diagprint-axum/async-delivery` feature for explicit
+  bounded asynchronous diagnostic submission through `diagprint-async`.
+- Added `AsyncDiagnosticEmissionExt::emit_to_async` for `Diagnostic`,
+  `DiagnosticResponse`, and `ProblemDetailsResponse`.
+- Added `AsyncEmissionOutcome::{Enqueued, Dropped, Failed}` so bounded-queue
+  backpressure decisions remain observable without replacing HTTP responses.
+- Async submission reuses `diagprint-async::AsyncDiagnosticSink` rather than
+  introducing a second queue, retry system, worker lifecycle, or backpressure
+  implementation inside `diagprint-axum`.
+- Kept asynchronous delivery disabled by default so applications using only
+  Axum response adaptation do not gain a normal dependency on `diagprint-async`.
+
 - Added explicit opt-in diagnostic emission hooks to `diagprint-axum` through
   `DiagnosticEmissionExt::emit_to`, reusing the core `DiagnosticSink`
   abstraction without introducing automatic logging or persistence.

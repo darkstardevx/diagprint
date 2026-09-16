@@ -18,6 +18,24 @@
 //! as `EmissionOutcome::Failed` response metadata and do not replace the HTTP
 //! response.
 //!
+//! ## Optional asynchronous delivery
+//!
+//! The `async-delivery` feature adds an explicit asynchronous submission bridge
+//! backed by `diagprint-async`.
+//!
+//! `AsyncDiagnosticEmissionExt::emit_to_async` submits one diagnostic through
+//! an existing bounded `diagprint_async::AsyncDiagnosticSink`.
+//!
+//! An `Enqueued` outcome means queue acceptance, not completed sink delivery.
+//! Queue ownership, backpressure, flushing, and shutdown remain the
+//! responsibility of `diagprint-async` and the application lifecycle.
+//!
+//! The Axum adapter does not create a second queue, spawn a task per request,
+//! retry delivery, flush automatically, or shut the sink down.
+//!
+//! The `async-delivery` feature is disabled by default. Without it,
+//! `diagprint-async` is not part of the crate's normal dependency graph.
+//!
 //! HTTP responses are treated as an externalization boundary. Internal
 //! diagnostic messages and codes are therefore redacted by default.
 
@@ -25,6 +43,10 @@
 #![warn(missing_docs)]
 
 mod application;
+
+#[cfg(feature = "async-delivery")]
+mod async_emission;
+
 mod context;
 mod emission;
 mod problem;
@@ -32,16 +54,24 @@ mod rejection;
 mod response;
 
 pub use application::{ApplicationError, ApplicationErrorExt};
+
+#[cfg(feature = "async-delivery")]
+pub use async_emission::{AsyncDiagnosticEmissionExt, AsyncEmission, AsyncEmissionOutcome};
+
 pub use context::{
     InvalidRequestId, MAX_REQUEST_ID_LEN, REQUEST_ID_HEADER, RequestContext, RequestId,
     request_context_middleware,
 };
+
 pub use emission::{DiagnosticEmissionExt, Emission, EmissionOutcome};
+
 pub use problem::{
     ABOUT_BLANK, PROBLEM_JSON_MEDIA_TYPE, ProblemDetails, ProblemDetailsPolicy,
     ProblemDetailsResponse, ProblemDetailsResponseExt, ProblemExtensionError,
 };
+
 pub use rejection::{AxumRejectionExt, RejectionKind};
+
 pub use response::{
     ClientErrorBody, ClientErrorEnvelope, DiagnosticResponse, DiagnosticResponseExt,
     DiagnosticResult, ResponsePolicy,

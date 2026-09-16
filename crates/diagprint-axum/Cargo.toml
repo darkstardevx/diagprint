@@ -12,6 +12,13 @@ readme = "README.md"
 keywords = ["diagnostics", "axum", "http", "errors", "web"]
 categories = ["web-programming::http-server", "development-tools::debugging"]
 
+[package.metadata.docs.rs]
+all-features = true
+
+[features]
+default = []
+async-delivery = ["dep:diagprint-async"]
+
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -25,6 +32,11 @@ features = ["form", "json", "query", "matched-path"]
 [dependencies.diagprint]
 version = "0.7.1"
 path = "../.."
+
+[dependencies.diagprint-async]
+version = "0.7.0"
+path = "../diagprint-async"
+optional = true
 
 [dev-dependencies]
 http-body-util = "0.1"

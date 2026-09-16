@@ -26,9 +26,26 @@ stable v0.7.x line except for fixes.
 
 ## Installation
 
+For synchronous response integration:
+
     [dependencies]
     diagprint = "0.7"
     diagprint-axum = "0.8"
+
+Asynchronous diagnostic delivery is optional:
+
+    [dependencies]
+    diagprint = "0.7"
+    diagprint-axum = {
+        version = "0.8",
+        features = ["async-delivery"],
+    }
+
+The `async-delivery` feature adds the `diagprint-async` companion crate to the
+Axum integration. It is disabled by default.
+
+A normal `diagprint-axum` dependency therefore does not pull the asynchronous
+delivery layer into the application's normal dependency graph.
 
 ## Privacy model
 
@@ -421,6 +438,142 @@ Emission and HTTP disclosure are therefore separate decisions:
 - `ProblemDetailsPolicy` controls the RFC 9457 representation.
 
 No response or adapter emits diagnostics unless `emit_to` is called.
+
+## Asynchronous diagnostic delivery
+
+The optional `async-delivery` feature connects `diagprint-axum` to the bounded
+delivery machinery provided by `diagprint-async`.
+
+Enable it with:
+
+    [dependencies]
+    diagprint-axum = {
+        version = "0.8",
+        features = ["async-delivery"],
+    }
+
+The feature provides `AsyncDiagnosticEmissionExt::emit_to_async`:
+
+    use diagprint_axum::{
+        AsyncDiagnosticEmissionExt,
+        AsyncEmissionOutcome,
+        DiagnosticResponse,
+    };
+
+    let response = DiagnosticResponse::new(
+        status,
+        diagnostic,
+    )
+    .emit_to_async(&async_sink)
+    .await;
+
+    match response.outcome() {
+        AsyncEmissionOutcome::Enqueued => {
+            // Accepted into the bounded delivery queue.
+        }
+
+        AsyncEmissionOutcome::Dropped => {
+            // Explicitly dropped by the configured backpressure policy.
+        }
+
+        AsyncEmissionOutcome::Failed(error) => {
+            // Submission failed, but the HTTP response is still available.
+            eprintln!("diagnostic submission failed: {error}");
+        }
+    }
+
+### Submission is not delivery completion
+
+`AsyncEmissionOutcome::Enqueued` means the diagnostic was accepted into the
+bounded asynchronous delivery queue.
+
+It does not mean that:
+
+- the underlying sink has already written the diagnostic;
+- buffered output has been flushed;
+- persistence has completed;
+- application shutdown may discard the delivery worker.
+
+Applications that require completion guarantees should use the lifecycle
+operations provided by `diagprint-async`, such as `flush` or `shutdown`, at the
+appropriate application lifecycle boundary.
+
+### Backpressure remains explicit
+
+`diagprint-axum` does not define a second queue or a second set of overload
+rules.
+
+Queue capacity and overload behavior come directly from
+`diagprint-async::AsyncDiagnosticSink`.
+
+The supported backpressure policies include:
+
+- `Block` — wait asynchronously for queue capacity;
+- `Reject` — reject a diagnostic when the bounded queue is full;
+- `DropNewest` — explicitly permit selected severities to be dropped.
+
+The corresponding Axum submission result remains observable through
+`AsyncEmissionOutcome`.
+
+A queue rejection becomes `AsyncEmissionOutcome::Failed`.
+
+An intentional `DropNewest` decision becomes
+`AsyncEmissionOutcome::Dropped`.
+
+Neither case silently becomes `Enqueued`.
+
+### One shared sink, not one worker per request
+
+An `AsyncDiagnosticSink` should normally be created as application-level state
+and reused across requests.
+
+For example, an application can construct one bounded sink during startup,
+place access to it in application state, submit diagnostics from handlers, and
+shut it down during graceful application shutdown.
+
+`emit_to_async` itself does not:
+
+- create an additional queue;
+- spawn a Tokio task for each HTTP request;
+- create a delivery worker for each diagnostic;
+- flush after each diagnostic;
+- retry failed delivery;
+- shut down the sink.
+
+Worker ownership remains explicit at the application lifecycle level.
+
+### HTTP behavior remains independent
+
+As with synchronous `emit_to`, asynchronous submission does not widen the HTTP
+privacy boundary.
+
+The async sink receives the complete internal diagnostic.
+
+The HTTP client still receives only the representation permitted by
+`ResponsePolicy` and `ProblemDetailsPolicy`.
+
+Submission failure, queue rejection, or an intentional drop does not replace
+the HTTP response.
+
+For values converted into an Axum response, `AsyncEmissionOutcome` is stored in
+response extensions as server-side metadata. It is not serialized into the
+client response body.
+
+### Feature isolation
+
+Asynchronous delivery is intentionally optional.
+
+Without `async-delivery`:
+
+- `AsyncDiagnosticEmissionExt` is not compiled;
+- `AsyncEmission` is not compiled;
+- `AsyncEmissionOutcome` is not compiled;
+- `diagprint-async` is not a normal dependency of `diagprint-axum`;
+- synchronous response adaptation and explicit `emit_to` continue to work
+  independently.
+
+This keeps applications that only want privacy-safe Axum response adaptation
+from paying for an asynchronous delivery layer they do not use.
 
 ## Request context and correlation
 
