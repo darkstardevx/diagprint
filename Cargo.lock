@@ -450,6 +450,7 @@ version = "0.8.0"
 dependencies = [
  "axum",
  "diagprint",
+ "diagprint-async",
  "http-body-util",
  "serde",
  "serde_json",

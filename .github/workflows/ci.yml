@@ -203,6 +203,7 @@ jobs:
             diagprint-derive
             diagprint-lsp
             diagprint-async
+            diagprint-axum
             diagprint-otel
             diagprint-test
           )
