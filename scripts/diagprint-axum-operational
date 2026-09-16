@@ -1,0 +1,163 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+package="diagprint-axum"
+branch="axum-v0.8.2"
+manifest="crates/diagprint-axum/Cargo.toml"
+baseline="0.8.1"
+release_tag="diagprint-axum-v0.8.1"
+release_source="530d267c82cceff3b81e859fdc8abc364892fab1"
+
+rule() {
+    printf '%*s\n' 78 '' | tr ' ' '='
+}
+
+section() {
+    echo
+    rule
+    echo " $1"
+    rule
+    echo
+}
+
+fail() {
+    echo
+    echo "ERROR: $*" >&2
+    exit 1
+}
+
+[[ -f Cargo.toml && -f "$manifest" ]] ||
+    fail "run this from the diagprint repository root"
+
+[[ "$(git branch --show-current)" == "$branch" ]] ||
+    fail "expected branch $branch"
+
+[[ "$(git rev-list -n 1 "$release_tag")" == "$release_source" ]] ||
+    fail "published 0.8.1 release tag moved"
+
+python3 <<'PY'
+from pathlib import Path
+import tomllib
+
+path = Path(
+    "crates/diagprint-axum/Cargo.toml"
+)
+
+with path.open("rb") as handle:
+    manifest = tomllib.load(handle)
+
+assert manifest["package"]["version"] == "0.8.2"
+assert manifest["package"]["rust-version"] == "1.85"
+assert manifest["features"]["default"] == []
+assert manifest["features"]["async-delivery"] == [
+    "dep:diagprint-async"
+]
+
+print("PASS: 0.8.2 development manifest")
+print("PASS: Rust 1.85 contract")
+print("PASS: feature contract")
+PY
+
+section "FORMAT + WHITESPACE"
+
+cargo fmt \
+    --all \
+    -- \
+    --check
+
+cargo fmt \
+    --manifest-path \
+    crates/diagprint-axum/fuzz/Cargo.toml \
+    --all \
+    -- \
+    --check
+
+git diff --check
+
+section "PROPERTY + SECURITY CONTRACTS"
+
+cargo test \
+    -p "$package" \
+    --no-default-features \
+    --test property_contract
+
+cargo test \
+    -p "$package" \
+    --no-default-features \
+    --features async-delivery \
+    --test property_contract
+
+cargo test \
+    -p "$package" \
+    --no-default-features \
+    --test security_contract
+
+section "FEATURE POWERSET"
+
+command -v cargo-hack >/dev/null 2>&1 ||
+    fail "cargo-hack is required; install cargo-hack 0.6.45"
+
+cargo hack check \
+    --package "$package" \
+    --feature-powerset \
+    --lib \
+    --no-dev-deps
+
+section "PATCH SEMVER CONTRACT"
+
+command -v cargo-semver-checks >/dev/null 2>&1 ||
+    fail "cargo-semver-checks is required; install cargo-semver-checks 0.50.0"
+
+cargo semver-checks \
+    --manifest-path "$manifest" \
+    --baseline-version "$baseline" \
+    --release-type patch \
+    --all-features
+
+section "PACKAGE HYGIENE"
+
+package_list="$(
+    cargo package \
+        --allow-dirty \
+        --list \
+        -p "$package"
+)"
+
+grep -qx \
+    "tests/property_contract.rs" \
+    <<<"$package_list" ||
+    fail "property contract is missing from package source"
+
+if grep -Eq \
+    '^fuzz(/|$)' \
+    <<<"$package_list"
+then
+    fail "fuzz workspace leaked into published package"
+fi
+
+echo "PASS: property contract ships with source package"
+echo "PASS: fuzz workspace remains development-only"
+
+section "COMPLETE AXUM GATE"
+
+./scripts/diagprint-axum-gates full
+
+section "OPERATIONAL CONTRACT GREEN"
+
+echo "Baseline release:"
+echo "  $baseline"
+echo
+echo "Development line:"
+echo "  0.8.2"
+echo
+echo "Contracts:"
+echo "  ✓ SemVer"
+echo "  ✓ property testing"
+echo "  ✓ adversarial privacy"
+echo "  ✓ feature powerset"
+echo "  ✓ package hygiene"
+echo "  ✓ full Axum gate"
+echo
+rule
+echo " ✅ DIAGPRINT-AXUM OPERATIONAL GATE GREEN"
+rule

@@ -6,6 +6,27 @@ The project follows Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+
+- Began the `diagprint-axum 0.8.2` operational-maturity line with automated
+  patch-SemVer checks against the published `0.8.1` baseline.
+- Added property-based contracts for request-ID validation, Problem Details
+  extension names, and fail-closed diagnostic-secret redaction.
+- Added development-only libFuzzer targets for request IDs and Problem Details
+  extension names, plus scheduled and manually dispatchable fuzz CI.
+- Added focused `diagprint-axum` compatibility CI across stable Linux, macOS,
+  and Windows, Rust 1.85 MSRV, both feature surfaces, and the full feature
+  powerset.
+- Added a reusable `scripts/diagprint-axum-operational` local gate.
+
+### Security
+
+- Extended release hardening into continuous development by making privacy
+  invariants property-tested and fuzzable rather than relying only on fixed
+  regression examples.
+- Explicitly exclude the fuzz workspace from the published crate and enforce
+  that exclusion in package-content validation.
+
 ### Planned
 
 - Add framework and application adapters, beginning with `diagprint-axum`,

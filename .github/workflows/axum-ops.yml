@@ -1,0 +1,185 @@
+name: Axum Operational Maturity
+
+on:
+  push:
+    paths:
+      - "crates/diagprint-axum/**"
+      - "crates/diagprint-async/**"
+      - "src/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/axum-ops.yml"
+  pull_request:
+    paths:
+      - "crates/diagprint-axum/**"
+      - "crates/diagprint-async/**"
+      - "src/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/axum-ops.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+
+jobs:
+  semver:
+    name: SemVer vs published 0.8.1
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Check patch-release compatibility
+        uses: obi1kenobi/cargo-semver-checks-action@v2
+        with:
+          package: diagprint-axum
+          manifest-path: Cargo.toml
+          baseline-version: "0.8.1"
+          release-type: patch
+          feature-group: all-features
+          verbose: true
+
+  properties:
+    name: Property and privacy contracts
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Property contracts
+        run: >-
+          cargo test
+          -p diagprint-axum
+          --no-default-features
+          --test property_contract
+
+      - name: Property contracts with async delivery
+        run: >-
+          cargo test
+          -p diagprint-axum
+          --no-default-features
+          --features async-delivery
+          --test property_contract
+
+      - name: Adversarial security contract
+        run: >-
+          cargo test
+          -p diagprint-axum
+          --no-default-features
+          --test security_contract
+
+  feature-powerset:
+    name: Axum feature powerset
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-hack
+        run: >-
+          cargo install
+          cargo-hack
+          --locked
+          --version 0.6.45
+
+      - name: Check every feature combination
+        run: >-
+          cargo hack check
+          --package diagprint-axum
+          --feature-powerset
+          --lib
+          --no-dev-deps
+
+  platform:
+    name: Stable / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Test default feature surface
+        run: >-
+          cargo test
+          -p diagprint-axum
+          --no-default-features
+          --all-targets
+
+      - name: Test async feature surface
+        run: >-
+          cargo test
+          -p diagprint-axum
+          --no-default-features
+          --features async-delivery
+          --all-targets
+
+  msrv:
+    name: Axum MSRV 1.85
+    runs-on: ubuntu-latest
+
+    env:
+      CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS: fallback
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Rust 1.85
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.85.0"
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Re-resolve for MSRV
+        run: rm -f Cargo.lock
+
+      - name: Test default feature surface
+        run: >-
+          cargo test
+          -p diagprint-axum
+          --no-default-features
+          --all-targets
+
+      - name: Test async feature surface
+        run: >-
+          cargo test
+          -p diagprint-axum
+          --no-default-features
+          --features async-delivery
+          --all-targets

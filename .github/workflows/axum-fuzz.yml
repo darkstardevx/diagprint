@@ -1,0 +1,47 @@
+name: Axum Fuzz
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 5 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    name: ${{ matrix.target }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - request_id
+          - problem_extension
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install nightly Rust
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-fuzz
+        run: >-
+          cargo install
+          cargo-fuzz
+          --locked
+          --version 0.13.2
+
+      - name: Fuzz ${{ matrix.target }}
+        working-directory: crates/diagprint-axum/fuzz
+        run: >-
+          cargo fuzz run
+          ${{ matrix.target }}
+          --
+          -max_total_time=90
+          -timeout=10

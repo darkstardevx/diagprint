@@ -1,0 +1,32 @@
+[package]
+name = "diagprint-axum-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+axum = { version = "0.8.9", default-features = false }
+diagprint = { path = "../../.." }
+diagprint-axum = { path = ".." }
+libfuzzer-sys = "0.4.13"
+serde_json = "1"
+
+[[bin]]
+name = "request_id"
+path = "fuzz_targets/request_id.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "problem_extension"
+path = "fuzz_targets/problem_extension.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]
+members = ["."]

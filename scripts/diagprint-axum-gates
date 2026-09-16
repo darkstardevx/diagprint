@@ -297,6 +297,18 @@ check_package_contents() {
         exit 1
     fi
 
+    if ! grep -qx 'tests/property_contract.rs' <<<"$package_list"; then
+        echo
+        echo "FAILED: tests/property_contract.rs is missing from the package"
+        exit 1
+    fi
+
+    if grep -Eq '^fuzz(/|$)' <<<"$package_list"; then
+        echo
+        echo "FAILED: fuzz development workspace leaked into the package"
+        exit 1
+    fi
+
     echo
     echo "PASS: required package contents are present"
 }
