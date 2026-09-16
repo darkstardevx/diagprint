@@ -6,30 +6,6 @@ The project follows Semantic Versioning.
 
 ## [Unreleased]
 
-### Added
-
-- Added the optional `diagprint-axum/async-delivery` feature for explicit
-  bounded asynchronous diagnostic submission through `diagprint-async`.
-- Added `AsyncDiagnosticEmissionExt::emit_to_async` for `Diagnostic`,
-  `DiagnosticResponse`, and `ProblemDetailsResponse`.
-- Added `AsyncEmissionOutcome::{Enqueued, Dropped, Failed}` so bounded-queue
-  backpressure decisions remain observable without replacing HTTP responses.
-- Async submission reuses `diagprint-async::AsyncDiagnosticSink` rather than
-  introducing a second queue, retry system, worker lifecycle, or backpressure
-  implementation inside `diagprint-axum`.
-- Kept asynchronous delivery disabled by default so applications using only
-  Axum response adaptation do not gain a normal dependency on `diagprint-async`.
-
-- Added explicit opt-in diagnostic emission hooks to `diagprint-axum` through
-  `DiagnosticEmissionExt::emit_to`, reusing the core `DiagnosticSink`
-  abstraction without introducing automatic logging or persistence.
-- Added `EmissionOutcome` response metadata so sink failures remain observable
-  without replacing or altering the application's HTTP response.
-- Diagnostic and RFC 9457 responses can emit the complete internal diagnostic
-  while preserving the existing privacy-filtered client representation.
-- Explicit Axum emission performs one synchronous sink attempt and deliberately
-  does not flush, retry, queue, or start background delivery.
-
 ### Planned
 
 - Add framework and application adapters, beginning with `diagprint-axum`,
@@ -41,6 +17,68 @@ The project follows Semantic Versioning.
 - Add additional lifecycle-specific renderers, exporters, and integrations
   where they extend the create → enrich → render → remediate → verify →
   export/telemetry pipeline without bloating the default dependency graph.
+
+## [diagprint-axum 0.8.0] - 2026-09-16
+
+### Added
+
+- Added the `diagprint-axum` companion crate as the v0.8 framework-integration
+  layer while keeping Axum and runtime dependencies out of `diagprint` core.
+- Added privacy-safe `DiagnosticResponse` HTTP adaptation with conservative
+  client disclosure defaults and explicit `ResponsePolicy` controls.
+- Added `DiagnosticResponseExt` and `DiagnosticResult` helpers for integrating
+  structured diagnostics into ordinary Axum application flows.
+- Added Axum rejection classification and conversion through
+  `AxumRejectionExt` and `RejectionKind`.
+- Added application-error adaptation through `ApplicationError` and
+  `ApplicationErrorExt`.
+- Added request correlation with validated `RequestId`, `RequestContext`,
+  `X-Request-ID` handling, and request-context middleware.
+- Added RFC 9457 Problem Details responses through `ProblemDetails`,
+  `ProblemDetailsResponse`, `ProblemDetailsPolicy`, and
+  `ProblemDetailsResponseExt`.
+- Added validated root-level Problem Details extension members with separate
+  public and internal extension handling.
+- Added explicit synchronous diagnostic delivery through
+  `DiagnosticEmissionExt::emit_to`.
+- Added `Emission` and `EmissionOutcome` so sink success or failure remains
+  server-side metadata without replacing the HTTP response.
+- Added the optional `async-delivery` feature backed by `diagprint-async`.
+- Added `AsyncDiagnosticEmissionExt::emit_to_async` for `Diagnostic`,
+  `DiagnosticResponse`, and `ProblemDetailsResponse`.
+- Added `AsyncEmission` and
+  `AsyncEmissionOutcome::{Enqueued, Dropped, Failed}` for observable bounded
+  queue submission outcomes.
+- Added feature-isolation enforcement proving `diagprint-async` is absent from
+  the normal dependency graph unless `async-delivery` is enabled.
+- Added dedicated quick, full, and release gates for `diagprint-axum`,
+  including Rust 1.85 MSRV, strict Clippy, strict rustdoc, package inspection,
+  feature isolation, package verification, and publish dry-run coverage.
+
+### Changed
+
+- HTTP response construction remains side-effect free. Diagnostic sink delivery
+  requires an explicit `emit_to` or `emit_to_async` call.
+- Async delivery reuses the existing bounded `diagprint-async` worker and
+  backpressure implementation instead of introducing another queue or worker
+  lifecycle inside the Axum integration.
+- Queue acceptance is explicitly distinct from completed sink delivery;
+  flushing and shutdown remain application lifecycle responsibilities.
+- `diagprint-axum` targets the stable `diagprint` 0.7.x core line while
+  advancing independently as a 0.8 companion crate.
+
+### Security
+
+- Internal diagnostic messages and codes are redacted from HTTP clients by
+  default.
+- Server-side sink delivery receives the complete internal diagnostic without
+  widening the client disclosure boundary.
+- Internal Problem Details extension members remain hidden unless explicitly
+  exposed by policy.
+- Sink failures, queue rejection, and deliberate async dropping do not replace
+  or mutate the application's HTTP response.
+- Async delivery is disabled by default, avoiding accidental runtime or queue
+  coupling for synchronous-only applications.
 
 ## [0.7.1] - 2026-09-16
 
