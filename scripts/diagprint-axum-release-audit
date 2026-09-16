@@ -249,7 +249,9 @@ assert git["sha1"] == expected, (
     f"does not match candidate {expected}"
 )
 
-assert git["dirty"] is False, (
+dirty = git.get("dirty", False)
+
+assert dirty is False, (
     "packaged artifact reports a dirty source tree"
 )
 
@@ -258,7 +260,9 @@ assert data.get("path_in_vcs") == (
 ), data.get("path_in_vcs")
 
 print("PASS: artifact is anchored to exact candidate SHA")
-print("PASS: artifact records clean source state")
+print(
+    "PASS: artifact does not report a dirty source state"
+)
 print("PASS: path_in_vcs is correct")
 PY
 
