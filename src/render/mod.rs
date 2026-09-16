@@ -7,6 +7,7 @@ mod html;
 mod json;
 mod markdown;
 mod plain;
+mod rendered_artifact;
 mod sarif;
 mod source_context;
 mod terminal;
@@ -21,6 +22,12 @@ pub use html::{HtmlRenderer, HtmlSourceOptions, HtmlTheme};
 pub use json::JsonRenderer;
 pub use markdown::{MarkdownRenderer, MarkdownSourceOptions};
 pub use plain::PlainRenderer;
+
+pub use rendered_artifact::{
+    RENDERED_RECEIPT_V1_SCHEMA, RenderedArtifact, RenderedArtifactReceipt, RenderedFormat,
+    RenderedSourceDescriptor, RenderedSourceMode,
+};
+
 pub use sarif::SarifRenderer;
 pub use terminal::TerminalRenderer;
 pub use theme::{SeverityTheme, Style, Theme};

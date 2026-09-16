@@ -1,4 +1,7 @@
-use crate::{ArtifactDigest, ArtifactVerificationError, ExportedArtifact};
+use crate::{
+    ArtifactDigest, ArtifactVerificationError, ExportedArtifact, render::RenderedArtifact,
+};
+use serde::Serialize;
 use std::{
     error::Error,
     ffi::OsStr,
@@ -9,7 +12,7 @@ use std::{
 };
 use uuid::Uuid;
 
-/// Persists exported artifacts as create-only transactional directories.
+/// Persists verified artifacts as create-only transactional directories.
 ///
 /// The writer stages the artifact and receipt together in a sibling directory,
 /// verifies the staged artifact, synchronizes the files, and then commits the
@@ -19,8 +22,10 @@ use uuid::Uuid;
 ///
 /// A successful destination contains:
 ///
-/// - the requested artifact filename;
-/// - `<artifact filename>.receipt.json`.
+/// ~~~text
+/// <artifact filename>
+/// <artifact filename>.receipt.json
+/// ~~~
 ///
 /// This deliberately separates durable artifacts from append-oriented
 /// diagnostic sinks and [`crate::Reporter`].
@@ -56,6 +61,22 @@ impl PersistedArtifact {
 
     pub const fn byte_length(&self) -> usize {
         self.byte_length
+    }
+}
+
+/// Exact byte identity recorded by an artifact receipt.
+#[derive(Debug, Clone, Copy)]
+struct ArtifactIdentity {
+    digest: ArtifactDigest,
+    byte_length: usize,
+}
+
+impl ArtifactIdentity {
+    const fn new(digest: ArtifactDigest, byte_length: usize) -> Self {
+        Self {
+            digest,
+            byte_length,
+        }
     }
 }
 
@@ -152,31 +173,71 @@ impl ArtifactWriter {
         Self
     }
 
-    /// Persists an artifact and receipt as one create-only transaction.
-    ///
-    /// `destination` is the final directory, not the artifact file itself.
-    ///
-    /// For example:
-    ///
-    /// ```text
-    /// target/diagnostics/pr-42/
-    /// ├── delta.json
-    /// └── delta.json.receipt.json
-    /// ```
+    /// Persists a delta export and receipt as one create-only transaction.
     pub fn write(
         &self,
         exported: &ExportedArtifact,
         destination: impl AsRef<Path>,
         artifact_name: &str,
     ) -> Result<PersistedArtifact, ArtifactWriteError> {
-        let destination = destination.as_ref();
+        let receipt = exported.receipt();
 
+        let identity = ArtifactIdentity::new(receipt.artifact_digest, receipt.byte_length);
+
+        self.write_verified(
+            exported.bytes(),
+            receipt,
+            |bytes| receipt.verify_bytes(bytes),
+            identity,
+            destination.as_ref(),
+            artifact_name,
+        )
+    }
+
+    /// Persists any verified rendered report artifact as one create-only
+    /// transaction.
+    ///
+    /// HTML, Markdown, and plain-text reports all use this same persistence
+    /// path.
+    pub fn write_rendered(
+        &self,
+        artifact: &RenderedArtifact,
+        destination: impl AsRef<Path>,
+        artifact_name: &str,
+    ) -> Result<PersistedArtifact, ArtifactWriteError> {
+        let receipt = artifact.receipt();
+
+        let identity = ArtifactIdentity::new(receipt.artifact_digest, receipt.byte_length);
+
+        self.write_verified(
+            artifact.bytes(),
+            receipt,
+            |bytes| receipt.verify_bytes(bytes),
+            identity,
+            destination.as_ref(),
+            artifact_name,
+        )
+    }
+
+    fn write_verified<R, F>(
+        &self,
+        bytes: &[u8],
+        receipt: &R,
+        verify: F,
+        identity: ArtifactIdentity,
+        destination: &Path,
+        artifact_name: &str,
+    ) -> Result<PersistedArtifact, ArtifactWriteError>
+    where
+        R: Serialize,
+        F: Fn(&[u8]) -> Result<(), ArtifactVerificationError>,
+    {
         validate_destination(destination)?;
         validate_artifact_name(artifact_name)?;
 
         // Never persist bytes which already disagree with their in-memory
         // receipt.
-        exported.verify()?;
+        verify(bytes)?;
 
         if destination.exists() {
             return Err(ArtifactWriteError::DestinationExists {
@@ -206,17 +267,17 @@ impl ArtifactWriter {
 
         let staged_receipt = staging.path().join(&receipt_name);
 
-        write_synced(&staged_artifact, exported.bytes())?;
+        write_synced(&staged_artifact, bytes)?;
 
         // Verify the actual bytes read back from storage before committing the
         // transaction.
         let persisted_bytes = fs::read(&staged_artifact)
             .map_err(|source| io_error("read staged artifact", &staged_artifact, source))?;
 
-        exported.receipt().verify_bytes(&persisted_bytes)?;
+        verify(&persisted_bytes)?;
 
-        let receipt_bytes = serde_json::to_vec_pretty(exported.receipt())
-            .map_err(ArtifactWriteError::ReceiptSerialization)?;
+        let receipt_bytes =
+            serde_json::to_vec_pretty(receipt).map_err(ArtifactWriteError::ReceiptSerialization)?;
 
         write_synced(&staged_receipt, &receipt_bytes)?;
 
@@ -254,9 +315,9 @@ impl ArtifactWriter {
 
             receipt_path: destination.join(receipt_name),
 
-            artifact_digest: exported.receipt().artifact_digest,
+            artifact_digest: identity.digest,
 
-            byte_length: exported.receipt().byte_length,
+            byte_length: identity.byte_length,
         })
     }
 }
