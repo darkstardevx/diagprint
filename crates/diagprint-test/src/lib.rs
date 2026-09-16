@@ -1,19 +1,24 @@
 //! Testing helpers for `diagprint`.
 //!
-//! `diagprint-test` provides focused assertions and deterministic snapshot
-//! helpers over structured diagnostics and diagnostic reports without depending
-//! on rendered terminal output.
+//! `diagprint-test` provides focused assertions, canonical identity checks, and
+//! deterministic snapshot helpers over structured diagnostics and diagnostic
+//! reports without depending on rendered terminal output.
 //!
 //! The helpers intentionally inspect diagprint's public structured model rather
 //! than parsing presentation formats.
 
 #![forbid(unsafe_code)]
 
+mod canonical_assertions;
 mod snapshot;
 
 use diagprint::{
     Applicability, Diagnostic, DiagnosticReport, DiagnosticValue, LabelKind, ReportStatus,
     Severity, SeverityCounts,
+};
+
+pub use canonical_assertions::{
+    DiagnosticCanonicalAssertions, DiagnosticDeltaAssertions, DiagnosticReportCanonicalAssertions,
 };
 
 pub use snapshot::{
@@ -266,7 +271,7 @@ impl DiagnosticReportAssertions for DiagnosticReport {
     fn assert_status(&self, expected: ReportStatus) -> &Self {
         let actual = self.status();
 
-        assert_eq!(actual, expected, "diagnostic report status mismatch");
+        assert_eq!(actual, expected, "diagnostic report status mismatch",);
 
         self
     }
@@ -325,7 +330,9 @@ impl DiagnosticReportAssertions for DiagnosticReport {
 /// Common imports for tests using `diagprint-test`.
 pub mod prelude {
     pub use crate::{
-        DiagnosticAssertions, DiagnosticReportAssertions, assert_diagnostic_snapshot,
+        DiagnosticAssertions, DiagnosticCanonicalAssertions, DiagnosticDeltaAssertions,
+        DiagnosticReportAssertions, DiagnosticReportCanonicalAssertions,
+        assert_diagnostic_file_snapshot, assert_diagnostic_snapshot, assert_report_file_snapshot,
         assert_report_snapshot,
     };
 }
