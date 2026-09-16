@@ -11,6 +11,7 @@
 
 mod application;
 mod context;
+mod emission;
 mod problem;
 mod rejection;
 mod response;
@@ -20,6 +21,7 @@ pub use context::{
     InvalidRequestId, MAX_REQUEST_ID_LEN, REQUEST_ID_HEADER, RequestContext, RequestId,
     request_context_middleware,
 };
+pub use emission::{DiagnosticEmissionExt, Emission, EmissionOutcome};
 pub use problem::{
     ABOUT_BLANK, PROBLEM_JSON_MEDIA_TYPE, ProblemDetails, ProblemDetailsPolicy,
     ProblemDetailsResponse, ProblemDetailsResponseExt, ProblemExtensionError,

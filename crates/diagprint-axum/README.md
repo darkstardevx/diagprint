@@ -433,6 +433,70 @@ diagnostic report ID distinct.
 
 Request-context adaptation does not emit, log, or persist diagnostics.
 
+## Opt-in diagnostic emission
+
+HTTP response construction and diagnostic emission are deliberately separate.
+
+Creating a `DiagnosticResponse` or `ProblemDetailsResponse` does not emit,
+log, persist, flush, or otherwise forward its internal diagnostic.
+
+Emission happens only when the application explicitly calls `emit_to`:
+
+    use diagprint_axum::DiagnosticEmissionExt;
+
+    let emitted = error
+        .to_problem_response_with_context(
+            &reporter,
+            &request_context,
+        )
+        .emit_to(&diagnostic_sink);
+
+`emit_to` accepts any `diagprint::DiagnosticSink`.
+
+The sink receives the full internal diagnostic, including safe request
+correlation attributes such as:
+
+    http.request_id
+    http.method
+    http.route
+
+Client disclosure remains controlled independently by `ResponsePolicy` and
+`ProblemDetailsPolicy`.
+
+### Emission failure
+
+Sink failure does not replace or prevent the HTTP response.
+
+Instead, `emit_to` returns an `Emission<T>` containing:
+
+- the original response;
+- an `EmissionOutcome`.
+
+The outcome is either:
+
+    EmissionOutcome::Emitted
+
+or:
+
+    EmissionOutcome::Failed(error)
+
+`Emission<T>` implements Axum's `IntoResponse` whenever `T` does, so a failed
+diagnostic sink cannot turn an application error response into a different
+HTTP failure.
+
+When converted into an Axum response, the `EmissionOutcome` is retained in
+the response extensions for server-side middleware inspection. It is not
+serialized into the client body.
+
+### Lifecycle ownership
+
+`emit_to` performs exactly one `DiagnosticSink::emit` call.
+
+It does not automatically call `flush`.
+
+Persistence, buffering, flushing, retrying, queueing, and asynchronous
+delivery remain responsibilities of the selected sink and the application.
+
 ## Application error adapters
 
 Application and domain errors can implement `ApplicationError` to define one
