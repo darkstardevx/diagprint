@@ -4,13 +4,14 @@ mod json;
 mod markdown;
 mod plain;
 mod sarif;
+mod source_context;
 mod terminal;
 mod theme;
 
 pub use github_actions::GithubActionsRenderer;
 pub use github_actions_delta::GithubActionsDeltaRenderer;
 pub use json::JsonRenderer;
-pub use markdown::MarkdownRenderer;
+pub use markdown::{MarkdownRenderer, MarkdownSourceOptions};
 pub use plain::PlainRenderer;
 pub use sarif::SarifRenderer;
 pub use terminal::TerminalRenderer;
