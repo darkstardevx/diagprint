@@ -259,6 +259,14 @@ run_full() {
             --no-deps
 
     run_gate \
+        "Workspace strict rustdoc compatibility" \
+        env RUSTDOCFLAGS="-D warnings" \
+        cargo doc \
+            --workspace \
+            --no-deps \
+            --all-features
+
+    run_gate \
         "diagprint-axum package contents" \
         check_package_contents
 
