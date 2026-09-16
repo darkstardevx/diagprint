@@ -9,9 +9,14 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+mod problem;
 mod rejection;
 mod response;
 
+pub use problem::{
+    ABOUT_BLANK, PROBLEM_JSON_MEDIA_TYPE, ProblemDetails, ProblemDetailsPolicy,
+    ProblemDetailsResponse, ProblemDetailsResponseExt,
+};
 pub use rejection::{AxumRejectionExt, RejectionKind};
 pub use response::{
     ClientErrorBody, ClientErrorEnvelope, DiagnosticResponse, DiagnosticResponseExt,
