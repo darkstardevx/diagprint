@@ -1,8 +1,8 @@
 use axum::{
-    extract::{MatchedPath, Request},
-    http::{HeaderValue, Method},
+    extract::{FromRequestParts, MatchedPath, Request},
+    http::{HeaderValue, Method, StatusCode, request::Parts},
     middleware::Next,
-    response::Response,
+    response::{IntoResponse, Response},
 };
 use diagprint::Diagnostic;
 use std::{error::Error, fmt};
@@ -29,6 +29,33 @@ impl fmt::Display for InvalidRequestId {
 }
 
 impl Error for InvalidRequestId {}
+
+/// Error returned when a handler requests [`RequestContext`] without the
+/// request-correlation middleware having established one.
+///
+/// This normally indicates an application wiring error: the route was not
+/// wrapped in [`request_context_middleware`].
+///
+/// The Axum rejection intentionally exposes no internal configuration details
+/// to the HTTP client.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MissingRequestContext;
+
+impl fmt::Display for MissingRequestContext {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(
+            "request context is unavailable; ensure request_context_middleware is installed",
+        )
+    }
+}
+
+impl Error for MissingRequestContext {}
+
+impl IntoResponse for MissingRequestContext {
+    fn into_response(self) -> Response {
+        StatusCode::INTERNAL_SERVER_ERROR.into_response()
+    }
+}
 
 /// Validated request-level correlation identifier.
 ///
@@ -139,6 +166,21 @@ impl RequestContext {
             Some(route) => diagnostic.attribute("http.route", route),
             None => diagnostic,
         }
+    }
+}
+
+impl<S> FromRequestParts<S> for RequestContext
+where
+    S: Send + Sync,
+{
+    type Rejection = MissingRequestContext;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        parts
+            .extensions
+            .get::<Self>()
+            .cloned()
+            .ok_or(MissingRequestContext)
     }
 }
 

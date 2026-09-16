@@ -591,6 +591,22 @@ Apply the middleware after declaring routes:
             middleware::from_fn(request_context_middleware)
         );
 
+Handlers can extract the established request context directly:
+
+    use axum::Json;
+    use diagprint_axum::RequestContext;
+
+    async fn handler(context: RequestContext) -> Json<String> {
+        Json(context.request_id().to_string())
+    }
+
+`RequestContext` is a first-class Axum extractor. Applications do not need to
+spell `Extension<RequestContext>` or manually read request extensions.
+
+If a handler requests `RequestContext` without installing the correlation
+middleware, extraction fails closed with HTTP 500. The rejection does not
+expose the application's middleware configuration to the client.
+
 The middleware:
 
 - preserves a valid inbound `x-request-id`;

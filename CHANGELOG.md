@@ -6,6 +6,17 @@ The project follows Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+
+- Added first-class Axum extraction for `RequestContext`, allowing handlers to
+  accept `RequestContext` directly instead of unpacking
+  `Extension<RequestContext>`.
+- Added privacy-safe `MissingRequestContext` rejection behavior for routes that
+  request correlation context without installing `request_context_middleware`.
+- Added end-to-end router coverage proving request-ID propagation, RFC 9457
+  Problem Details correlation, matched-route privacy, and client redaction
+  through a real Axum handler stack.
+
 ### Planned
 
 - Add framework and application adapters, beginning with `diagprint-axum`,

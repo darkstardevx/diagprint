@@ -59,8 +59,8 @@ pub use application::{ApplicationError, ApplicationErrorExt};
 pub use async_emission::{AsyncDiagnosticEmissionExt, AsyncEmission, AsyncEmissionOutcome};
 
 pub use context::{
-    InvalidRequestId, MAX_REQUEST_ID_LEN, REQUEST_ID_HEADER, RequestContext, RequestId,
-    request_context_middleware,
+    InvalidRequestId, MAX_REQUEST_ID_LEN, MissingRequestContext, REQUEST_ID_HEADER, RequestContext,
+    RequestId, request_context_middleware,
 };
 
 pub use emission::{DiagnosticEmissionExt, Emission, EmissionOutcome};

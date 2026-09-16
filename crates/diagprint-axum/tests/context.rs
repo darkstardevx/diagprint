@@ -1,5 +1,5 @@
 use axum::{
-    Extension, Json, Router,
+    Json, Router,
     body::Body,
     http::{Method, Request, StatusCode},
     middleware,
@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 use std::{error::Error, fmt};
 use tower::ServiceExt;
 
-async fn context_handler(Extension(context): Extension<RequestContext>) -> Json<Value> {
+async fn context_handler(context: RequestContext) -> Json<Value> {
     Json(json!({
         "request_id": context.request_id().as_str(),
         "method": context.method().as_str(),
@@ -83,6 +83,37 @@ async fn valid_inbound_request_id_is_preserved_and_propagated() {
     assert_eq!(json["request_id"], "client-request-123");
     assert_eq!(json["method"], "GET");
     assert_eq!(json["matched_route"], "/users/{id}");
+}
+
+#[tokio::test]
+async fn missing_request_context_rejects_without_exposing_configuration_details() {
+    let app = Router::new().route("/users/{id}", get(context_handler));
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/users/42")
+                .body(Body::empty())
+                .expect("request should build"),
+        )
+        .await
+        .expect("router should respond");
+
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert!(response.headers().get(REQUEST_ID_HEADER).is_none());
+
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("response body should collect")
+        .to_bytes();
+
+    let body = String::from_utf8(body.to_vec()).expect("rejection body should be valid UTF-8");
+
+    assert!(!body.contains("request_context_middleware"));
+    assert!(!body.contains("RequestContext"));
+    assert!(!body.contains("middleware"));
 }
 
 #[tokio::test]
