@@ -1,6 +1,6 @@
 # diagprint-axum 0.8.0 release checklist
 
-Release date candidate: 2026-09-16
+Release date: 2026-09-16
 
 ## Release identity
 
@@ -14,6 +14,28 @@ Release date candidate: 2026-09-16
 - Default features: none
 - Optional features:
   - `async-delivery`
+
+## Publication record
+
+- Status: **published**
+- Registry: `crates.io`
+- Package: `diagprint-axum 0.8.0`
+- Release date: `2026-09-16`
+- Published source commit: `1044234e89b59056c5b313304cd28576a22ff1c7`
+- Release tag: `diagprint-axum-v0.8.0`
+- Core dependency: `diagprint 0.7.1`
+- Optional async dependency: `diagprint-async 0.7.0`
+- docs.rs status at post-release checkpoint: **available**
+- docs.rs URL: `https://docs.rs/diagprint-axum/0.8.0/diagprint_axum/`
+
+The crates.io artifact was downloaded after publication and independently
+verified rather than relying only on the local package archive.
+
+A fresh external consumer was also compiled against the registry artifact for
+both the default feature surface and `async-delivery`.
+
+Registry-sensitive release commands explicitly target `crates-io` so a locally
+configured Cargo default registry cannot silently redirect release validation.
 
 ## Architecture boundary
 
@@ -140,7 +162,7 @@ Required:
 
 ```bash
 cargo package -p diagprint-axum
-cargo publish --dry-run -p diagprint-axum
+cargo publish --dry-run --registry crates-io -p diagprint-axum
 ```
 
 ## Registry prerequisites
@@ -188,20 +210,29 @@ Real publication remains separate from validation.
 Automated validation may run:
 
 ```bash
-cargo publish --dry-run -p diagprint-axum
+cargo publish --dry-run --registry crates-io -p diagprint-axum
 ```
 
 A real publication command is deliberately not included here.
 
-## Post-publication
+## Post-publication verification
 
-After successful publication:
+Completed at the post-release checkpoint:
 
-- verify the crate page;
-- verify docs.rs;
-- verify the published dependency graph;
-- verify the published README;
-- verify the published feature list;
-- create or verify the Git tag;
-- create release notes if desired;
-- restore `[Unreleased]` for future development.
+- [x] verify `diagprint-axum 0.8.0` is visible on crates.io;
+- [x] download and inspect the exact crates.io package artifact;
+- [x] verify the published manifest identity and Rust 1.85 MSRV;
+- [x] verify the published `diagprint 0.7.1` dependency;
+- [x] verify optional `diagprint-async 0.7.0`;
+- [x] verify the default feature graph excludes `diagprint-async`;
+- [x] verify `async-delivery` activates `diagprint-async`;
+- [x] compile a fresh default-feature registry consumer;
+- [x] compile a fresh `async-delivery` registry consumer;
+- [x] verify the published README;
+- [x] verify the published feature list;
+- [x] verify the Git release tag points to the exact published source commit;
+- [x] verify docs.rs documentation is available;
+- [x] retain `[Unreleased]` for subsequent development.
+
+The release tag remains fixed on the published source commit. Post-release
+hardening commits intentionally occur after that tag.

@@ -8,6 +8,7 @@ crate_dir="crates/diagprint-axum"
 async_feature="async-delivery"
 async_dependency="diagprint-async"
 msrv="1.85.0"
+registry="${DIAGPRINT_AXUM_REGISTRY:-crates-io}"
 
 base_ref="${DIAGPRINT_AXUM_BASE_REF:-main}"
 
@@ -486,6 +487,7 @@ run_release() {
         "diagprint-axum publish dry run" \
         cargo publish \
             --dry-run \
+            --registry "$registry" \
             -p "$package"
 }
 
@@ -504,6 +506,7 @@ echo "Repository    : $(pwd)"
 echo "Revision      : $(git rev-parse --short HEAD)"
 echo "Branch        : $(git branch --show-current)"
 echo "MSRV          : $msrv"
+echo "Registry      : $registry"
 echo "Core line     : frozen at 0.7.x"
 echo "Async feature : $async_feature"
 echo
