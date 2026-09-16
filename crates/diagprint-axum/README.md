@@ -97,6 +97,151 @@ Selected information can be deliberately made public:
 This should only be used when those messages and codes are intentionally part
 of the application's public HTTP contract.
 
+## RFC 9457 Problem Details
+
+`diagprint-axum` can render a `DiagnosticResponse` as an
+[RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457.html)
+document.
+
+Problem Details changes the HTTP representation, not the privacy boundary.
+The existing `ResponsePolicy` remains the authority that decides whether an
+internal diagnostic message, diagnostic code, or report ID may be exposed.
+
+The response media type is:
+
+    application/problem+json
+
+A default server-error response looks like:
+
+    {
+      "type": "about:blank",
+      "title": "Internal Server Error",
+      "status": 500,
+      "detail": "Internal server error.",
+      "report_id": "550e8400-e29b-41d4-a716-446655440000",
+      "request_id": "req-01JEXAMPLE"
+    }
+
+The internal diagnostic message and diagnostic code remain absent by default.
+For example, an internal diagnostic such as:
+
+    database password secret should never leak
+
+is not copied into `detail`. The generic client-safe fallback selected by
+`ResponsePolicy` is used instead.
+
+Create a Problem Details response from an existing diagnostic response with:
+
+    use axum::http::StatusCode;
+    use diagprint::Reporter;
+    use diagprint_axum::{
+        DiagnosticResponse,
+        ProblemDetailsResponseExt,
+    };
+
+    let reporter = Reporter::builder()
+        .application("api")
+        .build()?;
+
+    let diagnostic = reporter
+        .error("database connection failed")
+        .code("database.unavailable");
+
+    let response = DiagnosticResponse::new(
+        StatusCode::SERVICE_UNAVAILABLE,
+        diagnostic,
+    )
+    .into_problem_details();
+
+The default problem type is `about:blank`. Under RFC 9457, `about:blank`
+indicates that the problem has no application-specific semantics beyond the
+HTTP status code.
+
+### Custom problem types
+
+Applications can define stable public problem types with
+`ProblemDetailsPolicy`:
+
+    use diagprint_axum::{
+        ProblemDetailsPolicy,
+        ProblemDetailsResponseExt,
+    };
+
+    let problem_policy = ProblemDetailsPolicy::default()
+        .with_type_uri("https://api.example.com/problems/invalid-order")
+        .with_title("Invalid order")
+        .with_instance("/orders/42/problems/7");
+
+    let response = diagnostic_response
+        .into_problem_details()
+        .with_problem_policy(problem_policy);
+
+A custom `type` URI should identify a documented problem type whose semantics
+are part of the application's public HTTP contract. The URI should remain
+stable for clients that use it to identify the problem category.
+
+### `instance`, `request_id`, and `report_id`
+
+These identifiers have different jobs and must not be treated as
+interchangeable:
+
+- `instance` is the RFC 9457 URI reference identifying this particular
+  occurrence of the problem. `diagprint-axum` does not automatically populate
+  it from another identifier.
+- `request_id` identifies the HTTP request for request-level correlation. It
+  may be shared by multiple diagnostics created while handling one request.
+- `report_id` identifies one diagprint diagnostic report. It identifies the
+  diagnostic, not the request as a whole.
+
+For example, one HTTP request might have:
+
+    request_id = req-01JEXAMPLE
+
+while two separate diagnostics created during that request have:
+
+    report_id = 550e8400-e29b-41d4-a716-446655440000
+    report_id = 6ba7b810-9dad-11d1-80b4-00c04fd430c8
+
+That separation allows request tracing and diagnostic correlation to remain
+precise without overloading one identifier with multiple meanings.
+
+A request ID can be attached to the Problem Details representation without
+changing the diagnostic report ID:
+
+    let response = diagnostic_response
+        .into_problem_details()
+        .with_request_id(request_id.to_string());
+
+`request_id` and `report_id` are RFC 9457 extension members. They do not
+replace the standard `instance` member.
+
+### Problem Details privacy behavior
+
+By default, Problem Details responses preserve the same fail-closed disclosure
+rules as ordinary `DiagnosticResponse` JSON responses:
+
+- internal diagnostic messages are redacted;
+- diagnostic codes are redacted;
+- internal attributes are not serialized;
+- causes, notes, help, suggestions, and remediation data are not serialized;
+- the report ID is included only when `ResponsePolicy` permits it;
+- a supplied request ID can be omitted through `ProblemDetailsPolicy`;
+- `Cache-Control: no-store` is preserved.
+
+If an application deliberately exposes a diagnostic message or code through
+`ResponsePolicy`, the Problem Details representation follows that same policy:
+
+    let response_policy = ResponsePolicy::default()
+        .expose_diagnostic_message(true)
+        .expose_diagnostic_code(true);
+
+    let response = DiagnosticResponse::new(status, diagnostic)
+        .with_policy(response_policy)
+        .into_problem_details();
+
+Only enable that exposure when those values are intentionally safe and stable
+parts of the public API.
+
 ## Axum rejection adapters
 
 `diagprint-axum` can convert common Axum extractor failures into structured
@@ -174,7 +319,8 @@ without forcing diagprint-axum to duplicate their internal matching logic.
 
 ## Emission and persistence
 
-Creating a `DiagnosticResponse` does not automatically:
+Creating a `DiagnosticResponse` or `ProblemDetailsResponse` does not
+automatically:
 
 - print the diagnostic;
 - write it to disk;
@@ -198,6 +344,10 @@ The primary response types are:
 - `ClientErrorBody`
 - `DiagnosticResponseExt`
 - `DiagnosticResult`
+- `ProblemDetails`
+- `ProblemDetailsPolicy`
+- `ProblemDetailsResponse`
+- `ProblemDetailsResponseExt`
 
 The rejection API consists of:
 
@@ -226,6 +376,10 @@ The workspace-wide standard is documented in:
 
     docs/COMPANION_CRATE_STANDARD.md
 
+The complete companion-crate workflow is documented in:
+
+    docs/COMPANION_CRATE_WORKFLOW.md
+
 ## Current scope
 
 The v0.8 adapter currently provides:
@@ -233,6 +387,9 @@ The v0.8 adapter currently provides:
 - privacy-safe diagnostic HTTP responses;
 - correlation through report IDs;
 - explicit public-message/code policy;
+- RFC 9457 Problem Details responses;
+- custom problem types, titles, and instance URI references;
+- separate request-ID and report-ID correlation;
 - JSON rejection diagnostics;
 - path rejection diagnostics;
 - query rejection diagnostics;
@@ -242,10 +399,8 @@ The v0.8 adapter currently provides:
 Likely future work includes:
 
 - DiagnosticReport responses;
-- request correlation middleware;
-- tracing/request context;
+- richer tracing/request context integration;
 - application-error conversion;
-- RFC Problem Details;
 - middleware-based internal diagnostic emission;
 - additional extractor adapters.
 
