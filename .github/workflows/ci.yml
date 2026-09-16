@@ -113,6 +113,52 @@ jobs:
           --all-targets
           --all-features
 
+      - name: Check diagprint-axum feature isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cargo check \
+            -p diagprint-axum \
+            --no-default-features \
+            --all-targets
+
+          if cargo tree \
+            -p diagprint-axum \
+            --no-default-features \
+            -e normal,build \
+            | grep -q 'diagprint-async v'
+          then
+            echo "ERROR: diagprint-async leaked into the default Axum dependency graph"
+            exit 1
+          fi
+
+          cargo check \
+            -p diagprint-axum \
+            --no-default-features \
+            --features async-delivery \
+            --all-targets
+
+          cargo test \
+            -p diagprint-axum \
+            --no-default-features \
+            --features async-delivery \
+            --all-targets
+
+          if ! cargo tree \
+            -p diagprint-axum \
+            --no-default-features \
+            --features async-delivery \
+            -e normal,build \
+            | grep -q 'diagprint-async v'
+          then
+            echo "ERROR: async-delivery did not activate diagprint-async"
+            exit 1
+          fi
+
+          echo "diagprint-axum feature isolation is intact."
+
+
       - name: Test all-feature rustdoc
         env:
           RUSTDOCFLAGS: "-D warnings"

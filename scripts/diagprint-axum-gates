@@ -2,9 +2,13 @@
 set -euo pipefail
 
 mode="${1:-full}"
+
 package="diagprint-axum"
 crate_dir="crates/diagprint-axum"
+async_feature="async-delivery"
+async_dependency="diagprint-async"
 msrv="1.85.0"
+
 base_ref="${DIAGPRINT_AXUM_BASE_REF:-main}"
 
 print_rule() {
@@ -111,6 +115,7 @@ check_core_line() {
     local dependency_version
 
     core_version="$(manifest_version Cargo.toml "[package]")"
+
     dependency_version="$(
         manifest_version \
             "$crate_dir/Cargo.toml" \
@@ -139,7 +144,8 @@ check_core_line() {
 check_core_isolation() {
     if ! git rev-parse --verify "$base_ref" >/dev/null 2>&1; then
         echo
-        echo "NOTE: base ref '$base_ref' is unavailable; skipping diff isolation check"
+        echo "NOTE: base ref '$base_ref' is unavailable;"
+        echo "      skipping branch-diff isolation check"
         return 0
     fi
 
@@ -162,7 +168,8 @@ check_core_isolation() {
 
     if [[ -n "$forbidden" ]]; then
         echo
-        echo "FAILED: diagprint-axum branch modifies frozen core or another companion crate"
+        echo "FAILED: diagprint-axum branch modifies frozen core"
+        echo "        or another companion crate"
         echo
         printf '%s\n' "$forbidden"
         exit 1
@@ -170,6 +177,51 @@ check_core_isolation() {
 
     echo
     echo "PASS: no frozen core or unrelated companion source changes detected"
+}
+
+check_async_dependency_absent() {
+    local tree
+
+    tree="$(
+        cargo tree \
+            -p "$package" \
+            --no-default-features \
+            -e normal,build
+    )"
+
+    printf '%s\n' "$tree"
+
+    if grep -q "${async_dependency} v" <<<"$tree"; then
+        echo
+        echo "FAILED: $async_dependency is present without $async_feature"
+        exit 1
+    fi
+
+    echo
+    echo "PASS: $async_dependency is absent without $async_feature"
+}
+
+check_async_dependency_present() {
+    local tree
+
+    tree="$(
+        cargo tree \
+            -p "$package" \
+            --no-default-features \
+            --features "$async_feature" \
+            -e normal,build
+    )"
+
+    printf '%s\n' "$tree"
+
+    if ! grep -q "${async_dependency} v" <<<"$tree"; then
+        echo
+        echo "FAILED: $async_feature did not activate $async_dependency"
+        exit 1
+    fi
+
+    echo
+    echo "PASS: $async_feature activates $async_dependency"
 }
 
 check_package_contents() {
@@ -193,6 +245,12 @@ check_package_contents() {
     if ! grep -qx 'src/lib.rs' <<<"$package_list"; then
         echo
         echo "FAILED: src/lib.rs is missing from the package"
+        exit 1
+    fi
+
+    if ! grep -qx 'src/async_emission.rs' <<<"$package_list"; then
+        echo
+        echo "FAILED: src/async_emission.rs is missing from the package"
         exit 1
     fi
 
@@ -221,42 +279,113 @@ run_quick() {
         "Companion isolation" \
         check_core_isolation
 
+    echo
+    print_rule
+    echo " DEFAULT FEATURE SURFACE"
+    print_rule
+
     run_gate \
-        "diagprint-axum check" \
+        "diagprint-axum default check" \
         cargo check \
             -p "$package" \
+            --no-default-features \
             --all-targets
 
     run_gate \
-        "diagprint-axum Clippy" \
+        "diagprint-axum default Clippy" \
         cargo clippy \
             -p "$package" \
+            --no-default-features \
             --all-targets \
             -- \
             -D warnings
 
     run_gate \
-        "diagprint-axum tests" \
+        "diagprint-axum default tests" \
         cargo test \
             -p "$package" \
+            --no-default-features \
             --all-targets
+
+    run_gate \
+        "Async dependency absent by default" \
+        check_async_dependency_absent
+
+    echo
+    print_rule
+    echo " ASYNC-DELIVERY FEATURE SURFACE"
+    print_rule
+
+    run_gate \
+        "diagprint-axum async-delivery check" \
+        cargo check \
+            -p "$package" \
+            --no-default-features \
+            --features "$async_feature" \
+            --all-targets
+
+    run_gate \
+        "diagprint-axum async-delivery Clippy" \
+        cargo clippy \
+            -p "$package" \
+            --no-default-features \
+            --features "$async_feature" \
+            --all-targets \
+            -- \
+            -D warnings
+
+    run_gate \
+        "diagprint-axum async-delivery tests" \
+        cargo test \
+            -p "$package" \
+            --no-default-features \
+            --features "$async_feature" \
+            --all-targets
+
+    run_gate \
+        "Async dependency activated explicitly" \
+        check_async_dependency_present
 }
 
 run_full() {
     run_quick
 
+    echo
+    print_rule
+    echo " DOCUMENTATION CONTRACT"
+    print_rule
+
     run_gate \
-        "diagprint-axum doctests" \
+        "diagprint-axum default doctests" \
         cargo test \
             -p "$package" \
+            --no-default-features \
             --doc
 
     run_gate \
-        "diagprint-axum strict rustdoc" \
+        "diagprint-axum async-delivery doctests" \
+        cargo test \
+            -p "$package" \
+            --no-default-features \
+            --features "$async_feature" \
+            --doc
+
+    run_gate \
+        "diagprint-axum default strict rustdoc" \
         env RUSTDOCFLAGS="-D warnings" \
         cargo doc \
             -p "$package" \
-            --no-deps
+            --no-deps \
+            --no-default-features
+
+    run_gate \
+        "diagprint-axum async-delivery strict rustdoc" \
+        env RUSTDOCFLAGS="-D warnings" \
+        cargo doc \
+            -p "$package" \
+            --no-deps \
+            --no-default-features \
+            --features "$async_feature"
 
     run_gate \
         "Workspace strict rustdoc compatibility" \
@@ -266,34 +395,76 @@ run_full() {
             --no-deps \
             --all-features
 
+    echo
+    print_rule
+    echo " PACKAGE CONTRACT"
+    print_rule
+
     run_gate \
         "diagprint-axum package contents" \
         check_package_contents
 
+    echo
+    print_rule
+    echo " MSRV CONTRACT"
+    print_rule
+
     check_msrv_toolchain
 
     run_gate \
-        "diagprint-axum MSRV check" \
+        "diagprint-axum default MSRV check" \
         env CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback \
         cargo +"$msrv" check \
             -p "$package" \
+            --no-default-features \
             --all-targets
 
     run_gate \
-        "diagprint-axum MSRV tests" \
+        "diagprint-axum async-delivery MSRV check" \
+        env CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback \
+        cargo +"$msrv" check \
+            -p "$package" \
+            --no-default-features \
+            --features "$async_feature" \
+            --all-targets
+
+    run_gate \
+        "diagprint-axum default MSRV tests" \
         env CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback \
         cargo +"$msrv" test \
             -p "$package" \
+            --no-default-features \
             --all-targets
 
     run_gate \
-        "diagprint-axum MSRV rustdoc" \
+        "diagprint-axum async-delivery MSRV tests" \
+        env CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback \
+        cargo +"$msrv" test \
+            -p "$package" \
+            --no-default-features \
+            --features "$async_feature" \
+            --all-targets
+
+    run_gate \
+        "diagprint-axum default MSRV rustdoc" \
         env \
             CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback \
             RUSTDOCFLAGS="-D warnings" \
         cargo +"$msrv" doc \
             -p "$package" \
-            --no-deps
+            --no-deps \
+            --no-default-features
+
+    run_gate \
+        "diagprint-axum async-delivery MSRV rustdoc" \
+        env \
+            CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback \
+            RUSTDOCFLAGS="-D warnings" \
+        cargo +"$msrv" doc \
+            -p "$package" \
+            --no-deps \
+            --no-default-features \
+            --features "$async_feature"
 }
 
 run_release() {
@@ -328,12 +499,14 @@ print_rule
 echo " DIAGPRINT-AXUM GATES"
 print_rule
 echo
-echo "Mode       : $mode"
-echo "Repository : $(pwd)"
-echo "Revision   : $(git rev-parse --short HEAD)"
-echo "Branch     : $(git branch --show-current)"
-echo "MSRV       : $msrv"
-echo "Core line  : frozen at 0.7.x"
+echo "Mode          : $mode"
+echo "Repository    : $(pwd)"
+echo "Revision      : $(git rev-parse --short HEAD)"
+echo "Branch        : $(git branch --show-current)"
+echo "MSRV          : $msrv"
+echo "Core line     : frozen at 0.7.x"
+echo "Async feature : $async_feature"
+echo
 
 case "$mode" in
     quick)
