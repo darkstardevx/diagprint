@@ -8,6 +8,9 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/darkstardevx/diagprint"
 homepage = "https://github.com/darkstardevx/diagprint"
 documentation = "https://docs.rs/diagprint-test"
+readme = "README.md"
+keywords = ["diagnostics", "testing", "snapshots", "assertions", "errors"]
+categories = ["development-tools::testing"]
 
 [dependencies]
 diagprint = { version = "0.7.0", path = "../.." }

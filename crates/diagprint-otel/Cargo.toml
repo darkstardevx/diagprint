@@ -8,6 +8,9 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/darkstardevx/diagprint"
 homepage = "https://github.com/darkstardevx/diagprint"
 documentation = "https://docs.rs/diagprint-otel"
+readme = "README.md"
+keywords = ["diagnostics", "opentelemetry", "telemetry", "tracing", "errors"]
+categories = ["development-tools::debugging"]
 
 [dependencies.diagprint]
 version = "0.7.0"
