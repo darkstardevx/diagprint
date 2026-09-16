@@ -211,5 +211,6 @@ members = [
     "crates/diagprint-async",
     "crates/diagprint-otel",
     "crates/diagprint-test",
+    "crates/diagprint-axum",
 ]
 resolver = "3"

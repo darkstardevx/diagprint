@@ -1,0 +1,25 @@
+[package]
+name = "diagprint-axum"
+version = "0.8.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Privacy-safe Axum HTTP responses for the diagprint diagnostics lifecycle framework."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/darkstardevx/diagprint"
+homepage = "https://github.com/darkstardevx/diagprint"
+documentation = "https://docs.rs/diagprint-axum"
+readme = "README.md"
+keywords = ["diagnostics", "axum", "http", "errors", "web"]
+categories = ["web-programming::http-server", "development-tools::debugging"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+
+[dependencies.axum]
+version = "0.8.9"
+default-features = false
+features = ["json"]
+
+[dependencies.diagprint]
+version = "0.7.1"
+path = "../.."
