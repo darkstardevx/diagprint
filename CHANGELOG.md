@@ -8,6 +8,45 @@ The project follows Semantic Versioning.
 
 ### Added
 
+- Added `diagprint.receipt/v1` export receipts which bind exact external
+  artifact bytes to their SHA-256 digest, byte length, artifact schema,
+  encoding, canonical baseline/candidate report identity, and export boundary.
+- Added `ArtifactDigest` as an exact-byte identity distinct from canonical
+  `ReportDigest`, so semantically equivalent compact and pretty artifacts remain
+  independently verifiable.
+- Added verified compact and pretty `diagprint.delta/v1` export APIs with
+  optional CI evaluation receipts and tamper detection.
+- Export receipts record privacy-safe `ExportPolicy` configuration without
+  serializing repository root paths or diagnostic/remediation payloads.
+
+- Added `GithubActionsDeltaRenderer` for presenting `diagprint.delta/v1`
+  artifacts as GitHub Actions summaries, policy violations, and semantic
+  new/changed diagnostic annotations.
+- GitHub delta presentation consumes only privacy-filtered delta artifacts,
+  keeping internal diagnostics behind the shared `ExportPolicy` boundary.
+- Resolved and persisting annotations are opt-in to avoid noisy CI output,
+  while new and changed diagnostics are surfaced by default.
+
+- Added `diagprint.delta/v1`, a portable privacy-aware semantic delta artifact
+  carrying canonical baseline/candidate report identity, matching policy,
+  deterministic per-diagnostic classifications, and optional CI evaluation.
+- Delta artifacts reuse the shared `ExportPolicy` boundary instead of directly
+  serializing internal diagnostics, preventing source-cache contents,
+  remediation payloads, suggested command contents, and default-sensitive
+  metadata from leaking into external artifacts.
+- Delta artifacts record the fingerprint and CI policies that produced their
+  classifications and decisions so downstream tooling can inspect the exact
+  comparison and failure boundary.
+
+- Added `DeltaPolicy`, `DeltaEvaluation`, and machine-readable `DeltaRule`
+  violations for baseline-aware CI decisions over `DiagnosticDelta`.
+- Added a baseline-aware CI preset which rejects brand-new Error/Fatal
+  diagnostics and severity regressions reaching Error/Fatal without failing
+  merely because pre-existing error content changed.
+- Added independent policy controls for any difference, new diagnostics,
+  multiset-aware threshold introductions, and severity increases, with
+  conventional CI exit-code evaluation.
+
 - Added `DiagnosticDelta` semantic report comparison with `New`, `Resolved`,
   `Persisting`, and `Changed` classifications backed by
   `diagprint.canonical/v1` fingerprints and content digests.

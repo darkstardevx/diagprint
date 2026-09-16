@@ -33,6 +33,8 @@
 //! [`DiagnosticDelta`] uses those identities to classify diagnostics across
 //! reports as new, resolved, persisting, or changed while preserving duplicate
 //! diagnostic instances.
+//! [`DeltaPolicy`] evaluates those semantic differences for baseline-aware CI
+//! without making existing diagnostic debt appear newly introduced.
 //!
 //! Canonical v1 is immutable: incompatible identity changes require a new
 //! canonicalization version rather than silently changing existing digests.
@@ -187,12 +189,16 @@
 //!
 //! All optional features are disabled by default.
 
+mod artifact;
+mod artifact_writer;
 mod attribute;
 mod canonical;
 mod captured;
 mod cargo;
 mod compiler;
 mod delta;
+mod delta_artifact;
+mod delta_policy;
 mod diagnostic;
 mod documentation;
 mod export;
@@ -228,6 +234,13 @@ pub mod docs;
 
 pub mod render;
 
+pub use artifact::{
+    ArtifactDigest, ArtifactEncoding, ArtifactVerificationError, DELTA_V1_MEDIA_TYPE,
+    ExportPolicyDescriptor, ExportReceipt, ExportedArtifact, RECEIPT_V1_SCHEMA, ReceiptEvaluation,
+};
+
+pub use artifact_writer::{ArtifactWriteError, ArtifactWriter, PersistedArtifact};
+
 pub use attribute::{DiagnosticAttribute, DiagnosticValue};
 
 pub use canonical::{CANONICAL_V1_NAMESPACE, CanonicalizationError, CanonicalizationVersion};
@@ -250,6 +263,14 @@ pub use diagnostic::{Cause, Diagnostic, Label, LabelKind, SourceLocation};
 
 pub use delta::{DeltaCounts, DeltaKind, DiagnosticChange, DiagnosticDelta};
 
+pub use delta_artifact::{
+    DELTA_V1_SCHEMA, DeltaArtifact, DeltaArtifactCounts, DeltaArtifactEntry,
+    DeltaArtifactEvaluation, DeltaArtifactFingerprintPolicy, DeltaArtifactPolicy,
+    DeltaArtifactViolation,
+};
+
+pub use delta_policy::{DeltaEvaluation, DeltaPolicy, DeltaRule, DeltaViolation};
+
 pub use documentation::{DocumentationError, DocumentationResolver};
 
 pub use fingerprint::{
@@ -268,7 +289,7 @@ pub use interop::{
     InteropLabel,
 };
 
-pub use render::{ReportRenderer, SeverityTheme, Style, Theme};
+pub use render::{GithubActionsDeltaRenderer, ReportRenderer, SeverityTheme, Style, Theme};
 
 pub use redaction::{
     REDACTED, RedactionPolicy, Sensitive, is_sensitive_key, sanitize_path, sanitize_url,
