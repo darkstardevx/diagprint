@@ -21,6 +21,8 @@ exclude = [
 [features]
 default = []
 
+artifact-store = ["dep:fs2"]
+
 derive = ["dep:diagprint-derive"]
 
 compression = [
@@ -78,6 +80,10 @@ toml = "1.1"
 uuid = { version = "1", features = ["v7", "serde"] }
 unicode-width = "0.2"
 terminal_size = "0.4"
+
+[dependencies.fs2]
+version = "0.4"
+optional = true
 
 [dependencies.diagprint-derive]
 version = "0.7.0"
@@ -186,5 +192,6 @@ members = [
     "crates/diagprint-lsp",
     "crates/diagprint-async",
     "crates/diagprint-otel",
+    "crates/diagprint-test",
 ]
 resolver = "3"
