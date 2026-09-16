@@ -6,6 +6,18 @@ The project follows Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+
+- Added explicit opt-in diagnostic emission hooks to `diagprint-axum` through
+  `DiagnosticEmissionExt::emit_to`, reusing the core `DiagnosticSink`
+  abstraction without introducing automatic logging or persistence.
+- Added `EmissionOutcome` response metadata so sink failures remain observable
+  without replacing or altering the application's HTTP response.
+- Diagnostic and RFC 9457 responses can emit the complete internal diagnostic
+  while preserving the existing privacy-filtered client representation.
+- Explicit Axum emission performs one synchronous sink attempt and deliberately
+  does not flush, retry, queue, or start background delivery.
+
 ### Planned
 
 - Add framework and application adapters, beginning with `diagprint-axum`,

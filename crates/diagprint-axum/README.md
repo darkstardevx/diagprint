@@ -346,6 +346,82 @@ hints.
 Internal extensions are appropriate for application-controlled diagnostic or
 debugging state that should remain private unless deliberately exposed.
 
+## Explicit diagnostic emission
+
+Creating a `DiagnosticResponse`, adapting an application error, or rendering
+RFC 9457 Problem Details remains side-effect free.
+
+Applications that want to deliver the internal diagnostic to a diagprint sink
+must opt in explicitly with `DiagnosticEmissionExt::emit_to`:
+
+    use diagprint::DiagnosticSink;
+    use diagprint_axum::{
+        DiagnosticEmissionExt,
+        DiagnosticResponse,
+        EmissionOutcome,
+    };
+
+    let response = DiagnosticResponse::new(
+        status,
+        diagnostic,
+    )
+    .emit_to(&sink);
+
+    match response.outcome() {
+        EmissionOutcome::Emitted => {
+            // The sink accepted the diagnostic.
+        }
+        EmissionOutcome::Failed(error) => {
+            // The HTTP response is still available.
+            eprintln!("diagnostic emission failed: {error}");
+        }
+    }
+
+`emit_to` deliberately performs exactly one synchronous
+`DiagnosticSink::emit` attempt.
+
+It does not:
+
+- emit automatically when a response is constructed;
+- flush the sink;
+- retry failed delivery;
+- queue diagnostics;
+- start background work;
+- persist diagnostics unless the selected sink itself does so.
+
+The sink receives the complete internal `Diagnostic`, not the privacy-filtered
+HTTP representation. This allows server-side diagnostics to retain internal
+messages, codes, structured attributes, causes, and other diagnostic context
+while the client continues to receive the existing redacted response.
+
+For response types, converting the returned emission wrapper into an Axum
+response stores the `EmissionOutcome` in the response extensions.
+
+Successful delivery is represented by:
+
+    EmissionOutcome::Emitted
+
+Sink failure is represented by:
+
+    EmissionOutcome::Failed(error)
+
+A sink failure does not replace the HTTP status, alter the response body, or
+prevent the response from being returned.
+
+The same explicit emission API works with RFC 9457 responses:
+
+    let response = diagnostic_response
+        .into_problem_details()
+        .emit_to(&sink);
+
+Emission and HTTP disclosure are therefore separate decisions:
+
+- `DiagnosticSink` controls where the internal diagnostic is delivered;
+- `ResponsePolicy` controls what diagnostic information may reach the client;
+- `ProblemDetailsPolicy` controls the RFC 9457 representation.
+
+No response or adapter emits diagnostics unless `emit_to` is called.
+
 ## Request context and correlation
 
 `diagprint-axum` provides request-context middleware for correlating HTTP

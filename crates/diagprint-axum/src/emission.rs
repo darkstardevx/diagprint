@@ -4,53 +4,45 @@ use diagprint::{Diagnostic, DiagnosticSink, SinkError, SinkResult};
 
 /// Result of an explicit diagnostic emission attempt.
 ///
-/// Emission failure is intentionally separate from HTTP response generation.
-/// A sink failure therefore never replaces or prevents the client response.
-#[must_use]
+/// Emission failure is retained as response metadata rather than replacing or
+/// preventing the HTTP response.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EmissionOutcome {
-    /// The configured diagnostic sink accepted the diagnostic.
+    /// The diagnostic was accepted by the configured sink.
     Emitted,
 
-    /// The configured diagnostic sink returned an error.
+    /// The sink rejected or failed to emit the diagnostic.
     Failed(SinkError),
 }
 
 impl EmissionOutcome {
-    /// Returns `true` when the sink accepted the diagnostic.
-    pub const fn is_emitted(&self) -> bool {
+    /// Returns `true` when the diagnostic was emitted successfully.
+    pub fn is_emitted(&self) -> bool {
         matches!(self, Self::Emitted)
     }
 
     /// Returns `true` when the sink returned an error.
-    pub const fn is_failed(&self) -> bool {
+    pub fn is_failed(&self) -> bool {
         matches!(self, Self::Failed(_))
     }
 
     /// Returns the sink error when emission failed.
-    pub const fn error(&self) -> Option<&SinkError> {
+    pub fn error(&self) -> Option<&SinkError> {
         match self {
             Self::Emitted => None,
             Self::Failed(error) => Some(error),
         }
     }
-
-    fn from_result(result: SinkResult<()>) -> Self {
-        match result {
-            Ok(()) => Self::Emitted,
-            Err(error) => Self::Failed(error),
-        }
-    }
 }
 
-/// Value paired with the outcome of one explicit diagnostic emission.
+/// A value paired with the result of an explicit diagnostic emission attempt.
 ///
-/// When the wrapped value implements [`IntoResponse`], this wrapper also
-/// implements `IntoResponse`. The emission outcome is retained in the
-/// resulting Axum response extensions for server-side middleware inspection.
+/// When the wrapped value implements [`IntoResponse`], converting this wrapper
+/// into an Axum response stores the [`EmissionOutcome`] in the response
+/// extensions.
 ///
-/// The emission outcome is never serialized into the client response body.
-#[must_use = "return the wrapped response or inspect its emission outcome"]
+/// The outcome is internal server-side metadata. It is not serialized into the
+/// client response body.
 #[derive(Debug, Clone)]
 pub struct Emission<T> {
     value: T,
@@ -67,17 +59,17 @@ impl<T> Emission<T> {
         &self.value
     }
 
-    /// Returns the diagnostic emission outcome.
+    /// Returns the result of the emission attempt.
     pub const fn outcome(&self) -> &EmissionOutcome {
         &self.outcome
     }
 
-    /// Consumes this wrapper and returns the wrapped value.
+    /// Consumes the wrapper and returns the wrapped value.
     pub fn into_value(self) -> T {
         self.value
     }
 
-    /// Consumes this wrapper and returns both the value and emission outcome.
+    /// Consumes the wrapper and returns both the value and emission outcome.
     pub fn into_parts(self) -> (T, EmissionOutcome) {
         (self.value, self.outcome)
     }
@@ -88,8 +80,7 @@ where
     T: IntoResponse,
 {
     fn into_response(self) -> Response {
-        let Self { value, outcome } = self;
-
+        let (value, outcome) = self.into_parts();
         let mut response = value.into_response();
 
         response.extensions_mut().insert(outcome);
@@ -98,56 +89,49 @@ where
     }
 }
 
-/// Explicit diagnostic-emission extension.
+/// Explicit diagnostic emission for diagprint and diagprint-axum values.
 ///
-/// Calling [`Self::emit_to`] is the lifecycle action. Merely constructing a
-/// diagnostic or HTTP response never emits anything.
+/// Calling [`DiagnosticEmissionExt::emit_to`] performs exactly one synchronous
+/// call to [`DiagnosticSink::emit`].
 ///
-/// The supplied [`DiagnosticSink`] receives the full internal diagnostic,
-/// including request-correlation attributes when they were attached earlier.
-///
-/// Sink failures are represented by [`EmissionOutcome::Failed`] and never
-/// replace the HTTP response.
+/// It does not automatically flush, retry, queue, persist, or asynchronously
+/// deliver the diagnostic.
 pub trait DiagnosticEmissionExt: Sized {
-    /// Emits this value's internal diagnostic to `sink`.
+    /// Emits the underlying diagnostic to `sink` and retains the emission
+    /// outcome alongside this value.
     ///
-    /// This method performs exactly one sink emission attempt. It does not
-    /// automatically flush the sink.
-    fn emit_to<S>(self, sink: &S) -> Emission<Self>
-    where
-        S: DiagnosticSink + ?Sized;
+    /// Sink failure is represented by [`EmissionOutcome::Failed`] rather than
+    /// returned as an error.
+    fn emit_to(self, sink: &dyn DiagnosticSink) -> Emission<Self>;
 }
 
 impl DiagnosticEmissionExt for Diagnostic {
-    fn emit_to<S>(self, sink: &S) -> Emission<Self>
-    where
-        S: DiagnosticSink + ?Sized,
-    {
-        let outcome = EmissionOutcome::from_result(sink.emit(&self));
+    fn emit_to(self, sink: &dyn DiagnosticSink) -> Emission<Self> {
+        let outcome = emission_outcome(sink.emit(&self));
 
         Emission::new(self, outcome)
     }
 }
 
 impl DiagnosticEmissionExt for DiagnosticResponse {
-    fn emit_to<S>(self, sink: &S) -> Emission<Self>
-    where
-        S: DiagnosticSink + ?Sized,
-    {
-        let outcome = EmissionOutcome::from_result(sink.emit(self.diagnostic()));
+    fn emit_to(self, sink: &dyn DiagnosticSink) -> Emission<Self> {
+        let outcome = emission_outcome(sink.emit(self.diagnostic()));
 
         Emission::new(self, outcome)
     }
 }
 
 impl DiagnosticEmissionExt for ProblemDetailsResponse {
-    fn emit_to<S>(self, sink: &S) -> Emission<Self>
-    where
-        S: DiagnosticSink + ?Sized,
-    {
-        let outcome =
-            EmissionOutcome::from_result(sink.emit(self.diagnostic_response().diagnostic()));
+    fn emit_to(self, sink: &dyn DiagnosticSink) -> Emission<Self> {
+        let outcome = emission_outcome(sink.emit(self.diagnostic_response().diagnostic()));
 
         Emission::new(self, outcome)
+    }
+}
+
+fn emission_outcome(result: SinkResult<()>) -> EmissionOutcome {
+    match result {
+        Ok(()) => EmissionOutcome::Emitted,
+        Err(error) => EmissionOutcome::Failed(error),
     }
 }

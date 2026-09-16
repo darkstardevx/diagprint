@@ -3,6 +3,21 @@
 //! `diagprint-axum` adapts structured diagnostics and Axum request failures
 //! without adding Axum or an async runtime dependency to diagprint core.
 //!
+//! ## Explicit diagnostic emission
+//!
+//! Response construction and HTTP adaptation remain side-effect free.
+//! Applications that want sink delivery must opt in with
+//! `DiagnosticEmissionExt::emit_to`.
+//!
+//! Explicit emission performs one synchronous `diagprint::DiagnosticSink::emit`
+//! attempt. It does not automatically flush, retry, queue, persist, or start
+//! background work.
+//!
+//! The sink receives the complete internal diagnostic while the HTTP response
+//! continues to follow its existing privacy policy. Sink failures are retained
+//! as `EmissionOutcome::Failed` response metadata and do not replace the HTTP
+//! response.
+//!
 //! HTTP responses are treated as an externalization boundary. Internal
 //! diagnostic messages and codes are therefore redacted by default.
 
