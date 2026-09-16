@@ -6,8 +6,45 @@ The project follows Semantic Versioning.
 
 ## [Unreleased]
 
+### Planned
+
+- Add framework and application adapters, beginning with `diagprint-axum`,
+  while keeping framework dependencies outside the core crate.
+- Add asynchronous terminal documentation retrieval without introducing an
+  async runtime dependency into the core crate.
+- Add richer structured diff presentation for remediation previews and
+  machine-generated fixes.
+- Add additional lifecycle-specific renderers, exporters, and integrations
+  where they extend the create → enrich → render → remediate → verify →
+  export/telemetry pipeline without bloating the default dependency graph.
+
+## [0.7.1] - 2026-09-16
+
+### Fixed
+
+- Corrected installation examples to reference the 0.7 release line.
+- Documented the complete current optional-feature surface.
+- Finalized the v0.7.0 release changelog after publication.
+- Corrected `diagprint-test` from planned work to completed v0.7 work.
+
+## [0.7.0] - 2026-09-16
+
 ### Added
 
+- Added the `diagprint-test` companion crate with diagnostic/report assertions,
+  canonical identity assertions, and snapshot-oriented test helpers.
+- Added project scanning with static, standard, and deep profiles and built-in
+  analyzers for workspace, manifests, source inventory, unsafe usage,
+  dependencies, configuration, documentation, licenses, security, Git,
+  compiler output, Clippy, tests, and remediation.
+- Added diagnostic capsules with exact-byte hashes, canonical report anchors,
+  provenance, export policy, remediation records, and optional source
+  snapshots.
+- Added hash-chained diagnostic history v2 with head verification, lineage,
+  transition analysis, CLI inspection, and capsule/history anchoring.
+- Added append-only artifact generations with chained manifests and filesystem
+  locking behind the `artifact-store` feature.
+- Added HTML diagnostic/report rendering behind the `html` feature.
 - Added `diagprint.receipt/v1` export receipts which bind exact external
   artifact bytes to their SHA-256 digest, byte length, artifact schema,
   encoding, canonical baseline/candidate report identity, and export boundary.
@@ -112,21 +149,12 @@ The project follows Semantic Versioning.
 - CI now enforces strict rustdoc warnings, tracing-only feature coverage, full MSRV tests, and root feature-isolation checks.
 - Pinned `yoke-derive` to 0.8.2 on the `terminal-docs` feature path so fresh dependency resolution remains compatible with the Rust 1.85 MSRV; 0.8.3 is currently selectable by Cargo's MSRV-aware resolver but does not compile on Rust 1.85.
 
+### Security
 
-### Planned
-
-- Add the `diagprint-test` companion crate for diagnostic assertions,
-  snapshot-friendly test helpers, source/revision checks, and remediation
-  verification.
-- Add framework and application adapters, beginning with `diagprint-axum`,
-  while keeping framework dependencies outside the core crate.
-- Add asynchronous terminal documentation retrieval without introducing an
-  async runtime dependency into the core crate.
-- Add richer structured diff presentation for remediation previews and
-  machine-generated fixes.
-- Add additional lifecycle-specific renderers, exporters, and integrations
-  where they extend the create → enrich → render → remediate → verify →
-  export/telemetry pipeline without bloating the default dependency graph.
+- Diagnostic-history chains, mutable heads, and capsule anchors provide local
+  integrity evidence rather than authenticated tamper-proof storage. A writer
+  with access to all retained state can recompute the chain and head; detecting
+  that class of rewrite requires an independently retained anchor.
 
 ## [0.6.0] - 2026-09-15
 

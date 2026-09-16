@@ -172,6 +172,7 @@
 //!
 //! ## Feature flags
 //!
+//! - `artifact-store` — append-only artifact generations with filesystem locking.
 //! - `derive` — derive `DiagnosticMetadata` from typed errors.
 //! - `anyhow` — Anyhow context-chain integration.
 //! - `ariadne` — structured Ariadne/diagprint bridge.
@@ -180,6 +181,7 @@
 //! - `codespan-reporting` — codespan-reporting diagnostic integration.
 //! - `tracing` — structured tracing-event integration.
 //! - `compression` — gzip and Zstandard report compression.
+//! - `html` — HTML diagnostic and report rendering.
 //! - `cybercore` — Cybercore theme-schema integration.
 //! - `terminal-docs` — terminal documentation retrieval and syntax
 //!   highlighting.

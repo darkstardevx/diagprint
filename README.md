@@ -24,6 +24,12 @@ Define diagnostics once, then carry them safely through terminal output, compile
 - guarded remediation;
 - transactional multi-file fixes;
 - post-fix verification;
+- canonical diagnostic fingerprints and report digests;
+- semantic report deltas and baseline-aware CI evaluation;
+- exact-byte artifact receipts and transactional artifact persistence;
+- diagnostic capsules and privacy-aware export;
+- project scanning with static, standard, and deep profiles;
+- hash-chained diagnostic history and lineage;
 - version-aware documentation.
 
 The core rule is:
@@ -35,10 +41,10 @@ The core rule is:
 
 ```toml
 [dependencies]
-diagprint = "0.6"
+diagprint = "0.7"
 ```
 
-`diagprint` v0.6.0 uses Rust 2024 and supports Rust **1.85 and newer**.
+`diagprint` v0.7 uses Rust 2024 and supports Rust **1.85 and newer**.
 
 ## Optional Features
 
@@ -47,9 +53,12 @@ All optional features are disabled by default.
 ```toml
 [dependencies]
 diagprint = {
-    version = "0.6",
+    version = "0.7",
     features = [
+        "artifact-store",
+        "derive",
         "compression",
+        "html",
         "cybercore",
         "terminal-docs",
         "anyhow",
@@ -64,7 +73,10 @@ diagprint = {
 
 | Feature | Purpose |
 | --- | --- |
+| `artifact-store` | append-only artifact generations with filesystem locking |
+| `derive` | typed diagnostic derive support |
 | `compression` | gzip and Zstandard report compression |
+| `html` | HTML diagnostic and report rendering |
 | `cybercore` | Cybercore theme integration |
 | `terminal-docs` | terminal documentation retrieval and highlighting |
 | `anyhow` | anyhow diagnostic integration |
