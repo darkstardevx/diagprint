@@ -39,7 +39,7 @@ fn write(root: &Path, relative: &str, contents: &str) {
 }
 
 #[test]
-fn project_context_discovers_files_but_skips_generated_directories() {
+fn project_context_discovers_files_but_skips_generated_and_diagprint_directories() {
     let root = temporary_project("discovery");
 
     write(
@@ -58,16 +58,30 @@ fn project_context_discovers_files_but_skips_generated_directories() {
 
     write(&root, "vendor/dependency.rs", "unsafe fn external() {}\n");
 
+    write(
+        &root,
+        ".diagprint/history/run-000000.json",
+        "{\"should\":\"not be scanned\"}\n",
+    );
+
+    write(
+        &root,
+        "reports/old-scan.diagpack/manifest.json",
+        "{\"should\":\"not be scanned\"}\n",
+    );
+
     let context = ProjectContext::discover(&root, ProjectScanProfile::Static)
         .expect("project context should be discovered");
 
     assert!(context.has_file("Cargo.toml"));
-
     assert!(context.has_file("src/lib.rs"));
 
     assert!(!context.has_file("target/generated.rs"));
-
     assert!(!context.has_file("vendor/dependency.rs"));
+
+    assert!(!context.has_file(".diagprint/history/run-000000.json"));
+
+    assert!(!context.has_file("reports/old-scan.diagpack/manifest.json"));
 
     fs::remove_dir_all(root).expect("test project should clean up");
 }
@@ -114,15 +128,10 @@ floating = "*"
         .collect::<Vec<_>>();
 
     assert!(codes.contains(&"project::manifest::package"));
-
     assert!(codes.contains(&"project::source::inventory"));
-
     assert!(codes.contains(&"project::unsafe::inventory"));
-
     assert!(codes.contains(&"project::dependency::wildcard"));
-
     assert!(codes.contains(&"project::security::sensitive-file"));
-
     assert!(codes.contains(&"project::license::missing"));
 
     fs::remove_dir_all(root).expect("test project should clean up");
@@ -146,7 +155,6 @@ license = "MIT"
     write(&root, "src/lib.rs", "//! Demo crate.\n\npub fn demo() {}\n");
 
     write(&root, "LICENSE", "test license\n");
-
     write(&root, "README.md", "# Demo\n");
 
     let context = ProjectContext::discover(&root, ProjectScanProfile::Static)
@@ -156,12 +164,10 @@ license = "MIT"
 
     let scan = scanner.scan(&context, &reporter());
 
-    assert_eq!(scan.profile(), ProjectScanProfile::Static,);
-
-    assert_eq!(scan.analyzers_run(), scanner.analyzer_count(),);
+    assert_eq!(scan.profile(), ProjectScanProfile::Static);
+    assert_eq!(scan.analyzers_run(), scanner.analyzer_count());
 
     assert!(scan.files_scanned() >= 4);
-
     assert!(!scan.report().is_empty());
 
     scan.report()

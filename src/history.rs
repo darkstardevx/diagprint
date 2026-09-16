@@ -1,19 +1,29 @@
-use crate::{CanonicalizationError, DiagnosticReport, Severity};
+use crate::{ArtifactDigest, CanonicalizationError, DiagnosticReport, Severity};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeSet,
     error::Error,
     fmt,
-    fs::{self, OpenOptions},
+    fs::{self, File, OpenOptions},
     io::{self, Write},
     path::{Path, PathBuf},
 };
 
-/// Stable schema for one persisted diagnostic-history run.
+/// Original unchained diagnostic-history schema.
+///
+/// V1 remains named so its meaning is never silently changed.
 pub const DIAGNOSTIC_HISTORY_RUN_V1_SCHEMA: &str = "diagprint.history.run/v1";
+
+/// Tamper-evident hash-chained diagnostic-history schema.
+pub const DIAGNOSTIC_HISTORY_RUN_V2_SCHEMA: &str = "diagprint.history.run/v2";
+
+/// Mutable head record for one append-only history directory.
+pub const DIAGNOSTIC_HISTORY_HEAD_V1_SCHEMA: &str = "diagprint.history.head/v1";
 
 /// Stable schema for exported diagnostic-lineage summaries.
 pub const DIAGNOSTIC_LINEAGE_V1_SCHEMA: &str = "diagprint.history.lineage/v1";
+
+const HISTORY_HEAD_FILE: &str = "head.json";
 
 /// One privacy-light canonical observation of a diagnostic.
 ///
@@ -48,6 +58,11 @@ impl HistorySeverityCounts {
 }
 
 /// One immutable persisted diagnostic state.
+///
+/// `run_digest` is the SHA-256 identity of the deterministic compact JSON
+/// representation of every field except `run_digest` itself.
+///
+/// `previous_run_digest` links this run to the exact preceding run.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DiagnosticHistoryRun {
     pub schema: String,
@@ -62,14 +77,33 @@ pub struct DiagnosticHistoryRun {
     pub severity: HistorySeverityCounts,
 
     pub observations: Vec<HistoryObservation>,
+
+    pub previous_run_digest: Option<ArtifactDigest>,
+
+    pub run_digest: ArtifactDigest,
 }
 
 impl DiagnosticHistoryRun {
+    /// Creates one standalone history run.
+    ///
+    /// Persistent histories normally use [`DiagnosticHistory::append_report`],
+    /// which supplies the preceding run digest automatically.
     pub fn from_report(
         index: usize,
         label: impl Into<String>,
         report: &DiagnosticReport,
     ) -> Result<Self, DiagnosticHistoryError> {
+        Self::from_report_with_previous(index, label, report, None)
+    }
+
+    fn from_report_with_previous(
+        index: usize,
+        label: impl Into<String>,
+        report: &DiagnosticReport,
+        previous_run_digest: Option<ArtifactDigest>,
+    ) -> Result<Self, DiagnosticHistoryError> {
+        let label = label.into();
+
         let report_digest = report
             .digest()
             .map_err(DiagnosticHistoryError::Canonicalization)?
@@ -99,28 +133,123 @@ impl DiagnosticHistoryRun {
                 .then_with(|| left.severity.cmp(&right.severity))
         });
 
+        let severity = HistorySeverityCounts {
+            trace: counts.trace,
+            debug: counts.debug,
+            info: counts.info,
+            warning: counts.warning,
+            error: counts.error,
+            fatal: counts.fatal,
+        };
+
+        let run_digest = compute_run_digest(
+            index,
+            &label,
+            &report_digest,
+            report.len(),
+            severity,
+            &observations,
+            previous_run_digest,
+        )?;
+
         Ok(Self {
-            schema: DIAGNOSTIC_HISTORY_RUN_V1_SCHEMA.to_owned(),
+            schema: DIAGNOSTIC_HISTORY_RUN_V2_SCHEMA.to_owned(),
 
             index,
-
-            label: label.into(),
-
+            label,
             report_digest,
 
             diagnostics: report.len(),
 
-            severity: HistorySeverityCounts {
-                trace: counts.trace,
-                debug: counts.debug,
-                info: counts.info,
-                warning: counts.warning,
-                error: counts.error,
-                fatal: counts.fatal,
-            },
-
+            severity,
             observations,
+
+            previous_run_digest,
+
+            run_digest,
         })
+    }
+
+    fn recompute_digest(&self) -> Result<ArtifactDigest, DiagnosticHistoryError> {
+        compute_run_digest(
+            self.index,
+            &self.label,
+            &self.report_digest,
+            self.diagnostics,
+            self.severity,
+            &self.observations,
+            self.previous_run_digest,
+        )
+    }
+}
+
+#[derive(Serialize)]
+struct HistoryRunDigestPayload<'a> {
+    schema: &'static str,
+
+    index: usize,
+    label: &'a str,
+
+    report_digest: &'a str,
+
+    diagnostics: usize,
+
+    severity: HistorySeverityCounts,
+
+    observations: &'a [HistoryObservation],
+
+    previous_run_digest: Option<ArtifactDigest>,
+}
+
+fn compute_run_digest(
+    index: usize,
+    label: &str,
+    report_digest: &str,
+    diagnostics: usize,
+    severity: HistorySeverityCounts,
+    observations: &[HistoryObservation],
+    previous_run_digest: Option<ArtifactDigest>,
+) -> Result<ArtifactDigest, DiagnosticHistoryError> {
+    let payload = HistoryRunDigestPayload {
+        schema: DIAGNOSTIC_HISTORY_RUN_V2_SCHEMA,
+
+        index,
+        label,
+        report_digest,
+        diagnostics,
+        severity,
+        observations,
+        previous_run_digest,
+    };
+
+    let bytes = serde_json::to_vec(&payload).map_err(DiagnosticHistoryError::Json)?;
+
+    Ok(ArtifactDigest::compute(&bytes))
+}
+
+/// Mutable directory head.
+///
+/// This allows ordinary truncation of the newest run to be detected. The head
+/// is expected to be externally anchored by a DiagnosticCapsule in the next
+/// layer when stronger evidence is required.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct DiagnosticHistoryHead {
+    schema: String,
+
+    runs: usize,
+
+    head_digest: Option<ArtifactDigest>,
+}
+
+impl DiagnosticHistoryHead {
+    fn from_runs(runs: &[DiagnosticHistoryRun]) -> Self {
+        Self {
+            schema: DIAGNOSTIC_HISTORY_HEAD_V1_SCHEMA.to_owned(),
+
+            runs: runs.len(),
+
+            head_digest: runs.last().map(|run| run.run_digest),
+        }
     }
 }
 
@@ -218,6 +347,7 @@ impl DiagnosticLineage {
 
     pub fn reappeared_after_absence(&self) -> bool {
         let mut seen = false;
+
         let mut absent_after_seen = false;
 
         for step in &self.steps {
@@ -248,18 +378,23 @@ impl DiagnosticLineage {
     }
 }
 
-/// Append-only persistent diagnostic history.
+/// Append-only tamper-evident diagnostic history.
 ///
-/// Every run is stored as an immutable `run-XXXXXX.json` file. Existing run
-/// files are never rewritten.
+/// Every run is stored as an immutable `run-XXXXXX.json` file and links to the
+/// exact preceding run digest.
+///
+/// `head.json` records the expected run count and current chain head so ordinary
+/// tail truncation is detectable.
 #[derive(Debug, Clone)]
 pub struct DiagnosticHistory {
     directory: PathBuf,
+
     runs: Vec<DiagnosticHistoryRun>,
 }
 
 impl DiagnosticHistory {
-    /// Opens or creates an append-only diagnostic-history directory.
+    /// Opens or creates a diagnostic-history directory and verifies the
+    /// complete hash chain before returning.
     pub fn open(directory: impl AsRef<Path>) -> Result<Self, DiagnosticHistoryError> {
         let directory = directory.as_ref().to_path_buf();
 
@@ -321,12 +456,24 @@ impl DiagnosticHistory {
             let run: DiagnosticHistoryRun =
                 serde_json::from_slice(&bytes).map_err(DiagnosticHistoryError::Json)?;
 
-            if run.schema != DIAGNOSTIC_HISTORY_RUN_V1_SCHEMA {
-                return Err(DiagnosticHistoryError::UnsupportedSchema {
-                    path,
+            match run.schema.as_str() {
+                DIAGNOSTIC_HISTORY_RUN_V2_SCHEMA => {}
 
-                    schema: run.schema,
-                });
+                DIAGNOSTIC_HISTORY_RUN_V1_SCHEMA => {
+                    return Err(DiagnosticHistoryError::LegacySchema {
+                        path,
+
+                        schema: run.schema,
+                    });
+                }
+
+                _ => {
+                    return Err(DiagnosticHistoryError::UnsupportedSchema {
+                        path,
+
+                        schema: run.schema,
+                    });
+                }
             }
 
             if run.index != file_index {
@@ -337,8 +484,36 @@ impl DiagnosticHistory {
                 });
             }
 
+            let expected_previous = runs
+                .last()
+                .map(|previous: &DiagnosticHistoryRun| previous.run_digest);
+
+            if run.previous_run_digest != expected_previous {
+                return Err(DiagnosticHistoryError::PreviousDigestMismatch {
+                    index: run.index,
+
+                    expected: expected_previous,
+
+                    actual: run.previous_run_digest,
+                });
+            }
+
+            let actual_digest = run.recompute_digest()?;
+
+            if actual_digest != run.run_digest {
+                return Err(DiagnosticHistoryError::RunDigestMismatch {
+                    index: run.index,
+
+                    expected: run.run_digest,
+
+                    actual: actual_digest,
+                });
+            }
+
             runs.push(run);
         }
+
+        verify_head(&directory, &runs)?;
 
         Ok(Self { directory, runs })
     }
@@ -363,39 +538,62 @@ impl DiagnosticHistory {
         self.runs.last()
     }
 
+    /// Current cryptographic history-chain head.
+    pub fn head_digest(&self) -> Option<ArtifactDigest> {
+        self.runs.last().map(|run| run.run_digest)
+    }
+
+    /// Re-verifies the persisted directory from disk.
+    pub fn verify(&self) -> Result<(), DiagnosticHistoryError> {
+        let verified = Self::open(&self.directory)?;
+
+        if verified.runs != self.runs {
+            return Err(DiagnosticHistoryError::InMemoryStateMismatch);
+        }
+
+        Ok(())
+    }
+
     /// Appends one immutable report state to this history.
     pub fn append_report(
         &mut self,
         label: impl Into<String>,
         report: &DiagnosticReport,
     ) -> Result<&DiagnosticHistoryRun, DiagnosticHistoryError> {
+        // Refuse to append if anything changed on disk since this handle was
+        // opened.
+        self.verify()?;
+
         let index = self.runs.len();
 
-        let run = DiagnosticHistoryRun::from_report(index, label, report)?;
+        let previous_run_digest = self.head_digest();
+
+        let run = DiagnosticHistoryRun::from_report_with_previous(
+            index,
+            label,
+            report,
+            previous_run_digest,
+        )?;
 
         let path = self.directory.join(run_filename(index));
 
         let bytes = serde_json::to_vec_pretty(&run).map_err(DiagnosticHistoryError::Json)?;
 
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&path)
-            .map_err(|source| io_error("create diagnostic history run", &path, source))?;
+        write_new_synced(&path, &bytes)?;
 
-        file.write_all(&bytes)
-            .map_err(|source| io_error("write diagnostic history run", &path, source))?;
-
-        file.write_all(b"\n")
-            .map_err(|source| io_error("finish diagnostic history run", &path, source))?;
-
-        file.flush()
-            .map_err(|source| io_error("flush diagnostic history run", &path, source))?;
-
-        file.sync_all()
-            .map_err(|source| io_error("synchronize diagnostic history run", &path, source))?;
+        sync_directory(&self.directory)?;
 
         self.runs.push(run);
+
+        if let Err(error) = write_head_atomic(&self.directory, &self.runs) {
+            self.runs.pop();
+
+            let _ = fs::remove_file(&path);
+
+            return Err(error);
+        }
+
+        sync_directory(&self.directory)?;
 
         Ok(&self.runs[index])
     }
@@ -509,7 +707,9 @@ impl DiagnosticHistory {
 #[derive(Debug, Clone, Copy)]
 struct ObservationComparison {
     counts: HistoryDeltaCounts,
+
     severity_increases: usize,
+
     introduced_errors: usize,
 }
 
@@ -709,6 +909,129 @@ fn parse_run_filename(value: &str) -> Option<usize> {
         .ok()
 }
 
+fn verify_head(
+    directory: &Path,
+    runs: &[DiagnosticHistoryRun],
+) -> Result<(), DiagnosticHistoryError> {
+    let path = directory.join(HISTORY_HEAD_FILE);
+
+    if runs.is_empty() {
+        if !path.exists() {
+            return Ok(());
+        }
+    } else if !path.is_file() {
+        return Err(DiagnosticHistoryError::MissingHead { path });
+    }
+
+    if !path.exists() {
+        return Ok(());
+    }
+
+    let bytes = fs::read(&path)
+        .map_err(|source| io_error("read diagnostic history head", &path, source))?;
+
+    let head: DiagnosticHistoryHead =
+        serde_json::from_slice(&bytes).map_err(DiagnosticHistoryError::Json)?;
+
+    if head.schema != DIAGNOSTIC_HISTORY_HEAD_V1_SCHEMA {
+        return Err(DiagnosticHistoryError::UnsupportedHeadSchema {
+            path,
+
+            schema: head.schema,
+        });
+    }
+
+    if head.runs != runs.len() {
+        return Err(DiagnosticHistoryError::HeadRunCountMismatch {
+            expected: head.runs,
+
+            actual: runs.len(),
+        });
+    }
+
+    let actual_head = runs.last().map(|run| run.run_digest);
+
+    if head.head_digest != actual_head {
+        return Err(DiagnosticHistoryError::HeadDigestMismatch {
+            expected: head.head_digest,
+
+            actual: actual_head,
+        });
+    }
+
+    Ok(())
+}
+
+fn write_head_atomic(
+    directory: &Path,
+    runs: &[DiagnosticHistoryRun],
+) -> Result<(), DiagnosticHistoryError> {
+    let head = DiagnosticHistoryHead::from_runs(runs);
+
+    let bytes = serde_json::to_vec_pretty(&head).map_err(DiagnosticHistoryError::Json)?;
+
+    let path = directory.join(HISTORY_HEAD_FILE);
+
+    let temporary = directory.join(format!(".{HISTORY_HEAD_FILE}.tmp-{}", std::process::id(),));
+
+    if temporary.exists() {
+        fs::remove_file(&temporary).map_err(|source| {
+            io_error(
+                "remove stale diagnostic history head staging file",
+                &temporary,
+                source,
+            )
+        })?;
+    }
+
+    write_new_synced(&temporary, &bytes)?;
+
+    fs::rename(&temporary, &path)
+        .map_err(|source| io_error("commit diagnostic history head", &path, source))?;
+
+    Ok(())
+}
+
+fn write_new_synced(path: &Path, bytes: &[u8]) -> Result<(), DiagnosticHistoryError> {
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .map_err(|source| io_error("create diagnostic history file", path, source))?;
+
+    file.write_all(bytes)
+        .map_err(|source| io_error("write diagnostic history file", path, source))?;
+
+    file.write_all(b"\n")
+        .map_err(|source| io_error("finish diagnostic history file", path, source))?;
+
+    file.flush()
+        .map_err(|source| io_error("flush diagnostic history file", path, source))?;
+
+    file.sync_all()
+        .map_err(|source| io_error("synchronize diagnostic history file", path, source))
+}
+
+#[cfg(unix)]
+fn sync_directory(path: &Path) -> Result<(), DiagnosticHistoryError> {
+    let directory = File::open(path).map_err(|source| {
+        io_error(
+            "open diagnostic history directory for synchronization",
+            path,
+            source,
+        )
+    })?;
+
+    directory
+        .sync_all()
+        .map_err(|source| io_error("synchronize diagnostic history directory", path, source))
+}
+
+#[cfg(not(unix))]
+fn sync_directory(_path: &Path) -> Result<(), DiagnosticHistoryError> {
+    Ok(())
+}
+
 /// Diagnostic-history persistence or integrity failure.
 #[derive(Debug)]
 pub enum DiagnosticHistoryError {
@@ -735,10 +1058,53 @@ pub enum DiagnosticHistoryError {
         record_index: usize,
     },
 
+    LegacySchema {
+        path: PathBuf,
+        schema: String,
+    },
+
     UnsupportedSchema {
         path: PathBuf,
         schema: String,
     },
+
+    UnsupportedHeadSchema {
+        path: PathBuf,
+        schema: String,
+    },
+
+    PreviousDigestMismatch {
+        index: usize,
+
+        expected: Option<ArtifactDigest>,
+
+        actual: Option<ArtifactDigest>,
+    },
+
+    RunDigestMismatch {
+        index: usize,
+
+        expected: ArtifactDigest,
+
+        actual: ArtifactDigest,
+    },
+
+    MissingHead {
+        path: PathBuf,
+    },
+
+    HeadRunCountMismatch {
+        expected: usize,
+        actual: usize,
+    },
+
+    HeadDigestMismatch {
+        expected: Option<ArtifactDigest>,
+
+        actual: Option<ArtifactDigest>,
+    },
+
+    InMemoryStateMismatch,
 
     Io {
         operation: &'static str,
@@ -783,11 +1149,61 @@ impl fmt::Display for DiagnosticHistoryError {
                 "diagnostic history filename identifies run {file_index}, but record identifies run {record_index}",
             ),
 
+            Self::LegacySchema { path, schema } => write!(
+                formatter,
+                "diagnostic history {} uses legacy schema {schema:?}; start a new v2 history or migrate the old history before appending",
+                path.display(),
+            ),
+
             Self::UnsupportedSchema { path, schema } => write!(
                 formatter,
                 "unsupported diagnostic history schema {schema:?} in {}",
                 path.display(),
             ),
+
+            Self::UnsupportedHeadSchema { path, schema } => write!(
+                formatter,
+                "unsupported diagnostic history head schema {schema:?} in {}",
+                path.display(),
+            ),
+
+            Self::PreviousDigestMismatch {
+                index,
+                expected,
+                actual,
+            } => write!(
+                formatter,
+                "diagnostic history run {index} previous-run digest mismatch: expected {expected:?}, got {actual:?}",
+            ),
+
+            Self::RunDigestMismatch {
+                index,
+                expected,
+                actual,
+            } => write!(
+                formatter,
+                "diagnostic history run {index} digest mismatch: expected {expected}, got {actual}",
+            ),
+
+            Self::MissingHead { path } => write!(
+                formatter,
+                "diagnostic history contains runs but is missing head record {}",
+                path.display(),
+            ),
+
+            Self::HeadRunCountMismatch { expected, actual } => write!(
+                formatter,
+                "diagnostic history head expects {expected} run(s), but {actual} run file(s) are present",
+            ),
+
+            Self::HeadDigestMismatch { expected, actual } => write!(
+                formatter,
+                "diagnostic history head digest mismatch: expected {expected:?}, got {actual:?}",
+            ),
+
+            Self::InMemoryStateMismatch => {
+                formatter.write_str("diagnostic history changed on disk after it was opened")
+            }
 
             Self::Io {
                 operation,
@@ -815,7 +1231,15 @@ impl Error for DiagnosticHistoryError {
             | Self::InvalidRunSequence { .. }
             | Self::DuplicateRunIndex { .. }
             | Self::RunIndexMismatch { .. }
-            | Self::UnsupportedSchema { .. } => None,
+            | Self::LegacySchema { .. }
+            | Self::UnsupportedSchema { .. }
+            | Self::UnsupportedHeadSchema { .. }
+            | Self::PreviousDigestMismatch { .. }
+            | Self::RunDigestMismatch { .. }
+            | Self::MissingHead { .. }
+            | Self::HeadRunCountMismatch { .. }
+            | Self::HeadDigestMismatch { .. }
+            | Self::InMemoryStateMismatch => None,
         }
     }
 }

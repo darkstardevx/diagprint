@@ -372,3 +372,5 @@ pub use history::{
     DiagnosticHistoryError, DiagnosticHistoryRun, DiagnosticHistoryTransition, DiagnosticLineage,
     DiagnosticLineageStep, HistoryDeltaCounts, HistoryObservation, HistorySeverityCounts,
 };
+
+pub use history::{DIAGNOSTIC_HISTORY_HEAD_V1_SCHEMA, DIAGNOSTIC_HISTORY_RUN_V2_SCHEMA};

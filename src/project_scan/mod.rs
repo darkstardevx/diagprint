@@ -159,7 +159,8 @@ pub struct ProjectContext {
 impl ProjectContext {
     /// Discovers project files without executing project code or external tools.
     ///
-    /// Symlinks are not followed. Common generated/vendor directories are
+    /// Symlinks are not followed. Generated/vendor directories, diagprint's
+    /// `.diagprint` state directory, and `.diagpack` capsule directories are
     /// excluded from discovery.
     pub fn discover(
         root: impl AsRef<Path>,
@@ -458,10 +459,18 @@ fn walk_directory(
 }
 
 fn should_skip_directory(path: &Path) -> bool {
-    matches!(
-        path.file_name().and_then(|name| name.to_str()),
-        Some(".git" | "target" | "node_modules" | "vendor")
-    )
+    let name = path.file_name().and_then(|name| name.to_str());
+
+    if matches!(
+        name,
+        Some(".git" | ".diagprint" | "target" | "node_modules" | "vendor")
+    ) {
+        return true;
+    }
+
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("diagpack"))
 }
 
 fn classify_file(path: &Path) -> ProjectFileKind {
