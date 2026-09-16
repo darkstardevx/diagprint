@@ -18,8 +18,14 @@ serde = { version = "1", features = ["derive"] }
 [dependencies.axum]
 version = "0.8.9"
 default-features = false
-features = ["json"]
+features = ["form", "json", "query"]
 
 [dependencies.diagprint]
 version = "0.7.1"
 path = "../.."
+
+[dev-dependencies]
+http-body-util = "0.1"
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt"] }
+tower = { version = "0.5", features = ["util"] }

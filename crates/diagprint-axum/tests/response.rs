@@ -111,3 +111,11 @@ fn into_response_preserves_status_and_disables_caching() {
         Some(&header::HeaderValue::from_static("no-store"))
     );
 }
+
+#[test]
+fn diagnostic_response_remains_compact_for_handler_results() {
+    assert!(
+        std::mem::size_of::<DiagnosticResponse>() <= 128,
+        "DiagnosticResponse grew too large for ergonomic Result error usage"
+    );
+}

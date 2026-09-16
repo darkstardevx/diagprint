@@ -1,0 +1,358 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+mode="${1:-full}"
+package="diagprint-axum"
+crate_dir="crates/diagprint-axum"
+msrv="1.85.0"
+base_ref="${DIAGPRINT_AXUM_BASE_REF:-main}"
+
+print_rule() {
+    printf '%*s\n' 72 '' | tr ' ' '='
+}
+
+run_gate() {
+    local name="$1"
+    shift
+
+    echo
+    print_rule
+    echo " GATE: $name"
+    print_rule
+    echo
+
+    if "$@"; then
+        echo
+        echo "PASS: $name"
+    else
+        local status=$?
+
+        echo
+        echo "FAILED: $name"
+        echo "Exit status: $status"
+        exit "$status"
+    fi
+}
+
+require_command() {
+    local command_name="$1"
+
+    if ! command -v "$command_name" >/dev/null 2>&1; then
+        echo "error: required command not found: $command_name" >&2
+        exit 127
+    fi
+}
+
+require_repo_root() {
+    if [[ ! -f Cargo.toml || ! -f "$crate_dir/Cargo.toml" ]]; then
+        echo "error: run this script from the diagprint repository root" >&2
+        exit 1
+    fi
+}
+
+require_clean_tree() {
+    local status_output
+
+    status_output="$(git status --porcelain)"
+
+    if [[ -n "$status_output" ]]; then
+        echo
+        print_rule
+        echo " RELEASE TREE IS NOT CLEAN"
+        print_rule
+        echo
+        printf '%s\n' "$status_output"
+        echo
+        echo "Release validation must run from a clean committed tree."
+        exit 1
+    fi
+
+    echo
+    echo "PASS: working tree is clean"
+}
+
+check_msrv_toolchain() {
+    if ! rustup toolchain list | grep -Eq "^${msrv}([[:space:]-]|$)"; then
+        echo
+        echo "error: Rust $msrv toolchain is not installed" >&2
+        echo
+        echo "Install it with:"
+        echo
+        echo "  rustup toolchain install $msrv"
+        exit 1
+    fi
+}
+
+manifest_version() {
+    local file="$1"
+    local section="$2"
+
+    awk -v wanted="$section" '
+        $0 == wanted {
+            active = 1
+            next
+        }
+
+        /^\[/ {
+            active = 0
+        }
+
+        active && /^version = / {
+            value = $3
+            gsub(/"/, "", value)
+            print value
+            exit
+        }
+    ' "$file"
+}
+
+check_core_line() {
+    local core_version
+    local dependency_version
+
+    core_version="$(manifest_version Cargo.toml "[package]")"
+    dependency_version="$(
+        manifest_version \
+            "$crate_dir/Cargo.toml" \
+            "[dependencies.diagprint]"
+    )"
+
+    if [[ "$core_version" != 0.7.* ]]; then
+        echo
+        echo "FAILED: diagprint core is no longer on the frozen 0.7.x line"
+        echo "Core version: $core_version"
+        exit 1
+    fi
+
+    if [[ "$dependency_version" != 0.7.* ]]; then
+        echo
+        echo "FAILED: diagprint-axum must target the diagprint 0.7.x line"
+        echo "Dependency requirement: $dependency_version"
+        exit 1
+    fi
+
+    echo
+    echo "PASS: core remains on $core_version"
+    echo "PASS: diagprint-axum targets core $dependency_version"
+}
+
+check_core_isolation() {
+    if ! git rev-parse --verify "$base_ref" >/dev/null 2>&1; then
+        echo
+        echo "NOTE: base ref '$base_ref' is unavailable; skipping diff isolation check"
+        return 0
+    fi
+
+    local changed
+    local forbidden
+
+    changed="$(
+        {
+            git diff --name-only "$base_ref"...HEAD
+            git diff --name-only
+            git diff --cached --name-only
+        } | sort -u
+    )"
+
+    forbidden="$(
+        grep -E \
+            '^(src/|tests/|examples/|crates/diagprint-(derive|lsp|async|otel|test)/)' \
+            <<<"$changed" || true
+    )"
+
+    if [[ -n "$forbidden" ]]; then
+        echo
+        echo "FAILED: diagprint-axum branch modifies frozen core or another companion crate"
+        echo
+        printf '%s\n' "$forbidden"
+        exit 1
+    fi
+
+    echo
+    echo "PASS: no frozen core or unrelated companion source changes detected"
+}
+
+check_package_contents() {
+    local package_list
+
+    package_list="$(
+        cargo package \
+            --allow-dirty \
+            --list \
+            -p "$package"
+    )"
+
+    printf '%s\n' "$package_list"
+
+    if ! grep -qx 'README.md' <<<"$package_list"; then
+        echo
+        echo "FAILED: README.md is missing from the package"
+        exit 1
+    fi
+
+    if ! grep -qx 'src/lib.rs' <<<"$package_list"; then
+        echo
+        echo "FAILED: src/lib.rs is missing from the package"
+        exit 1
+    fi
+
+    echo
+    echo "PASS: required package contents are present"
+}
+
+run_quick() {
+    run_gate \
+        "Unstaged whitespace" \
+        git diff --check
+
+    run_gate \
+        "Staged whitespace" \
+        git diff --cached --check
+
+    run_gate \
+        "Formatting" \
+        cargo fmt --all -- --check
+
+    run_gate \
+        "Core 0.7.x freeze" \
+        check_core_line
+
+    run_gate \
+        "Companion isolation" \
+        check_core_isolation
+
+    run_gate \
+        "diagprint-axum check" \
+        cargo check \
+            -p "$package" \
+            --all-targets
+
+    run_gate \
+        "diagprint-axum Clippy" \
+        cargo clippy \
+            -p "$package" \
+            --all-targets \
+            -- \
+            -D warnings
+
+    run_gate \
+        "diagprint-axum tests" \
+        cargo test \
+            -p "$package" \
+            --all-targets
+}
+
+run_full() {
+    run_quick
+
+    run_gate \
+        "diagprint-axum doctests" \
+        cargo test \
+            -p "$package" \
+            --doc
+
+    run_gate \
+        "diagprint-axum strict rustdoc" \
+        env RUSTDOCFLAGS="-D warnings" \
+        cargo doc \
+            -p "$package" \
+            --no-deps
+
+    run_gate \
+        "diagprint-axum package contents" \
+        check_package_contents
+
+    check_msrv_toolchain
+
+    run_gate \
+        "diagprint-axum MSRV check" \
+        env CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback \
+        cargo +"$msrv" check \
+            -p "$package" \
+            --all-targets
+
+    run_gate \
+        "diagprint-axum MSRV tests" \
+        env CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback \
+        cargo +"$msrv" test \
+            -p "$package" \
+            --all-targets
+
+    run_gate \
+        "diagprint-axum MSRV rustdoc" \
+        env \
+            CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback \
+            RUSTDOCFLAGS="-D warnings" \
+        cargo +"$msrv" doc \
+            -p "$package" \
+            --no-deps
+}
+
+run_release() {
+    run_full
+
+    echo
+    print_rule
+    echo " DIAGPRINT-AXUM RELEASE GATE"
+    print_rule
+
+    require_clean_tree
+
+    run_gate \
+        "diagprint-axum package verification" \
+        cargo package \
+            -p "$package"
+
+    run_gate \
+        "diagprint-axum publish dry run" \
+        cargo publish \
+            --dry-run \
+            -p "$package"
+}
+
+require_command cargo
+require_command git
+require_command rustup
+require_repo_root
+
+echo
+print_rule
+echo " DIAGPRINT-AXUM GATES"
+print_rule
+echo
+echo "Mode       : $mode"
+echo "Repository : $(pwd)"
+echo "Revision   : $(git rev-parse --short HEAD)"
+echo "Branch     : $(git branch --show-current)"
+echo "MSRV       : $msrv"
+echo "Core line  : frozen at 0.7.x"
+
+case "$mode" in
+    quick)
+        run_quick
+        ;;
+
+    full)
+        run_full
+        ;;
+
+    release)
+        run_release
+        ;;
+
+    *)
+        echo
+        echo "Usage:"
+        echo "  ./scripts/diagprint-axum-gates quick"
+        echo "  ./scripts/diagprint-axum-gates full"
+        echo "  ./scripts/diagprint-axum-gates release"
+        echo
+        exit 2
+        ;;
+esac
+
+echo
+print_rule
+echo " ALL REQUESTED DIAGPRINT-AXUM GATES GREEN"
+print_rule
+echo

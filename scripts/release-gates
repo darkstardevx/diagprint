@@ -10,6 +10,7 @@ packages=(
     diagprint-async
     diagprint-otel
     diagprint-test
+    diagprint-axum
 )
 
 root_features=(
@@ -344,6 +345,7 @@ run_satellite_release() {
         diagprint-async
         diagprint-otel
         diagprint-test
+        diagprint-axum
     )
 
     local package
@@ -399,6 +401,10 @@ case "$mode" in
         run_satellite_release
         ;;
 
+    axum)
+        ./scripts/diagprint-axum-gates release
+        ;;
+
     *)
         echo
         echo "Usage:"
@@ -407,6 +413,7 @@ case "$mode" in
         echo "  ./scripts/release-gates derive"
         echo "  ./scripts/release-gates core"
         echo "  ./scripts/release-gates satellites"
+        echo "  ./scripts/release-gates axum"
         echo
         exit 2
         ;;
