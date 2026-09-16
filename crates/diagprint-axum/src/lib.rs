@@ -29,7 +29,7 @@
 //! This remains an explicit side effect. Storing a sink in application state
 //! does not cause responses, errors, or diagnostics to emit automatically.
 //!
-////! ## Asynchronous application-state ergonomics
+//! ## Asynchronous application-state ergonomics
 //!
 //! With `async-delivery` enabled, `AsyncDiagnosticState` groups a cloneable
 //! [`diagprint::Reporter`] with one shared bounded
@@ -44,7 +44,7 @@
 //!
 //! An enqueued outcome means queue acceptance, not completed delivery.
 //!
-////! ## Optional asynchronous delivery
+//! ## Optional asynchronous delivery
 //!
 //! The `async-delivery` feature adds an explicit asynchronous submission bridge
 //! backed by `diagprint-async`.
@@ -90,6 +90,12 @@ pub use async_emission::{AsyncDiagnosticEmissionExt, AsyncEmission, AsyncEmissio
 
 #[cfg(feature = "async-delivery")]
 pub use async_state::AsyncDiagnosticState;
+
+#[cfg(feature = "async-delivery")]
+pub use diagprint_async::{
+    AsyncDiagnosticSink, AsyncSinkError, BackpressurePolicy, ReportSubmitError, SubmissionSummary,
+    SubmitOutcome,
+};
 
 pub use context::{
     InvalidRequestId, MAX_REQUEST_ID_LEN, MissingRequestContext, REQUEST_ID_HEADER, RequestContext,

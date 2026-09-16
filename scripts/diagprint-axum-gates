@@ -267,6 +267,18 @@ check_package_contents() {
         exit 1
     fi
 
+    if ! grep -qx 'examples/sync_app.rs' <<<"$package_list"; then
+        echo
+        echo "FAILED: examples/sync_app.rs is missing from the package"
+        exit 1
+    fi
+
+    if ! grep -qx 'examples/async_app.rs' <<<"$package_list"; then
+        echo
+        echo "FAILED: examples/async_app.rs is missing from the package"
+        exit 1
+    fi
+
     echo
     echo "PASS: required package contents are present"
 }
@@ -321,6 +333,13 @@ run_quick() {
             --all-targets
 
     run_gate \
+        "diagprint-axum default examples" \
+        cargo check \
+            -p "$package" \
+            --no-default-features \
+            --examples
+
+    run_gate \
         "Async dependency absent by default" \
         check_async_dependency_absent
 
@@ -354,6 +373,14 @@ run_quick() {
             --no-default-features \
             --features "$async_feature" \
             --all-targets
+
+    run_gate \
+        "diagprint-axum async-delivery examples" \
+        cargo check \
+            -p "$package" \
+            --no-default-features \
+            --features "$async_feature" \
+            --examples
 
     run_gate \
         "Async dependency activated explicitly" \

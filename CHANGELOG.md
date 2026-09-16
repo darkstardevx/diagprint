@@ -36,6 +36,16 @@ The project follows Semantic Versioning.
   acceptance, `Reject` backpressure, `DropNewest` behavior, shared queue
   identity, privacy preservation, and explicit sink lifecycle ownership.
 
+- Re-exported the common `diagprint-async` construction, backpressure, and
+  submission types from `diagprint-axum` when `async-delivery` is enabled so
+  typical Axum applications do not need a second direct dependency merely to
+  construct the shared async sink.
+- Added runnable synchronous and asynchronous Axum examples covering
+  `RequestContext`, application state, `ApplicationError`, RFC 9457 Problem
+  Details, explicit delivery, bounded async submission, flush, and shutdown.
+- Added example compilation and package-content checks to the
+  `diagprint-axum` validation gates, and added a concise README Quick Start.
+
 ### Planned
 
 - Add framework and application adapters, beginning with `diagprint-axum`,

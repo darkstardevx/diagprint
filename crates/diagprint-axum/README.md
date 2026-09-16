@@ -7,6 +7,49 @@ framework.
 HTTP responses without introducing Axum or an async runtime dependency into
 the core `diagprint` crate.
 
+## Quick start
+
+The fastest way to understand the integration is to run the packaged examples.
+
+Synchronous application state and explicit emission:
+
+    cargo run -p diagprint-axum --example sync_app
+
+Bounded asynchronous submission:
+
+    cargo run -p diagprint-axum \
+        --example async_app \
+        --features async-delivery
+
+Both examples use a real Axum `Router`, the first-class `RequestContext`
+extractor, an `ApplicationError`, RFC 9457 Problem Details, and explicit
+diagnostic delivery.
+
+The examples deliberately use an in-memory request rather than binding a TCP
+port, which keeps them deterministic and easy to run in CI. The resulting
+`Router` is the same application value that can be passed to `axum::serve` in
+a networked service.
+
+The synchronous path uses `DiagnosticState`.
+
+The asynchronous path uses `AsyncDiagnosticState` with one bounded
+`AsyncDiagnosticSink`. Enabling `async-delivery` re-exports the common async
+construction and lifecycle types from `diagprint-axum`, including:
+
+- `AsyncDiagnosticSink`
+- `AsyncSinkError`
+- `BackpressurePolicy`
+- `SubmitOutcome`
+- `SubmissionSummary`
+- `ReportSubmitError`
+
+A separate direct `diagprint-async` dependency is therefore not required for
+the common `diagprint-axum` async setup.
+
+Queue ownership and lifecycle remain explicit. In particular,
+`AsyncEmissionOutcome::Enqueued` means queue acceptance rather than completed
+delivery.
+
 ## Architecture
 
 The dependency direction is intentional:
@@ -43,6 +86,11 @@ Asynchronous diagnostic delivery is optional:
 
 The `async-delivery` feature adds the `diagprint-async` companion crate to the
 Axum integration. It is disabled by default.
+
+The common async construction and lifecycle types are re-exported directly
+from `diagprint-axum`, so applications using the Axum integration do not need
+to add a separate `diagprint-async` dependency merely to construct
+`AsyncDiagnosticSink` or select a `BackpressurePolicy`.
 
 A normal `diagprint-axum` dependency therefore does not pull the asynchronous
 delivery layer into the application's normal dependency graph.

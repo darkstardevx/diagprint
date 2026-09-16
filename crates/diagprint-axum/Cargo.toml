@@ -42,3 +42,13 @@ optional = true
 http-body-util = "0.1"
 tokio = { version = "1", features = ["macros", "rt"] }
 tower = { version = "0.5", features = ["util"] }
+
+[[example]]
+name = "sync_app"
+path = "examples/sync_app.rs"
+
+
+[[example]]
+name = "async_app"
+path = "examples/async_app.rs"
+required-features = ["async-delivery"]
