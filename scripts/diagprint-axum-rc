@@ -1,0 +1,658 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+package="diagprint-axum"
+version="0.8.1"
+branch="axum-v0.8.1"
+crate_dir="crates/diagprint-axum"
+manifest="$crate_dir/Cargo.toml"
+tag="diagprint-axum-v${version}"
+registry="${DIAGPRINT_AXUM_REGISTRY:-crates-io}"
+msrv="1.85.0"
+
+rule() {
+    printf '%*s\n' 78 '' | tr ' ' '='
+}
+
+section() {
+    echo
+    rule
+    echo " $1"
+    rule
+    echo
+}
+
+fail() {
+    echo
+    echo "ERROR: $*" >&2
+    exit 1
+}
+
+require_command() {
+    command -v "$1" >/dev/null 2>&1 ||
+        fail "required command not found: $1"
+}
+
+require_command cargo
+require_command git
+require_command python3
+require_command rustup
+require_command tar
+require_command sha256sum
+
+[[ -f Cargo.toml && -f "$manifest" ]] ||
+    fail "run this from the diagprint repository root"
+
+[[ "$(git branch --show-current)" == "$branch" ]] ||
+    fail "expected branch $branch"
+
+if [[ -n "$(git status --porcelain)" ]]; then
+    git status --short
+    fail "RC validation requires a clean committed tree"
+fi
+
+revision="$(git rev-parse HEAD)"
+
+section "DIAGPRINT-AXUM 0.8.1 RELEASE CANDIDATE"
+
+echo "Package   : $package"
+echo "Version   : $version"
+echo "Branch    : $branch"
+echo "Revision  : $revision"
+echo "Registry  : $registry"
+echo "MSRV      : $msrv"
+echo "Tag       : $tag"
+echo
+
+section "MANIFEST CONTRACT"
+
+python3 <<'PY'
+from pathlib import Path
+import tomllib
+
+path = Path("crates/diagprint-axum/Cargo.toml")
+
+with path.open("rb") as handle:
+    manifest = tomllib.load(handle)
+
+package = manifest["package"]
+features = manifest["features"]
+dependencies = manifest["dependencies"]
+metadata = package["metadata"]["docs.rs"]
+examples = {
+    example["name"]: example
+    for example in manifest.get("example", [])
+}
+
+assert package["name"] == "diagprint-axum"
+assert package["version"] == "0.8.1"
+assert package["edition"] == "2024"
+assert package["rust-version"] == "1.85"
+
+assert features["default"] == []
+assert features["async-delivery"] == [
+    "dep:diagprint-async"
+]
+
+diagprint = dependencies["diagprint"]
+assert diagprint["version"] == "0.7.1"
+assert diagprint["path"] == "../.."
+
+async_dep = dependencies["diagprint-async"]
+assert async_dep["version"] == "0.7.0"
+assert async_dep["path"] == "../diagprint-async"
+assert async_dep["optional"] is True
+
+axum = dependencies["axum"]
+assert axum["version"] == "0.8.9"
+
+assert metadata["all-features"] is True
+
+assert examples["sync_app"]["path"] == (
+    "examples/sync_app.rs"
+)
+
+assert examples["async_app"]["path"] == (
+    "examples/async_app.rs"
+)
+
+assert examples["async_app"]["required-features"] == [
+    "async-delivery"
+]
+
+print("PASS: package identity")
+print("PASS: version 0.8.1")
+print("PASS: Rust 1.85 MSRV")
+print("PASS: default feature set remains empty")
+print("PASS: async-delivery remains explicit")
+print("PASS: core remains 0.7.1")
+print("PASS: diagprint-async remains 0.7.0 optional")
+print("PASS: Axum remains 0.8.9")
+print("PASS: docs.rs builds all features")
+print("PASS: example feature contracts")
+PY
+
+section "CHANGELOG CONTRACT"
+
+python3 <<'PY'
+from pathlib import Path
+
+text = Path("CHANGELOG.md").read_text()
+
+release = "## [diagprint-axum 0.8.1] - 2026-09-16"
+
+assert "## [Unreleased]" in text
+assert release in text
+
+unreleased_start = text.index("## [Unreleased]")
+release_start = text.index(release)
+
+unreleased = text[unreleased_start:release_start]
+
+assert "### Planned" in unreleased
+assert "ApplicationResultExt::emit_problem" not in unreleased
+assert "AsyncDiagnosticState" not in unreleased
+assert "DiagnosticState::emit_problem" not in unreleased
+
+release_end = text.index(
+    "## [diagprint-axum 0.8.0]",
+    release_start,
+)
+
+release_body = text[release_start:release_end]
+
+required = [
+    "RequestContext",
+    "DiagnosticState",
+    "AsyncDiagnosticState",
+    "ApplicationResultExt::emit_problem",
+    "AsyncApplicationResultExt::emit_problem_async",
+    "sync and async examples",
+]
+
+# The wording for the examples is intentionally slightly different,
+# so validate those separately.
+for item in required[:-1]:
+    assert item in release_body, item
+
+assert "synchronous and asynchronous Axum examples" in release_body
+
+print("PASS: Unreleased retains Planned work")
+print("PASS: 0.8.1 has a dated release section")
+print("PASS: all four implementation milestones are represented")
+PY
+
+section "PUBLIC API CONTRACT"
+
+lib="$crate_dir/src/lib.rs"
+
+for symbol in \
+    ApplicationError \
+    ApplicationErrorExt \
+    RequestContext \
+    RequestId \
+    DiagnosticState \
+    ApplicationResultExt \
+    EmittedProblemResult \
+    ProblemDetailsResponse \
+    DiagnosticEmissionExt
+do
+    grep -Fq "$symbol" "$lib" ||
+        fail "public API audit cannot find $symbol"
+done
+
+for symbol in \
+    AsyncDiagnosticState \
+    AsyncApplicationResultExt \
+    AsyncEmittedProblemResult \
+    AsyncDiagnosticSink \
+    AsyncEmissionOutcome \
+    BackpressurePolicy
+do
+    grep -Fq "$symbol" "$lib" ||
+        fail "async public API audit cannot find $symbol"
+done
+
+echo "PASS: expected synchronous public surface present"
+echo "PASS: expected feature-gated async public surface present"
+
+section "RELEASE TAG MUST NOT EXIST"
+
+if git show-ref \
+    --verify \
+    --quiet \
+    "refs/tags/$tag"
+then
+    fail "local release tag already exists: $tag"
+fi
+
+set +e
+git ls-remote \
+    --exit-code \
+    --tags \
+    origin \
+    "refs/tags/$tag" \
+    >/dev/null 2>&1
+remote_tag_status=$?
+set -e
+
+case "$remote_tag_status" in
+    2)
+        echo "PASS: release tag does not exist locally or remotely"
+        ;;
+    0)
+        fail "remote release tag already exists: $tag"
+        ;;
+    *)
+        fail "could not reliably query remote release tag state"
+        ;;
+esac
+
+section "FULL WORKSPACE-SOURCE GATE"
+
+./scripts/diagprint-axum-gates full
+
+section "BUILD EXACT CLEAN PACKAGE ARTIFACT"
+
+cargo package \
+    --registry "$registry" \
+    -p "$package"
+
+target_dir="$(
+    cargo metadata \
+        --format-version 1 \
+        --no-deps |
+    python3 -c '
+import json
+import sys
+print(json.load(sys.stdin)["target_directory"])
+'
+)"
+
+crate_file="$target_dir/package/${package}-${version}.crate"
+
+[[ -f "$crate_file" ]] ||
+    fail "package artifact was not created at $crate_file"
+
+artifact_sha="$(
+    sha256sum "$crate_file" |
+    awk '{print $1}'
+)"
+
+echo "Artifact : $crate_file"
+echo "SHA-256  : $artifact_sha"
+
+section "UNPACK EXACT PACKAGE"
+
+tmp_root="$(mktemp -d)"
+
+cleanup() {
+    rm -rf "$tmp_root"
+}
+
+trap cleanup EXIT
+
+unpack_root="$tmp_root/unpacked"
+mkdir -p "$unpack_root"
+
+tar -xzf \
+    "$crate_file" \
+    -C "$unpack_root"
+
+packaged_crate="$unpack_root/${package}-${version}"
+
+[[ -f "$packaged_crate/Cargo.toml" ]] ||
+    fail "unpacked Cargo.toml is missing"
+
+[[ -f "$packaged_crate/Cargo.toml.orig" ]] ||
+    fail "unpacked Cargo.toml.orig is missing"
+
+[[ -f "$packaged_crate/README.md" ]] ||
+    fail "unpacked README.md is missing"
+
+[[ -f "$packaged_crate/examples/sync_app.rs" ]] ||
+    fail "packaged sync_app example is missing"
+
+[[ -f "$packaged_crate/examples/async_app.rs" ]] ||
+    fail "packaged async_app example is missing"
+
+echo "PASS: exact .crate artifact unpacked"
+echo "PASS: manifest, README, and examples present"
+
+section "AUDIT NORMALIZED PACKAGE MANIFEST"
+
+PACKAGED_CRATE="$packaged_crate" python3 <<'PY'
+from pathlib import Path
+import os
+import tomllib
+
+root = Path(os.environ["PACKAGED_CRATE"])
+
+with (root / "Cargo.toml").open("rb") as handle:
+    manifest = tomllib.load(handle)
+
+dependencies = manifest["dependencies"]
+
+diagprint = dependencies["diagprint"]
+async_dep = dependencies["diagprint-async"]
+
+assert diagprint["version"] == "0.7.1"
+assert "path" not in diagprint
+
+assert async_dep["version"] == "0.7.0"
+assert async_dep["optional"] is True
+assert "path" not in async_dep
+
+assert manifest["features"]["default"] == []
+assert manifest["features"]["async-delivery"] == [
+    "dep:diagprint-async"
+]
+
+print("PASS: packaged core dependency is registry-versioned")
+print("PASS: packaged async dependency is registry-versioned")
+print("PASS: local workspace paths are absent")
+print("PASS: packaged feature isolation is intact")
+PY
+
+section "COMPILE PACKAGED EXAMPLES"
+
+CARGO_TARGET_DIR="$tmp_root/packaged-default-target" \
+cargo check \
+    --manifest-path "$packaged_crate/Cargo.toml" \
+    --no-default-features \
+    --example sync_app
+
+CARGO_TARGET_DIR="$tmp_root/packaged-async-target" \
+cargo check \
+    --manifest-path "$packaged_crate/Cargo.toml" \
+    --no-default-features \
+    --features async-delivery \
+    --example async_app
+
+echo "PASS: packaged synchronous example compiles"
+echo "PASS: packaged asynchronous example compiles"
+
+section "CREATE FRESH DEFAULT CONSUMER"
+
+default_consumer="$tmp_root/default-consumer"
+
+mkdir -p "$default_consumer/src"
+
+cat > "$default_consumer/Cargo.toml" <<TOML
+[package]
+name = "diagprint-axum-rc-default-consumer"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+
+[dependencies]
+axum = { version = "0.8.9", default-features = false }
+diagprint = "0.7.1"
+diagprint-axum = { path = "$packaged_crate", default-features = false }
+TOML
+
+cat > "$default_consumer/src/main.rs" <<'RS'
+use axum::http::{
+    Method,
+    StatusCode,
+};
+use diagprint::{
+    Diagnostic,
+    DiagnosticSink,
+    Reporter,
+    SinkResult,
+};
+use diagprint_axum::{
+    ApplicationError,
+    ApplicationResultExt,
+    DiagnosticState,
+    EmittedProblemResult,
+    RequestContext,
+    RequestId,
+};
+use std::{
+    error::Error,
+    fmt,
+};
+
+#[derive(Debug)]
+struct DomainError;
+
+impl fmt::Display for DomainError {
+    fn fmt(
+        &self,
+        formatter: &mut fmt::Formatter<'_>,
+    ) -> fmt::Result {
+        formatter.write_str("private consumer error")
+    }
+}
+
+impl Error for DomainError {}
+
+impl ApplicationError for DomainError {
+    fn http_status(&self) -> StatusCode {
+        StatusCode::CONFLICT
+    }
+
+    fn to_diagnostic(
+        &self,
+        reporter: &Reporter,
+    ) -> Diagnostic {
+        reporter
+            .warning("private consumer diagnostic")
+            .code("consumer.conflict")
+    }
+}
+
+struct NoopSink;
+
+impl DiagnosticSink for NoopSink {
+    fn emit(
+        &self,
+        _diagnostic: &Diagnostic,
+    ) -> SinkResult<()> {
+        Ok(())
+    }
+}
+
+fn compile_public_api() -> EmittedProblemResult<()> {
+    let reporter = Reporter::builder()
+        .application("rc-default-consumer")
+        .build()
+        .expect("reporter should build");
+
+    let state = DiagnosticState::with_sink(
+        reporter,
+        NoopSink,
+    );
+
+    let context = RequestContext::new(
+        RequestId::new("rc-default-request")
+            .expect("request ID should validate"),
+        Method::GET,
+        Some("/consumer".to_owned()),
+    );
+
+    Result::<(), DomainError>::Err(DomainError)
+        .emit_problem(
+            &state,
+            &context,
+        )
+}
+
+fn main() {
+    let _ = compile_public_api();
+}
+RS
+
+CARGO_TARGET_DIR="$tmp_root/default-consumer-target" \
+cargo check \
+    --manifest-path "$default_consumer/Cargo.toml"
+
+echo "PASS: fresh default consumer compiles against packaged artifact"
+
+section "CREATE FRESH ASYNC CONSUMER"
+
+async_consumer="$tmp_root/async-consumer"
+
+mkdir -p "$async_consumer/src"
+
+cat > "$async_consumer/Cargo.toml" <<TOML
+[package]
+name = "diagprint-axum-rc-async-consumer"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+
+[dependencies]
+axum = { version = "0.8.9", default-features = false }
+diagprint = "0.7.1"
+diagprint-axum = { path = "$packaged_crate", default-features = false, features = ["async-delivery"] }
+TOML
+
+cat > "$async_consumer/src/main.rs" <<'RS'
+use axum::http::StatusCode;
+use diagprint::{
+    Diagnostic,
+    Reporter,
+};
+use diagprint_axum::{
+    ApplicationError,
+    AsyncApplicationResultExt,
+    AsyncDiagnosticSink,
+    AsyncDiagnosticState,
+    AsyncEmissionOutcome,
+    AsyncEmittedProblemResult,
+    AsyncSinkError,
+    BackpressurePolicy,
+    ReportSubmitError,
+    RequestContext,
+    SubmissionSummary,
+    SubmitOutcome,
+};
+use std::{
+    error::Error,
+    fmt,
+};
+
+#[derive(Debug)]
+struct DomainError;
+
+impl fmt::Display for DomainError {
+    fn fmt(
+        &self,
+        formatter: &mut fmt::Formatter<'_>,
+    ) -> fmt::Result {
+        formatter.write_str("private async consumer error")
+    }
+}
+
+impl Error for DomainError {}
+
+impl ApplicationError for DomainError {
+    fn http_status(&self) -> StatusCode {
+        StatusCode::SERVICE_UNAVAILABLE
+    }
+
+    fn to_diagnostic(
+        &self,
+        reporter: &Reporter,
+    ) -> Diagnostic {
+        reporter
+            .error("private async consumer diagnostic")
+            .code("consumer.async_failure")
+    }
+}
+
+async fn compile_result_adapter(
+    result: Result<(), DomainError>,
+    state: &AsyncDiagnosticState,
+    context: &RequestContext,
+) -> AsyncEmittedProblemResult<()> {
+    result
+        .emit_problem_async(
+            state,
+            context,
+        )
+        .await
+}
+
+fn compile_reexports(
+    _sink: Option<AsyncDiagnosticSink>,
+    _sink_error: Option<AsyncSinkError>,
+    _policy: BackpressurePolicy,
+    _submit: Option<SubmitOutcome>,
+    _summary: SubmissionSummary,
+    _report_error: Option<ReportSubmitError>,
+    _outcome: Option<AsyncEmissionOutcome>,
+) {
+}
+
+fn main() {
+    let _ = compile_result_adapter;
+    let _ = compile_reexports;
+}
+RS
+
+CARGO_TARGET_DIR="$tmp_root/async-consumer-target" \
+cargo check \
+    --manifest-path "$async_consumer/Cargo.toml"
+
+echo "PASS: fresh async consumer compiles against packaged artifact"
+echo "PASS: consumer needs no direct diagprint-async dependency"
+
+section "MSRV PACKAGE-CONSUMER CONTRACT"
+
+if ! rustup toolchain list |
+    grep -Eq "^${msrv}([[:space:]-]|$)"
+then
+    fail "Rust $msrv toolchain is not installed"
+fi
+
+CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback \
+CARGO_TARGET_DIR="$tmp_root/default-msrv-target" \
+cargo +"$msrv" check \
+    --manifest-path "$default_consumer/Cargo.toml"
+
+CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback \
+CARGO_TARGET_DIR="$tmp_root/async-msrv-target" \
+cargo +"$msrv" check \
+    --manifest-path "$async_consumer/Cargo.toml"
+
+echo "PASS: packaged default consumer compiles on Rust $msrv"
+echo "PASS: packaged async consumer compiles on Rust $msrv"
+
+section "CRATES.IO PUBLISH DRY RUN"
+
+cargo publish \
+    --dry-run \
+    --registry "$registry" \
+    -p "$package"
+
+echo
+echo "PASS: explicit $registry publish dry run"
+echo "PASS: no package was published"
+
+section "RELEASE CANDIDATE READY"
+
+echo "Source revision:"
+echo "  $revision"
+echo
+echo "Artifact:"
+echo "  $crate_file"
+echo
+echo "Artifact SHA-256:"
+echo "  $artifact_sha"
+echo
+echo "Release tag:"
+echo "  $tag"
+echo "  (not created)"
+echo
+echo "Publication:"
+echo "  DRY RUN ONLY"
+echo
+
+rule
+echo " ✅ DIAGPRINT-AXUM v0.8.1 RELEASE CANDIDATE GREEN"
+rule
+echo

@@ -6,6 +6,20 @@ The project follows Semantic Versioning.
 
 ## [Unreleased]
 
+### Planned
+
+- Add framework and application adapters, beginning with `diagprint-axum`,
+  while keeping framework dependencies outside the core crate.
+- Add asynchronous terminal documentation retrieval without introducing an
+  async runtime dependency into the core crate.
+- Add richer structured diff presentation for remediation previews and
+  machine-generated fixes.
+- Add additional lifecycle-specific renderers, exporters, and integrations
+  where they extend the create → enrich → render → remediate → verify →
+  export/telemetry pipeline without bloating the default dependency graph.
+
+## [diagprint-axum 0.8.1] - 2026-09-16
+
 ### Added
 
 - Added first-class Axum extraction for `RequestContext`, allowing handlers to
@@ -59,18 +73,6 @@ The project follows Semantic Versioning.
   integration coverage proving successful values do not emit or submit while
   error values retain request correlation, privacy filtering, and explicit
   delivery outcomes.
-
-### Planned
-
-- Add framework and application adapters, beginning with `diagprint-axum`,
-  while keeping framework dependencies outside the core crate.
-- Add asynchronous terminal documentation retrieval without introducing an
-  async runtime dependency into the core crate.
-- Add richer structured diff presentation for remediation previews and
-  machine-generated fixes.
-- Add additional lifecycle-specific renderers, exporters, and integrations
-  where they extend the create → enrich → render → remediate → verify →
-  export/telemetry pipeline without bloating the default dependency graph.
 
 ## [diagprint-axum 0.8.0] - 2026-09-16
 
