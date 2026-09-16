@@ -309,6 +309,12 @@ check_package_contents() {
         exit 1
     fi
 
+    if ! grep -qx 'tests/async_operational.rs' <<<"$package_list"; then
+        echo
+        echo "FAILED: tests/async_operational.rs is missing from the package"
+        exit 1
+    fi
+
     echo
     echo "PASS: required package contents are present"
 }

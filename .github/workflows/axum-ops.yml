@@ -183,3 +183,38 @@ jobs:
           --no-default-features
           --features async-delivery
           --all-targets
+
+  failure-injection:
+    name: Failure injection and async concurrency
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Test diagprint-async worker failures
+        run: >-
+          cargo test
+          -p diagprint-async
+          --test failure_injection
+          --
+          --test-threads=1
+
+      - name: Stress Axum async operational contract
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for attempt in 1 2 3
+          do
+            echo
+            echo "===== async operational pass $attempt/3 ====="
+
+            cargo test               -p diagprint-axum               --no-default-features               --features async-delivery               --test async_operational               --               --test-threads=1
+          done

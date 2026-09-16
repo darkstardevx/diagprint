@@ -92,6 +92,28 @@ cargo test \
     --no-default-features \
     --test security_contract
 
+section "FAILURE INJECTION + ASYNC CONCURRENCY"
+
+cargo test \
+    -p diagprint-async \
+    --test failure_injection \
+    -- \
+    --test-threads=1
+
+for attempt in 1 2 3
+do
+    echo
+    echo "Failure/concurrency stability pass $attempt/3"
+
+    cargo test \
+        -p "$package" \
+        --no-default-features \
+        --features async-delivery \
+        --test async_operational \
+        -- \
+        --test-threads=1
+done
+
 section "FEATURE POWERSET"
 
 command -v cargo-hack >/dev/null 2>&1 ||
@@ -154,6 +176,8 @@ echo "Contracts:"
 echo "  ✓ SemVer"
 echo "  ✓ property testing"
 echo "  ✓ adversarial privacy"
+echo "  ✓ worker failure injection"
+echo "  ✓ async concurrency/backpressure"
 echo "  ✓ feature powerset"
 echo "  ✓ package hygiene"
 echo "  ✓ full Axum gate"

@@ -19,6 +19,15 @@ The project follows Semantic Versioning.
   powerset.
 - Added a reusable `scripts/diagprint-axum-operational` local gate.
 
+- Added deterministic worker failure-injection coverage for async sink emit
+  failures, flush failures, and panicking blocking workers, including sticky
+  worker-error and shutdown behavior.
+- Added concurrent Axum saturation coverage for `Block`, `Reject`, and
+  `DropNewest`, proving exact delivery/drop/rejection semantics across many
+  simultaneous HTTP requests.
+- Added repeated failure-injection and concurrency execution to the local
+  operational gate and dedicated Axum operational CI.
+
 ### Security
 
 - Extended release hardening into continuous development by making privacy
@@ -26,6 +35,14 @@ The project follows Semantic Versioning.
   regression examples.
 - Explicitly exclude the fuzz workspace from the published crate and enforce
   that exclusion in package-content validation.
+
+- Added concurrent privacy regression coverage proving worker failures,
+  queue-full rejection, deliberate drops, and blocked submissions never expose
+  internal diagnostics, sink failure text, concrete request paths, or raw query
+  secrets to clients.
+- Added exact-delivery assertions proving rejected and dropped diagnostics never
+  reach the underlying sink while every accepted `Block` submission is
+  delivered exactly once with request correlation intact.
 
 ### Planned
 

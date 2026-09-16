@@ -120,3 +120,75 @@ Candidate work includes:
 
 No 0.8.2 release should weaken the security, privacy, async-delivery, MSRV,
 packaging, or reproducibility guarantees established for 0.8.1.
+
+## Milestone status
+
+### Milestone 1 — operational foundation — closed
+
+Milestone 1 is closed at:
+
+`a2ceff1694d3c04b1184e308cfe714a07ed1b34f`
+
+The checkpoint established:
+
+- patch-SemVer automation against published `0.8.1`;
+- property-based request-ID and Problem Details validation;
+- generated-secret privacy properties;
+- libFuzzer harnesses;
+- weekly fuzz CI;
+- stable Linux, macOS, and Windows compatibility;
+- Rust 1.85 MSRV validation;
+- complete Axum feature-powerset checking;
+- package exclusion of development-only fuzz state;
+- a reusable operational gate.
+
+The checkpoint passed both the repository CI and the dedicated Axum
+Operational Maturity workflow before Milestone 2 began.
+
+### Milestone 2 — failure injection and async concurrency
+
+Milestone 2 deliberately attacks delivery and lifecycle failure paths without
+changing the runtime API.
+
+At the `diagprint-async` layer it verifies:
+
+- an underlying `DiagnosticSink::emit` failure becomes a sticky
+  `AsyncSinkError::Worker`;
+- a `DiagnosticSink::flush` failure becomes a sticky worker failure;
+- later submissions fail after the worker has failed;
+- shutdown preserves the underlying worker failure;
+- a panicking blocking worker closes future submission;
+- worker panic is reported as a join failure at lifecycle shutdown;
+- queue acceptance remains distinct from completed sink delivery.
+
+At the `diagprint-axum` layer it verifies:
+
+- an HTTP response already accepted for queue submission is not replaced when
+  underlying delivery later fails;
+- later requests retain their original HTTP response even when the async worker
+  is already failed;
+- worker error text remains server-side and never enters the client body;
+- concurrent `Reject` saturation reports `QueueFull` only as response metadata;
+- rejected diagnostics never reach the underlying sink;
+- concurrent `DropNewest` saturation reports every deliberate drop;
+- dropped diagnostics never reach the underlying sink;
+- concurrent `Block` submissions remain pending while capacity is unavailable;
+- releasing capacity allows every blocked submission to complete;
+- every accepted diagnostic reaches the underlying sink exactly once;
+- per-request correlation remains intact under concurrent pressure;
+- raw query secrets, internal diagnostic messages, codes, attributes, and
+  operational failure details stay outside client responses.
+
+These tests use one real `AsyncDiagnosticSink` queue and worker. They do not
+introduce a test-only queueing abstraction that could hide production
+behavior.
+
+The concurrency contract is intentionally repeated in operational CI to catch
+timing-sensitive regressions while still using deterministic queue saturation
+and explicit release gates rather than probabilistic sleeps as the primary
+synchronization mechanism.
+
+Milestone 2 remains test- and operations-only unless this fault injection
+exposes a genuine implementation defect. A failing test is not repaired by
+weakening the assertion unless the documented public contract itself is
+intentionally changed.
