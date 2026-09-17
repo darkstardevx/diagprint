@@ -577,9 +577,13 @@ Release-sequencing revision commit: e51e3289e914e6c933ff55ba66430d3233b44e46
 Release-sequencing revision CI run: 35191143109
 Release-sequencing revision CI result: success
 
-R8A release-preparation commit:
-R8A CI run:
-R8A CI result:
+R8A release-preparation commit: fe443b31bfbd9e5d32cdbd6f127f8a751507f3c6
+R8A CI run: 35266729806
+R8A CI result: failure — package-readiness workflow used a stale hard-coded archive lookup after successfully building diagprint-derive-0.8.0.crate; format/clippy, tests, MSRV, package-content inspection, generated-state exclusion, and first-stage archive build passed.
+
+R8A release-fix commit:
+R8A release-fix CI run:
+R8A release-fix CI result:
 
 Published:
 diagprint-derive 0.8.0:
@@ -599,4 +603,5 @@ Tag:
 GitHub release:
 
 Notes:
+- R8A release-fix derives both `diagprint-derive` version and Cargo `target_directory` from `cargo metadata`; local Cargo uses `~/.cargo-target`, while GitHub Actions may use a different target directory.
 ```

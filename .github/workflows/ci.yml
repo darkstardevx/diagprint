@@ -251,7 +251,63 @@ jobs:
           -p diagprint-derive
 
       - name: Show first-stage archive
-        run: ls -lh target/package/diagprint-derive-0.7.0.crate
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          metadata="$(
+            cargo metadata \
+              --no-deps \
+              --format-version 1
+          )"
+
+          derive_version="$(
+            python3 -c '
+import json
+import sys
+
+metadata = json.load(sys.stdin)
+
+for package in metadata["packages"]:
+    if package["name"] == "diagprint-derive":
+        print(package["version"])
+        break
+else:
+    raise SystemExit("diagprint-derive package metadata not found")
+' <<<"$metadata"
+          )"
+
+          target_directory="$(
+            python3 -c '
+import json
+import sys
+
+metadata = json.load(sys.stdin)
+print(metadata["target_directory"])
+' <<<"$metadata"
+          )"
+
+          archive="${target_directory}/package/diagprint-derive-${derive_version}.crate"
+
+          if [[ ! -f "$archive" ]]
+          then
+            echo "ERROR: expected first-stage archive is missing: $archive"
+            echo "Cargo target directory: $target_directory"
+            echo "diagprint-derive version: $derive_version"
+            echo
+            echo "Available package archives:"
+
+            find \
+              "${target_directory}/package" \
+              -maxdepth 1 \
+              -type f \
+              -name '*.crate' \
+              -print 2>/dev/null || true
+
+            exit 1
+          fi
+
+          ls -lh "$archive"
 
   msrv:
     name: MSRV 1.85
