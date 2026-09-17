@@ -203,6 +203,41 @@ For repositories that keep history under `.diagprint/`, add `.diagprint/` to
 `.gitignore` so diagnostic output does not dirty later provenance-enabled
 scans.
 
+
+### Diagnostic relationship graph
+
+M4 adds a typed relationship graph between canonical diagnostic identities.
+
+Relationship semantics and evidence provenance remain separate. Producer-declared
+or source-chain evidence can retain explicit causal structure, while structural,
+trace, temporal, and inferred evidence remain visibly classified.
+
+Inspect a graph around one diagnostic:
+
+```bash
+diagprint graph .diagprint/history <FINGERPRINT>
+```
+
+Include inferred correlations explicitly:
+
+```bash
+diagprint graph .diagprint/history <FINGERPRINT> --evidence all
+```
+
+Export deterministic Graphviz DOT:
+
+```bash
+diagprint graph .diagprint/history <FINGERPRINT> --format dot
+```
+
+Graph traversal is cycle-safe and depth-bounded. Cascade analysis reports only
+the topology of recorded explicit causal edges; it does not independently claim
+root cause.
+
+The relationship API is also the common substrate for the Ecosystem Bridges
+track, allowing third-party error/diagnostic crates to preserve structured
+relationships instead of flattening them into rendered strings.
+
 ## Installation
 
 ```toml

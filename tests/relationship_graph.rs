@@ -390,3 +390,192 @@ fn conflicting_snapshot_replacement_is_rejected() {
 
     fs::remove_dir_all(directory).unwrap();
 }
+
+#[test]
+fn traversal_is_depth_bounded_cycle_safe_and_deterministic() {
+    use diagprint::{DiagnosticRelationshipDirection, DiagnosticRelationshipEvidenceFilter};
+
+    let a = fingerprint('a');
+    let b = fingerprint('b');
+    let c = fingerprint('c');
+    let d = fingerprint('d');
+
+    let mut builder = DiagnosticRelationshipGraphBuilder::new();
+
+    for value in [&a, &b, &c, &d] {
+        builder.add_fingerprint(value.clone()).unwrap();
+    }
+
+    for (from, to) in [(&a, &b), (&b, &c), (&c, &a)] {
+        builder
+            .add_relationship(
+                DiagnosticRelationship::new(
+                    from.clone(),
+                    to.clone(),
+                    DiagnosticRelationshipKind::Causes,
+                    DiagnosticRelationshipEvidence::ProducerDeclared,
+                    "diagprint.native",
+                )
+                .unwrap(),
+            )
+            .unwrap();
+    }
+
+    builder
+        .add_relationship(
+            DiagnosticRelationship::new(
+                c.clone(),
+                d.clone(),
+                DiagnosticRelationshipKind::CoOccursWith,
+                DiagnosticRelationshipEvidence::InferredCorrelation,
+                "diagprint.native",
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+    let graph = builder.build().unwrap();
+
+    let explicit = graph
+        .subgraph(
+            &a,
+            DiagnosticRelationshipDirection::Both,
+            10,
+            DiagnosticRelationshipEvidenceFilter::Explicit,
+        )
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(explicit.node_count(), 3);
+    assert_eq!(explicit.edge_count(), 3);
+    assert!(!explicit.contains(&d));
+
+    let all = graph
+        .subgraph(
+            &a,
+            DiagnosticRelationshipDirection::Both,
+            10,
+            DiagnosticRelationshipEvidenceFilter::All,
+        )
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(all.node_count(), 4);
+    assert_eq!(all.edge_count(), 4);
+
+    let shallow = graph
+        .subgraph(
+            &a,
+            DiagnosticRelationshipDirection::Downstream,
+            1,
+            DiagnosticRelationshipEvidenceFilter::Explicit,
+        )
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(shallow.node_count(), 2);
+    assert_eq!(shallow.edge_count(), 1);
+}
+
+#[test]
+fn explicit_causal_cascade_analysis_ignores_noncausal_edges() {
+    let a = fingerprint('a');
+    let b = fingerprint('b');
+    let c = fingerprint('c');
+    let d = fingerprint('d');
+
+    let mut builder = DiagnosticRelationshipGraphBuilder::new();
+
+    for value in [&a, &b, &c, &d] {
+        builder.add_fingerprint(value.clone()).unwrap();
+    }
+
+    builder
+        .add_relationship(
+            DiagnosticRelationship::new(
+                a.clone(),
+                b.clone(),
+                DiagnosticRelationshipKind::Causes,
+                DiagnosticRelationshipEvidence::ProducerDeclared,
+                "diagprint.native",
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+    builder
+        .add_relationship(
+            DiagnosticRelationship::new(
+                b.clone(),
+                c.clone(),
+                DiagnosticRelationshipKind::ContributesTo,
+                DiagnosticRelationshipEvidence::SourceChain,
+                "error-stack",
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+    builder
+        .add_relationship(
+            DiagnosticRelationship::new(
+                c.clone(),
+                d.clone(),
+                DiagnosticRelationshipKind::DependsOn,
+                DiagnosticRelationshipEvidence::Structural,
+                "diagprint.native",
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+    let graph = builder.build().unwrap();
+
+    assert_eq!(
+        graph.explicit_causal_upstream(&c, 8).unwrap().unwrap(),
+        vec![a.clone(), b.clone()],
+    );
+
+    assert_eq!(
+        graph.explicit_causal_downstream(&a, 8).unwrap().unwrap(),
+        vec![b, c],
+    );
+
+    assert!(
+        !graph
+            .explicit_causal_downstream(&a, 8)
+            .unwrap()
+            .unwrap()
+            .contains(&d)
+    );
+}
+
+#[test]
+fn dot_output_is_deterministic_and_preserves_edge_classification() {
+    let a = fingerprint('a');
+    let b = fingerprint('b');
+
+    let mut builder = DiagnosticRelationshipGraphBuilder::new();
+
+    builder
+        .add_relationship(
+            DiagnosticRelationship::new(
+                a,
+                b,
+                DiagnosticRelationshipKind::Causes,
+                DiagnosticRelationshipEvidence::ProducerDeclared,
+                "diagprint.native",
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+    let graph = builder.build().unwrap();
+
+    let first = graph.to_dot().unwrap();
+    let second = graph.to_dot().unwrap();
+
+    assert_eq!(first, second);
+    assert!(first.starts_with("digraph diagprint {\n"));
+    assert!(first.contains("causes / producer_declared / diagprint.native"));
+}

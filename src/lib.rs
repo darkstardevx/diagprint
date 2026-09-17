@@ -354,7 +354,8 @@ pub use redaction::{
 
 pub use relationship::{
     DIAGNOSTIC_RELATIONSHIP_GRAPH_V1_SCHEMA, DIAGNOSTIC_RELATIONSHIP_SNAPSHOT_V1_SCHEMA,
-    DiagnosticRelationship, DiagnosticRelationshipError, DiagnosticRelationshipEvidence,
+    DiagnosticRelationship, DiagnosticRelationshipDirection, DiagnosticRelationshipError,
+    DiagnosticRelationshipEvidence, DiagnosticRelationshipEvidenceFilter,
     DiagnosticRelationshipGraph, DiagnosticRelationshipGraphBuilder, DiagnosticRelationshipKind,
     DiagnosticRelationshipNode, DiagnosticRelationshipSnapshot,
 };

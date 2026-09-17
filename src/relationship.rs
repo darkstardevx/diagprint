@@ -3,7 +3,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeSet, VecDeque},
     error::Error,
     fmt,
     fs::{self, File, OpenOptions},
@@ -891,4 +891,299 @@ impl Error for DiagnosticRelationshipError {
             _ => None,
         }
     }
+}
+
+/// Direction used when traversing a diagnostic relationship graph.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DiagnosticRelationshipDirection {
+    Upstream,
+    Downstream,
+    Both,
+}
+
+impl DiagnosticRelationshipDirection {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Upstream => "upstream",
+            Self::Downstream => "downstream",
+            Self::Both => "both",
+        }
+    }
+}
+
+/// Controls whether inferred-correlation edges participate in graph traversal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DiagnosticRelationshipEvidenceFilter {
+    /// Use recorded non-inferred evidence only.
+    Explicit,
+
+    /// Include inferred-correlation edges as well.
+    All,
+}
+
+impl DiagnosticRelationshipEvidenceFilter {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Explicit => "explicit",
+            Self::All => "all",
+        }
+    }
+
+    const fn includes(self, evidence: DiagnosticRelationshipEvidence) -> bool {
+        match self {
+            Self::Explicit => !evidence.is_inferred(),
+            Self::All => true,
+        }
+    }
+}
+
+impl DiagnosticRelationshipGraph {
+    /// Incoming directed relationships for one fingerprint.
+    ///
+    /// Symmetric relationships are considered both incoming and outgoing.
+    pub fn incoming(&self, fingerprint: &str) -> Vec<&DiagnosticRelationship> {
+        self.edges
+            .iter()
+            .filter(|edge| {
+                if edge.kind.is_symmetric() {
+                    edge.from == fingerprint || edge.to == fingerprint
+                } else {
+                    edge.to == fingerprint
+                }
+            })
+            .collect()
+    }
+
+    /// Outgoing directed relationships for one fingerprint.
+    ///
+    /// Symmetric relationships are considered both incoming and outgoing.
+    pub fn outgoing(&self, fingerprint: &str) -> Vec<&DiagnosticRelationship> {
+        self.edges
+            .iter()
+            .filter(|edge| {
+                if edge.kind.is_symmetric() {
+                    edge.from == fingerprint || edge.to == fingerprint
+                } else {
+                    edge.from == fingerprint
+                }
+            })
+            .collect()
+    }
+
+    /// Returns a deterministic, depth-bounded, cycle-safe graph around one
+    /// diagnostic fingerprint.
+    ///
+    /// `Ok(None)` means the requested fingerprint is not a node in this graph.
+    pub fn subgraph(
+        &self,
+        root: &str,
+        direction: DiagnosticRelationshipDirection,
+        depth: usize,
+        evidence: DiagnosticRelationshipEvidenceFilter,
+    ) -> Result<Option<Self>, DiagnosticRelationshipError> {
+        self.verify()?;
+
+        if !self.contains(root) {
+            return Ok(None);
+        }
+
+        let mut visited = BTreeSet::new();
+        let mut traversed_edges = BTreeSet::new();
+        let mut frontier = VecDeque::new();
+
+        visited.insert(root.to_owned());
+        frontier.push_back((root.to_owned(), 0usize));
+
+        while let Some((current, current_depth)) = frontier.pop_front() {
+            if current_depth >= depth {
+                continue;
+            }
+
+            for edge in &self.edges {
+                if !evidence.includes(edge.evidence) {
+                    continue;
+                }
+
+                for next in traversal_neighbors(edge, &current, direction) {
+                    traversed_edges.insert(edge.clone());
+
+                    if visited.insert(next.clone()) {
+                        frontier.push_back((next, current_depth.saturating_add(1)));
+                    }
+                }
+            }
+        }
+
+        let nodes = visited
+            .into_iter()
+            .map(|fingerprint| DiagnosticRelationshipNode { fingerprint })
+            .collect();
+
+        let edges = traversed_edges.into_iter().collect();
+
+        Self::from_parts(nodes, edges).map(Some)
+    }
+
+    /// Explicit causal predecessors reachable from `root`.
+    ///
+    /// The result describes only the topology of recorded `causes` and
+    /// `contributes_to` edges. It is not an independent root-cause conclusion.
+    pub fn explicit_causal_upstream(
+        &self,
+        root: &str,
+        depth: usize,
+    ) -> Result<Option<Vec<String>>, DiagnosticRelationshipError> {
+        self.causal_reachable(root, DiagnosticRelationshipDirection::Upstream, depth)
+    }
+
+    /// Explicit causal successors reachable from `root`.
+    ///
+    /// This is useful for cascade analysis while preserving the distinction
+    /// between recorded causal claims and independently proven root cause.
+    pub fn explicit_causal_downstream(
+        &self,
+        root: &str,
+        depth: usize,
+    ) -> Result<Option<Vec<String>>, DiagnosticRelationshipError> {
+        self.causal_reachable(root, DiagnosticRelationshipDirection::Downstream, depth)
+    }
+
+    fn causal_reachable(
+        &self,
+        root: &str,
+        direction: DiagnosticRelationshipDirection,
+        depth: usize,
+    ) -> Result<Option<Vec<String>>, DiagnosticRelationshipError> {
+        self.verify()?;
+
+        if !self.contains(root) {
+            return Ok(None);
+        }
+
+        let mut visited = BTreeSet::new();
+        let mut frontier = VecDeque::new();
+
+        visited.insert(root.to_owned());
+        frontier.push_back((root.to_owned(), 0usize));
+
+        while let Some((current, current_depth)) = frontier.pop_front() {
+            if current_depth >= depth {
+                continue;
+            }
+
+            for edge in self.edges.iter().filter(|edge| edge.kind.is_causal()) {
+                for next in traversal_neighbors(edge, &current, direction) {
+                    if visited.insert(next.clone()) {
+                        frontier.push_back((next, current_depth.saturating_add(1)));
+                    }
+                }
+            }
+        }
+
+        visited.remove(root);
+
+        Ok(Some(visited.into_iter().collect()))
+    }
+
+    /// Deterministic Graphviz DOT representation.
+    ///
+    /// Graphviz is not a dependency; this method emits text for external tools.
+    pub fn to_dot(&self) -> Result<String, DiagnosticRelationshipError> {
+        self.verify()?;
+
+        let mut output = String::from("digraph diagprint {\n");
+
+        for node in &self.nodes {
+            output.push_str("  \"");
+            output.push_str(&dot_escape(&node.fingerprint));
+            output.push_str("\" [label=\"");
+            output.push_str(&dot_escape(short_fingerprint_label(&node.fingerprint)));
+            output.push_str("\"];\n");
+        }
+
+        for edge in &self.edges {
+            output.push_str("  \"");
+            output.push_str(&dot_escape(&edge.from));
+            output.push_str("\" -> \"");
+            output.push_str(&dot_escape(&edge.to));
+            output.push_str("\" [");
+
+            if edge.kind.is_symmetric() {
+                output.push_str("dir=\"both\", ");
+            }
+
+            output.push_str("label=\"");
+            output.push_str(edge.kind.as_str());
+            output.push_str(" / ");
+            output.push_str(edge.evidence.as_str());
+            output.push_str(" / ");
+            output.push_str(&dot_escape(&edge.producer));
+            output.push_str("\"];\n");
+        }
+
+        output.push_str("}\n");
+        Ok(output)
+    }
+}
+
+fn traversal_neighbors(
+    edge: &DiagnosticRelationship,
+    current: &str,
+    direction: DiagnosticRelationshipDirection,
+) -> Vec<String> {
+    if edge.kind.is_symmetric() {
+        if edge.from == current {
+            return vec![edge.to.clone()];
+        }
+
+        if edge.to == current {
+            return vec![edge.from.clone()];
+        }
+
+        return Vec::new();
+    }
+
+    match direction {
+        DiagnosticRelationshipDirection::Upstream => {
+            if edge.to == current {
+                vec![edge.from.clone()]
+            } else {
+                Vec::new()
+            }
+        }
+
+        DiagnosticRelationshipDirection::Downstream => {
+            if edge.from == current {
+                vec![edge.to.clone()]
+            } else {
+                Vec::new()
+            }
+        }
+
+        DiagnosticRelationshipDirection::Both => {
+            if edge.from == current {
+                vec![edge.to.clone()]
+            } else if edge.to == current {
+                vec![edge.from.clone()]
+            } else {
+                Vec::new()
+            }
+        }
+    }
+}
+
+fn short_fingerprint_label(fingerprint: &str) -> &str {
+    let hex = fingerprint.rsplit(':').next().unwrap_or(fingerprint);
+    let length = hex.len().min(12);
+    &hex[..length]
+}
+
+fn dot_escape(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
 }

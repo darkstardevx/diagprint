@@ -94,3 +94,86 @@ rendered strings.
 M4A supplies the graph and persistence foundation.
 
 Traversal, cascade analysis, and CLI text/JSON/DOT presentation follow in M4B.
+
+## Traversal and cascade analysis
+
+M4B adds cycle-safe depth-bounded traversal.
+
+Directions:
+
+- `upstream`
+- `downstream`
+- `both`
+
+Evidence filters:
+
+- `explicit` — excludes `inferred_correlation`;
+- `all` — includes every retained evidence class.
+
+Traversal uses visited sets and never assumes the complete graph is acyclic.
+
+Explicit causal cascade helpers traverse only the `causes` and
+`contributes_to` relation kinds.
+
+Their results describe recorded explicit causal-edge topology. They are not an
+independent root-cause determination.
+
+## CLI
+
+Top-level:
+
+`diagprint graph <HISTORY> <FINGERPRINT> [OPTIONS]`
+
+History alias:
+
+`diagprint history graph <HISTORY> <FINGERPRINT> [OPTIONS]`
+
+Options:
+
+- `--run <N>`
+- `--depth <N>`
+- `--direction upstream|downstream|both`
+- `--evidence explicit|all`
+- `--format text|json|dot`
+
+If `--run` is omitted, diagprint selects the newest verified relationship
+snapshot containing the requested diagnostic fingerprint.
+
+The CLI re-verifies diagnostic history before loading relationship evidence.
+
+The default evidence filter is `explicit`, so inferred correlations must be
+requested deliberately with `--evidence all`.
+
+### Text format
+
+Text output separates:
+
+- explicit producer/source-chain relationships;
+- structural/trace relationships;
+- temporal associations;
+- inferred correlations.
+
+It also reports explicit causal upstream/downstream cascade topology and states
+that independent root cause is not established.
+
+### JSON format
+
+JSON preserves:
+
+- exact history bindings;
+- snapshot and graph digests;
+- traversal parameters;
+- explicit causal upstream/downstream sets;
+- the deterministic subgraph.
+
+### DOT format
+
+DOT output is deterministic Graphviz text.
+
+Graphviz is not a diagprint dependency.
+
+Every edge label retains:
+
+`relationship kind / evidence provenance / producer`
+
+Symmetric relationship kinds are emitted with bidirectional DOT presentation.

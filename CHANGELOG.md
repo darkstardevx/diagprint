@@ -8,6 +8,18 @@ The project follows Semantic Versioning.
 
 ### Added
 
+- Added cycle-safe, depth-bounded upstream/downstream/bidirectional traversal
+  for diagnostic relationship graphs.
+- Added explicit causal cascade analysis over recorded `causes` and
+  `contributes_to` edges without claiming independent root cause.
+- Added `diagprint graph` and `diagprint history graph` with exact/unique-prefix
+  fingerprint resolution, run/depth/direction/evidence selection, and text,
+  JSON, or deterministic Graphviz DOT output.
+- Graph text output separates explicit, structural/trace, temporal-association,
+  and inferred-correlation evidence classes.
+- The graph CLI defaults to excluding inferred correlations unless
+  `--evidence all` is explicitly requested.
+
 - Added the M4 diagnostic relationship graph foundation with separate typed
   relationship semantics and evidence provenance.
 - Added `diagprint.relationship.graph/v1` deterministic graph identity keyed by

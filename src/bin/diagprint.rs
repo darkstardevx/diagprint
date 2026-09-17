@@ -1,8 +1,11 @@
 use diagprint::{
     CapsuleProvenance, DIAGNOSTIC_HISTORY_RUN_V2_SCHEMA, DiagnosticCapsule,
-    DiagnosticCapsuleManifest, DiagnosticHistory, DiagnosticReport, DiagnosticTimeline,
-    DiagnosticTimelineEvent, DiagnosticTimelinePhase, DiagnosticTimelineRun, GitProvenanceBinding,
-    GitProvenanceRecord, Reporter,
+    DiagnosticCapsuleManifest, DiagnosticHistory, DiagnosticRelationship,
+    DiagnosticRelationshipDirection, DiagnosticRelationshipEvidence,
+    DiagnosticRelationshipEvidenceFilter, DiagnosticRelationshipGraph,
+    DiagnosticRelationshipSnapshot, DiagnosticReport, DiagnosticTimeline, DiagnosticTimelineEvent,
+    DiagnosticTimelinePhase, DiagnosticTimelineRun, GitProvenanceBinding, GitProvenanceRecord,
+    Reporter,
     project_scan::{
         ProjectContext, ProjectScanProfile, ProjectScanner, ProjectTool, ProjectToolOutput,
     },
@@ -71,6 +74,35 @@ struct BlameArgs {
     repository: Option<PathBuf>,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum GraphOutputFormat {
+    Text,
+    Json,
+    Dot,
+}
+
+#[derive(Debug)]
+struct GraphArgs {
+    history: PathBuf,
+    fingerprint: String,
+    run: Option<usize>,
+    depth: usize,
+    direction: DiagnosticRelationshipDirection,
+    evidence: DiagnosticRelationshipEvidenceFilter,
+    format: GraphOutputFormat,
+}
+
+struct GraphTextView<'a> {
+    history_path: &'a Path,
+    fingerprint: &'a str,
+    run_index: usize,
+    snapshot: &'a DiagnosticRelationshipSnapshot,
+    graph: &'a DiagnosticRelationshipGraph,
+    args: &'a GraphArgs,
+    upstream: &'a [String],
+    downstream: &'a [String],
+}
+
 #[derive(Debug)]
 struct GitCommitInfo {
     author: String,
@@ -130,13 +162,12 @@ fn run() -> Result<i32, Box<dyn Error>> {
 
         "timeline" => run_timeline_command(args.collect()),
 
-
-
+        "graph" => run_graph_command(args.collect()),
 
         "blame" => run_blame_command(args.collect()),
         other => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            format!("unknown command {other:?}; expected `scan`, `capsule`, `history`, `why`, `timeline`, or `blame`"),
+            format!("unknown command {other:?}; expected `scan`, `capsule`, `history`, `why`, `timeline`, `graph`, or `blame`"),
         )
         .into()),
     }
@@ -367,6 +398,144 @@ fn run_timeline_command(args: Vec<String>) -> Result<i32, Box<dyn Error>> {
     Ok(0)
 }
 
+fn run_graph_command(args: Vec<String>) -> Result<i32, Box<dyn Error>> {
+    if args.len() == 1 && matches!(args[0].as_str(), "-h" | "--help" | "help") {
+        print_graph_usage();
+        return Ok(0);
+    }
+
+    if args.len() < 2 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "usage: diagprint graph <HISTORY> <FINGERPRINT> [--run <N>] [--depth <N>] [--direction upstream|downstream|both] [--evidence explicit|all] [--format text|json|dot]",
+        )
+        .into());
+    }
+
+    let mut run = None;
+    let mut depth = 3usize;
+    let mut direction = DiagnosticRelationshipDirection::Both;
+    let mut evidence = DiagnosticRelationshipEvidenceFilter::Explicit;
+    let mut format = GraphOutputFormat::Text;
+
+    let mut index = 2usize;
+
+    while index < args.len() {
+        match args[index].as_str() {
+            "--run" => {
+                index += 1;
+                let Some(value) = args.get(index) else {
+                    return Err(missing_value("--run"));
+                };
+                run = Some(value.parse::<usize>().map_err(|_| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        format!("invalid history run index {value:?}"),
+                    )
+                })?);
+            }
+
+            "--depth" => {
+                index += 1;
+                let Some(value) = args.get(index) else {
+                    return Err(missing_value("--depth"));
+                };
+                depth = value.parse::<usize>().map_err(|_| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        format!("invalid graph depth {value:?}"),
+                    )
+                })?;
+            }
+
+            "--direction" => {
+                index += 1;
+                let Some(value) = args.get(index) else {
+                    return Err(missing_value("--direction"));
+                };
+
+                direction = match value.as_str() {
+                    "upstream" => DiagnosticRelationshipDirection::Upstream,
+                    "downstream" => DiagnosticRelationshipDirection::Downstream,
+                    "both" => DiagnosticRelationshipDirection::Both,
+                    _ => {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            format!(
+                                "unknown graph direction {value:?}; expected upstream, downstream, or both"
+                            ),
+                        )
+                        .into());
+                    }
+                };
+            }
+
+            "--evidence" => {
+                index += 1;
+                let Some(value) = args.get(index) else {
+                    return Err(missing_value("--evidence"));
+                };
+
+                evidence = match value.as_str() {
+                    "explicit" => DiagnosticRelationshipEvidenceFilter::Explicit,
+                    "all" => DiagnosticRelationshipEvidenceFilter::All,
+                    _ => {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            format!(
+                                "unknown graph evidence filter {value:?}; expected explicit or all"
+                            ),
+                        )
+                        .into());
+                    }
+                };
+            }
+
+            "--format" => {
+                index += 1;
+                let Some(value) = args.get(index) else {
+                    return Err(missing_value("--format"));
+                };
+
+                format = match value.as_str() {
+                    "text" | "plain" => GraphOutputFormat::Text,
+                    "json" => GraphOutputFormat::Json,
+                    "dot" => GraphOutputFormat::Dot,
+                    _ => {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            format!("unknown graph format {value:?}; expected text, json, or dot"),
+                        )
+                        .into());
+                    }
+                };
+            }
+
+            other => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("unknown graph option {other:?}"),
+                )
+                .into());
+            }
+        }
+
+        index += 1;
+    }
+
+    show_relationship_graph(&GraphArgs {
+        history: PathBuf::from(&args[0]),
+        fingerprint: args[1].clone(),
+        run,
+        depth,
+        direction,
+        evidence,
+        format,
+    })?;
+
+    Ok(0)
+}
+
 fn run_why_command(args: Vec<String>) -> Result<i32, Box<dyn Error>> {
     if args.len() == 1 && matches!(args[0].as_str(), "-h" | "--help" | "help") {
         print_why_usage();
@@ -450,6 +619,10 @@ fn run_history_command(args: Vec<String>) -> Result<i32, Box<dyn Error>> {
             show_history_timeline(Path::new(&args[1]), &args[2])?;
         }
 
+        "graph" => {
+            run_graph_command(args[1..].to_vec())?;
+        }
+
         "why" => {
             if args.len() != 3 {
                 return Err(io::Error::new(
@@ -478,7 +651,7 @@ fn run_history_command(args: Vec<String>) -> Result<i32, Box<dyn Error>> {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 format!(
-                    "unknown history command {other:?}; expected `verify`, `show`, `fingerprints`, `lineage`, `why`, `timeline`, or `git-bind`"
+                    "unknown history command {other:?}; expected `verify`, `show`, `fingerprints`, `lineage`, `why`, `timeline`, `graph`, or `git-bind`"
                 ),
             )
             .into());
@@ -1097,6 +1270,259 @@ fn show_history_why(path: &Path, query: &str) -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
+}
+
+fn show_relationship_graph(args: &GraphArgs) -> Result<(), Box<dyn Error>> {
+    let history = open_existing_history(&args.history)?;
+
+    history.verify()?;
+
+    let fingerprint = resolve_fingerprint(&history, &args.fingerprint)?;
+
+    let (run_index, snapshot) = select_relationship_snapshot(&history, &fingerprint, args.run)?;
+
+    let subgraph = snapshot
+        .graph
+        .subgraph(
+            &fingerprint,
+            args.direction,
+            args.depth,
+            args.evidence,
+        )?
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!(
+                    "diagnostic fingerprint {fingerprint:?} is absent from relationship snapshot run {run_index:06}"
+                ),
+            )
+        })?;
+
+    let upstream = snapshot
+        .graph
+        .explicit_causal_upstream(&fingerprint, args.depth)?
+        .unwrap_or_default();
+
+    let downstream = snapshot
+        .graph
+        .explicit_causal_downstream(&fingerprint, args.depth)?
+        .unwrap_or_default();
+
+    match args.format {
+        GraphOutputFormat::Text => {
+            print_relationship_graph_text(GraphTextView {
+                history_path: &args.history,
+                fingerprint: &fingerprint,
+                run_index,
+                snapshot: &snapshot,
+                graph: &subgraph,
+                args,
+                upstream: &upstream,
+                downstream: &downstream,
+            });
+        }
+
+        GraphOutputFormat::Json => {
+            let value = serde_json::json!({
+                "schema": snapshot.schema,
+                "history": args.history,
+                "history_run": run_index,
+                "history_run_digest": snapshot.history_run_digest,
+                "report_digest": snapshot.report_digest,
+                "snapshot_digest": snapshot.snapshot_digest,
+                "root": fingerprint,
+                "depth": args.depth,
+                "direction": args.direction.as_str(),
+                "evidence": args.evidence.as_str(),
+                "explicit_causal_upstream": upstream,
+                "explicit_causal_downstream": downstream,
+                "graph": subgraph,
+            });
+
+            println!("{}", serde_json::to_string_pretty(&value)?);
+        }
+
+        GraphOutputFormat::Dot => {
+            print!("{}", subgraph.to_dot()?);
+        }
+    }
+
+    Ok(())
+}
+
+fn select_relationship_snapshot(
+    history: &DiagnosticHistory,
+    fingerprint: &str,
+    requested: Option<usize>,
+) -> Result<(usize, DiagnosticRelationshipSnapshot), Box<dyn Error>> {
+    if let Some(run_index) = requested {
+        if run_index >= history.len() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "history run {run_index} is out of range for {} run(s)",
+                    history.len()
+                ),
+            )
+            .into());
+        }
+
+        let snapshot =
+            DiagnosticRelationshipSnapshot::load(history, run_index)?.ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("history run {run_index:06} has no diagnostic relationship snapshot"),
+                )
+            })?;
+
+        if !snapshot.graph.contains(fingerprint) {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!(
+                    "diagnostic fingerprint {fingerprint:?} is absent from relationship snapshot run {run_index:06}"
+                ),
+            )
+            .into());
+        }
+
+        return Ok((run_index, snapshot));
+    }
+
+    for run in history.runs().iter().rev() {
+        let Some(snapshot) = DiagnosticRelationshipSnapshot::load(history, run.index)? else {
+            continue;
+        };
+
+        if snapshot.graph.contains(fingerprint) {
+            return Ok((run.index, snapshot));
+        }
+    }
+
+    Err(io::Error::new(
+        io::ErrorKind::NotFound,
+        format!(
+            "no retained relationship snapshot contains diagnostic fingerprint {fingerprint:?}"
+        ),
+    )
+    .into())
+}
+
+fn print_relationship_graph_text(view: GraphTextView<'_>) {
+    let GraphTextView {
+        history_path,
+        fingerprint,
+        run_index,
+        snapshot,
+        graph,
+        args,
+        upstream,
+        downstream,
+    } = view;
+    println!("DIAGNOSTIC RELATIONSHIP GRAPH");
+    println!("schema: {}", snapshot.graph.schema);
+    println!("snapshot-schema: {}", snapshot.schema);
+    println!("history: {}", history_path.display());
+    println!("history-run: {run_index:06}");
+    println!("history-run-digest: {}", snapshot.history_run_digest);
+    println!("report-digest: {}", snapshot.report_digest);
+    println!("graph-digest: {}", snapshot.graph_digest);
+    println!("snapshot-digest: {}", snapshot.snapshot_digest);
+    println!("root: {fingerprint}");
+    println!("depth: {}", args.depth);
+    println!("direction: {}", args.direction.as_str());
+    println!("evidence-filter: {}", args.evidence.as_str());
+    println!("nodes: {}", graph.node_count());
+    println!("edges: {}", graph.edge_count());
+    println!("history-binding-verified: true");
+
+    println!();
+    println!("CASCADE ANALYSIS");
+    print_fingerprint_list("  explicit-causal-upstream", upstream);
+    print_fingerprint_list("  explicit-causal-downstream", downstream);
+    println!(
+        "  note: these are recorded explicit causal-edge paths, not an independent root-cause conclusion"
+    );
+
+    println!();
+    print_relationship_section("EXPLICIT RELATIONSHIPS", graph, |edge| {
+        matches!(
+            edge.evidence,
+            DiagnosticRelationshipEvidence::ProducerDeclared
+                | DiagnosticRelationshipEvidence::SourceChain
+        )
+    });
+
+    println!();
+    print_relationship_section("STRUCTURAL / TRACE RELATIONSHIPS", graph, |edge| {
+        matches!(
+            edge.evidence,
+            DiagnosticRelationshipEvidence::Structural
+                | DiagnosticRelationshipEvidence::TraceContext
+        )
+    });
+
+    println!();
+    print_relationship_section("ASSOCIATIONS", graph, |edge| {
+        matches!(
+            edge.evidence,
+            DiagnosticRelationshipEvidence::TemporalAssociation
+        )
+    });
+
+    println!();
+    print_relationship_section("INFERRED CORRELATIONS", graph, |edge| {
+        matches!(
+            edge.evidence,
+            DiagnosticRelationshipEvidence::InferredCorrelation
+        )
+    });
+
+    println!();
+    println!("ASSESSMENT");
+    println!("  relationship-evidence: VERIFIED");
+    println!("  graph-causation: RECORDED EDGES ONLY");
+    println!("  independent-root-cause: NOT ESTABLISHED");
+    println!("  git-causation: NOT ESTABLISHED");
+}
+
+fn print_relationship_section(
+    title: &str,
+    graph: &DiagnosticRelationshipGraph,
+    include: impl Fn(&DiagnosticRelationship) -> bool,
+) {
+    println!("{title}");
+
+    let mut shown = 0usize;
+
+    for edge in graph.edges.iter().filter(|edge| include(edge)) {
+        shown = shown.saturating_add(1);
+
+        println!(
+            "  {} --{} / {} / {}--> {}",
+            short_fingerprint(&edge.from),
+            edge.kind.as_str(),
+            edge.evidence.as_str(),
+            edge.producer,
+            short_fingerprint(&edge.to),
+        );
+    }
+
+    if shown == 0 {
+        println!("  none");
+    }
+}
+
+fn print_fingerprint_list(label: &str, fingerprints: &[String]) {
+    if fingerprints.is_empty() {
+        println!("{label}: none");
+        return;
+    }
+
+    println!("{label}: {}", fingerprints.len());
+
+    for fingerprint in fingerprints {
+        println!("    {}", short_fingerprint(fingerprint));
+    }
 }
 
 fn show_history_lineage(path: &Path, query: &str) -> Result<(), Box<dyn Error>> {
@@ -2272,6 +2698,7 @@ fn print_usage() {
            diagprint capsule <COMMAND> <CAPSULE>\n\
            diagprint history <COMMAND> <HISTORY>\n\
            diagprint why <HISTORY> <FINGERPRINT>\n\
+           diagprint graph <HISTORY> <FINGERPRINT> [OPTIONS]\n\
          \n\
          COMMANDS:\n\
            scan       Scan a project and produce diagnostics\n\
@@ -2279,6 +2706,7 @@ fn print_usage() {
            history    Verify and inspect persistent diagnostic history\n\
            why        Build an evidence-backed diagnostic forensic case file\n\
            timeline   Visualize one diagnostic across every retained run\n\
+           graph      Traverse verified diagnostic relationship evidence\n\
            blame      Bind diagnostic transitions to verified Git provenance\n\
          \n\
          Run a command with --help for details."
@@ -2353,6 +2781,7 @@ fn print_history_usage() {
            diagprint history fingerprints <HISTORY>\n\
            diagprint history lineage <HISTORY> <FINGERPRINT>\n\
            diagprint history why <HISTORY> <FINGERPRINT>\n\
+           diagprint history graph <HISTORY> <FINGERPRINT> [OPTIONS]\n\
          \n\
          COMMANDS:\n\
            verify         Verify run digests, chain links, sequence, and head\n\
@@ -2361,7 +2790,8 @@ fn print_history_usage() {
            lineage        Trace one logical finding across all recorded runs\n\
            why            Explain one finding as a forensic case file\n\
            timeline       Visualize lifecycle, regressions, and clean windows\n\
-           git-bind        Backfill an explicit user-asserted Git/run binding\n\
+           graph          Traverse relationship evidence and causal cascades\n\
+           git-bind       Backfill an explicit user-asserted Git/run binding\n\
          \n\
          FINGERPRINTS:\n\
            lineage, why, and timeline accept either the full canonical\n\
@@ -2382,6 +2812,32 @@ fn print_why_usage() {
          \n\
          The fingerprint may be complete or a unique leading hexadecimal prefix.\n\
          No source-control blame or root-cause inference is performed in v1."
+    );
+}
+
+fn print_graph_usage() {
+    println!(
+        "diagprint graph\n\
+         \n\
+         USAGE:\n\
+           diagprint graph <HISTORY> <FINGERPRINT> [OPTIONS]\n\
+         \n\
+         OPTIONS:\n\
+           --run <N>                         Select an exact history run\n\
+           --depth <N>                       Maximum traversal depth (default: 3)\n\
+           --direction <upstream|downstream|both>\n\
+           --evidence <explicit|all>         Include inferred correlations with `all`\n\
+           --format <text|json|dot>\n\
+           -h, --help\n\
+         \n\
+         DESCRIPTION:\n\
+           Verify history and relationship sidecars, resolve one diagnostic\n\
+           fingerprint, traverse the graph with cycle-safe bounded search, and\n\
+           show recorded causal/structural/association evidence.\n\
+         \n\
+         `explicit` excludes inferred-correlation edges. Causal cascade output\n\
+         describes recorded explicit causal edges only; it does not independently\n\
+         establish root cause. Git provenance remains non-causal repository context."
     );
 }
 
