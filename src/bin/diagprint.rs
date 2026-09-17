@@ -1,7 +1,8 @@
 use diagprint::{
     CapsuleProvenance, DIAGNOSTIC_HISTORY_RUN_V2_SCHEMA, DiagnosticCapsule,
-    DiagnosticCapsuleManifest, DiagnosticHistory, DiagnosticReport, DiagnosticTimelineEvent,
-    DiagnosticTimelinePhase, DiagnosticTimelineRun, Reporter,
+    DiagnosticCapsuleManifest, DiagnosticHistory, DiagnosticReport, DiagnosticTimeline,
+    DiagnosticTimelineEvent, DiagnosticTimelinePhase, DiagnosticTimelineRun, GitProvenanceBinding,
+    GitProvenanceRecord, Reporter,
     project_scan::{
         ProjectContext, ProjectScanProfile, ProjectScanner, ProjectTool, ProjectToolOutput,
     },
@@ -42,6 +43,7 @@ struct ScanArgs {
     capsule: Option<PathBuf>,
     history: Option<PathBuf>,
     history_label: Option<String>,
+    git_provenance: bool,
 }
 
 #[derive(Debug)]
@@ -50,7 +52,40 @@ struct RecordedHistory {
     run_count: usize,
     current_report: String,
     previous_report: Option<String>,
+    run_digest: String,
     chain_head: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GitSnapshot {
+    commit: String,
+    tree: String,
+    parents: Vec<String>,
+}
+
+#[derive(Debug)]
+struct BlameArgs {
+    history: PathBuf,
+    fingerprint: String,
+    run: Option<usize>,
+    repository: Option<PathBuf>,
+}
+
+#[derive(Debug)]
+struct GitCommitInfo {
+    author: String,
+    authored_at: String,
+    subject: String,
+}
+
+#[derive(Debug)]
+struct GitDiffSummary {
+    base: String,
+    files_changed: usize,
+    insertions: usize,
+    deletions: usize,
+    binary_files: usize,
+    changed: Vec<String>,
 }
 
 fn main() {
@@ -94,9 +129,14 @@ fn run() -> Result<i32, Box<dyn Error>> {
 
 
         "timeline" => run_timeline_command(args.collect()),
+
+
+
+
+        "blame" => run_blame_command(args.collect()),
         other => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            format!("unknown command {other:?}; expected `scan`, `capsule`, `history`, `why`, or `timeline`"),
+            format!("unknown command {other:?}; expected `scan`, `capsule`, `history`, `why`, `timeline`, or `blame`"),
         )
         .into()),
     }
@@ -117,6 +157,12 @@ fn run_scan(scan_args: ScanArgs) -> Result<i32, Box<dyn Error>> {
         .build()?;
 
     let mut context = ProjectContext::discover(&scan_args.path, scan_args.profile)?;
+
+    let git_snapshot = if scan_args.git_provenance {
+        Some(capture_clean_git_snapshot(context.root())?)
+    } else {
+        None
+    };
 
     collect_external_evidence(&mut context);
 
@@ -147,6 +193,10 @@ fn run_scan(scan_args: ScanArgs) -> Result<i32, Box<dyn Error>> {
 
     write_output(&rendered, scan_args.output.as_deref())?;
 
+    if let Some(snapshot) = &git_snapshot {
+        verify_clean_git_snapshot(context.root(), snapshot)?;
+    }
+
     let recorded_history = match scan_args.history.as_deref() {
         Some(history_directory) => Some(record_scan_history(
             scan.report(),
@@ -157,6 +207,18 @@ fn run_scan(scan_args: ScanArgs) -> Result<i32, Box<dyn Error>> {
         None => None,
     };
 
+    let recorded_git_provenance = match (
+        recorded_history.as_ref(),
+        git_snapshot.as_ref(),
+        scan_args.history.as_deref(),
+    ) {
+        (Some(history), Some(snapshot), Some(history_directory)) => Some(
+            record_captured_git_provenance(history_directory, history, snapshot)?,
+        ),
+
+        _ => None,
+    };
+
     if let Some(capsule_path) = scan_args.capsule.as_deref() {
         write_scan_capsule(
             scan.report(),
@@ -164,6 +226,7 @@ fn run_scan(scan_args: ScanArgs) -> Result<i32, Box<dyn Error>> {
             scan.files_scanned(),
             scan.analyzers_run(),
             recorded_history.as_ref(),
+            recorded_git_provenance.as_ref(),
             capsule_path,
         )?;
     }
@@ -213,6 +276,74 @@ fn run_capsule_command(args: Vec<String>) -> Result<i32, Box<dyn Error>> {
             .into());
         }
     }
+
+    Ok(0)
+}
+
+fn run_blame_command(args: Vec<String>) -> Result<i32, Box<dyn Error>> {
+    if args.len() == 1 && matches!(args[0].as_str(), "-h" | "--help" | "help") {
+        print_blame_usage();
+        return Ok(0);
+    }
+
+    if args.len() < 2 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "usage: diagprint blame <HISTORY> <FINGERPRINT> [--run <N>] [--repo <PATH>]",
+        )
+        .into());
+    }
+
+    let mut run = None;
+    let mut repository = None;
+
+    let mut index = 2usize;
+
+    while index < args.len() {
+        match args[index].as_str() {
+            "--run" => {
+                index += 1;
+
+                let Some(value) = args.get(index) else {
+                    return Err(missing_value("--run"));
+                };
+
+                run = Some(value.parse::<usize>().map_err(|_| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        format!("invalid history run index {value:?}"),
+                    )
+                })?);
+            }
+
+            "--repo" => {
+                index += 1;
+
+                let Some(value) = args.get(index) else {
+                    return Err(missing_value("--repo"));
+                };
+
+                repository = Some(PathBuf::from(value));
+            }
+
+            other => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("unknown blame option {other:?}"),
+                )
+                .into());
+            }
+        }
+
+        index += 1;
+    }
+
+    show_git_blame(&BlameArgs {
+        history: PathBuf::from(&args[0]),
+        fingerprint: args[1].clone(),
+        run,
+        repository,
+    })?;
 
     Ok(0)
 }
@@ -303,6 +434,10 @@ fn run_history_command(args: Vec<String>) -> Result<i32, Box<dyn Error>> {
             show_history_fingerprints(Path::new(&args[1]))?;
         }
 
+        "git-bind" => {
+            run_history_git_bind(&args[1..])?;
+        }
+
         "timeline" => {
             if args.len() != 3 {
                 return Err(io::Error::new(
@@ -343,7 +478,7 @@ fn run_history_command(args: Vec<String>) -> Result<i32, Box<dyn Error>> {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 format!(
-                    "unknown history command {other:?}; expected `verify`, `show`, `fingerprints`, `lineage`, `why`, or `timeline`"
+                    "unknown history command {other:?}; expected `verify`, `show`, `fingerprints`, `lineage`, `why`, `timeline`, or `git-bind`"
                 ),
             )
             .into());
@@ -444,10 +579,14 @@ fn record_scan_history(
         .map(str::to_owned)
         .unwrap_or_else(|| format!("scan-{next_index:06}"));
 
-    let (run_index, current_report) = {
+    let (run_index, current_report, run_digest) = {
         let run = history.append_report(label.clone(), report)?;
 
-        (run.index, run.report_digest.clone())
+        (
+            run.index,
+            run.report_digest.clone(),
+            run.run_digest.to_string(),
+        )
     };
 
     let chain_head = history
@@ -487,6 +626,7 @@ fn record_scan_history(
         run_count,
         current_report,
         previous_report,
+        run_digest,
         chain_head,
     })
 }
@@ -1065,6 +1205,588 @@ fn short_fingerprint(fingerprint: &str) -> &str {
     &hex[..length]
 }
 
+fn run_history_git_bind(args: &[String]) -> Result<(), Box<dyn Error>> {
+    if args.len() < 3 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "usage: diagprint history git-bind <HISTORY> <RUN> <COMMIT> [--repo <PATH>]",
+        )
+        .into());
+    }
+
+    let history_path = Path::new(&args[0]);
+
+    let run_index = args[1].parse::<usize>().map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("invalid history run index {:?}", args[1]),
+        )
+    })?;
+
+    let revision = &args[2];
+
+    let mut repository = None;
+
+    let mut index = 3usize;
+
+    while index < args.len() {
+        match args[index].as_str() {
+            "--repo" => {
+                index += 1;
+
+                let Some(value) = args.get(index) else {
+                    return Err(missing_value("--repo"));
+                };
+
+                repository = Some(PathBuf::from(value));
+            }
+
+            other => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("unknown git-bind option {other:?}"),
+                )
+                .into());
+            }
+        }
+
+        index += 1;
+    }
+
+    let history = open_existing_history(history_path)?;
+    history.verify()?;
+
+    let run = history.runs().get(run_index).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "history run {run_index} is out of range for {} run(s)",
+                history.len(),
+            ),
+        )
+    })?;
+
+    let repository = resolve_repository(repository.as_deref(), history_path)?;
+
+    let snapshot = resolve_git_snapshot(&repository, revision)?;
+
+    let record =
+        GitProvenanceRecord::user_asserted(run, snapshot.commit, snapshot.tree, snapshot.parents)?;
+
+    let path = record.persist(&history)?;
+
+    println!("GIT PROVENANCE BOUND");
+    println!("history: {}", history_path.display());
+    println!("run: {:06}", run.index);
+    println!("run-digest: {}", run.run_digest);
+    println!("binding: {}", record.binding.as_str());
+    println!("commit: {}", record.commit);
+    println!("tree: {}", record.tree);
+    println!("record-digest: {}", record.record_digest);
+    println!("record: {}", path.display());
+    println!("causation: NOT ESTABLISHED");
+
+    Ok(())
+}
+
+fn show_git_blame(args: &BlameArgs) -> Result<(), Box<dyn Error>> {
+    let history = open_existing_history(&args.history)?;
+
+    history.verify()?;
+
+    let fingerprint = resolve_fingerprint(&history, &args.fingerprint)?;
+
+    let timeline = history.timeline(&fingerprint).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("no forensic timeline exists for diagnostic fingerprint {fingerprint:?}"),
+        )
+    })?;
+
+    let (run_index, record) = select_blame_record(&history, &timeline, args.run)?;
+
+    let run = timeline.runs.get(run_index).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("timeline does not contain history run {run_index}"),
+        )
+    })?;
+
+    let repository = resolve_repository(args.repository.as_deref(), &args.history)?;
+
+    let resolved = resolve_git_snapshot(&repository, &record.commit)?;
+
+    if resolved.commit != record.commit
+        || resolved.tree != record.tree
+        || resolved.parents != record.parents
+    {
+        return Err(
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "recorded Git commit no longer resolves to the recorded tree and parent identities in this repository",
+            )
+            .into(),
+        );
+    }
+
+    let commit = query_git_commit_info(&repository, &record.commit)?;
+
+    let diff = git_diff_summary(&repository, &record)?;
+
+    let events = if run.events.is_empty() {
+        "none".to_owned()
+    } else {
+        run.events
+            .iter()
+            .map(|event| event.as_str())
+            .collect::<Vec<_>>()
+            .join(",")
+    };
+
+    println!("DIAGNOSTIC GIT PROVENANCE");
+    println!("schema: {}", record.schema);
+    println!("history: {}", args.history.display());
+    println!("fingerprint: {fingerprint}");
+    println!("history-run: {:06}", run_index);
+    println!("history-label: {:?}", run.label);
+    println!("history-run-digest: {}", record.history_run_digest);
+    println!("report-digest: {}", record.report_digest);
+    println!("binding: {}", record.binding.as_str());
+    println!("provenance-record: {}", record.record_digest);
+    println!("history-binding-verified: true");
+    println!("git-object-verified: true");
+
+    println!();
+    println!("TRANSITION");
+    println!("  phase: {}", run.phase.as_str());
+    println!("  events: {events}");
+    println!("  instances: {}", run.instances);
+    println!("  changed: {}", run.changed_instances);
+    println!("  severity-increases: {}", run.severity_increases);
+
+    println!();
+    println!("COMMIT");
+    println!("  commit: {}", record.commit);
+    println!("  tree: {}", record.tree);
+
+    if record.parents.is_empty() {
+        println!("  parents: none");
+    } else {
+        println!("  parents: {}", record.parents.join(" "));
+    }
+
+    println!("  author: {}", safe_terminal_text(&commit.author,),);
+
+    println!(
+        "  authored-at: {}",
+        safe_terminal_text(&commit.authored_at,),
+    );
+
+    println!("  subject: {}", safe_terminal_text(&commit.subject,),);
+
+    println!();
+    println!("REPOSITORY DIFF");
+    println!("  base: {}", diff.base);
+    println!("  files-changed: {}", diff.files_changed);
+    println!("  insertions: {}", diff.insertions);
+    println!("  deletions: {}", diff.deletions);
+    println!("  binary-files: {}", diff.binary_files);
+
+    if diff.changed.is_empty() {
+        println!("  changed-files: none");
+    } else {
+        println!("  changed-files:");
+
+        for entry in diff.changed.iter().take(20) {
+            println!("    {}", safe_terminal_text(entry,),);
+        }
+
+        if diff.changed.len() > 20 {
+            println!("    ... {} additional path(s)", diff.changed.len() - 20,);
+        }
+    }
+
+    println!();
+    println!("ASSESSMENT");
+
+    match record.binding {
+        GitProvenanceBinding::CapturedClean => {
+            println!(
+                "  provenance: commit/tree captured from a clean worktree surrounding this scan"
+            );
+        }
+
+        GitProvenanceBinding::UserAsserted => {
+            println!(
+                "  provenance: commit/run association was explicitly asserted after the history run"
+            );
+        }
+    }
+
+    println!(
+        "  association: repository change context is temporally associated with this history run"
+    );
+
+    println!("  causation: NOT ESTABLISHED");
+
+    println!(
+        "  note: changed files are repository context only; diagprint does not claim they caused this diagnostic transition"
+    );
+
+    Ok(())
+}
+
+fn select_blame_record(
+    history: &DiagnosticHistory,
+    timeline: &DiagnosticTimeline,
+    requested: Option<usize>,
+) -> Result<(usize, GitProvenanceRecord), Box<dyn Error>> {
+    if let Some(run_index) = requested {
+        if run_index >= history.len() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "history run {run_index} is out of range for {} run(s)",
+                    history.len(),
+                ),
+            )
+            .into());
+        }
+
+        let record = GitProvenanceRecord::load(history, run_index)?.ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("history run {run_index:06} has no Git provenance binding"),
+            )
+        })?;
+
+        return Ok((run_index, record));
+    }
+
+    for run in timeline.runs.iter().rev().filter(|run| {
+        run.events
+            .iter()
+            .any(|event| !matches!(event, DiagnosticTimelineEvent::Persisting))
+    }) {
+        if let Some(record) = GitProvenanceRecord::load(history, run.run_index)? {
+            return Ok((run.run_index, record));
+        }
+    }
+
+    for run in timeline.runs.iter().rev() {
+        if let Some(record) = GitProvenanceRecord::load(history, run.run_index)? {
+            return Ok((run.run_index, record));
+        }
+    }
+
+    Err(
+        io::Error::new(
+            io::ErrorKind::NotFound,
+            "no Git provenance binding exists for any retained run of this diagnostic; capture one with `scan --git-provenance` or backfill one with `history git-bind`",
+        )
+        .into(),
+    )
+}
+
+fn record_captured_git_provenance(
+    history_directory: &Path,
+    recorded: &RecordedHistory,
+    snapshot: &GitSnapshot,
+) -> Result<GitProvenanceRecord, Box<dyn Error>> {
+    let history = DiagnosticHistory::open(history_directory)?;
+
+    let run = history.runs().get(recorded.run_index).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "recorded history run {} disappeared before Git provenance persistence",
+                recorded.run_index,
+            ),
+        )
+    })?;
+
+    if run.run_digest.to_string() != recorded.run_digest {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "recorded history run digest changed before Git provenance persistence",
+        )
+        .into());
+    }
+
+    let record = GitProvenanceRecord::captured_clean(
+        run,
+        snapshot.commit.clone(),
+        snapshot.tree.clone(),
+        snapshot.parents.clone(),
+    )?;
+
+    let path = record.persist(&history)?;
+
+    eprintln!(
+        "diagprint git provenance: run={:06} binding={} commit={}",
+        run.index,
+        record.binding.as_str(),
+        record.commit,
+    );
+
+    eprintln!(
+        "diagprint git provenance: record={} path={}",
+        record.record_digest,
+        path.display(),
+    );
+
+    Ok(record)
+}
+
+fn capture_clean_git_snapshot(root: &Path) -> Result<GitSnapshot, Box<dyn Error>> {
+    let status = git_output(root, &["status", "--porcelain=v1", "--untracked-files=all"])?;
+
+    if !status.trim().is_empty() {
+        return Err(
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "--git-provenance requires a clean Git worktree before scanning; `git status --porcelain` returned:\n{}",
+                    status.trim_end(),
+                ),
+            )
+            .into(),
+        );
+    }
+
+    resolve_git_snapshot(root, "HEAD")
+}
+
+fn verify_clean_git_snapshot(root: &Path, expected: &GitSnapshot) -> Result<(), Box<dyn Error>> {
+    let actual = capture_clean_git_snapshot(root)?;
+
+    if &actual != expected {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Git HEAD/tree changed while the diagnostic scan was running",
+        )
+        .into());
+    }
+
+    Ok(())
+}
+
+fn resolve_git_snapshot(repository: &Path, revision: &str) -> Result<GitSnapshot, Box<dyn Error>> {
+    let commit_spec = format!("{revision}^{{commit}}");
+
+    let commit = git_output(repository, &["rev-parse", "--verify", &commit_spec])?
+        .trim()
+        .to_owned();
+
+    let tree_spec = format!("{commit}^{{tree}}");
+
+    let tree = git_output(repository, &["rev-parse", "--verify", &tree_spec])?
+        .trim()
+        .to_owned();
+
+    let parents = git_output(repository, &["show", "-s", "--format=%P", &commit])?
+        .split_whitespace()
+        .map(str::to_owned)
+        .collect();
+
+    Ok(GitSnapshot {
+        commit,
+        tree,
+        parents,
+    })
+}
+
+fn resolve_repository(explicit: Option<&Path>, history: &Path) -> Result<PathBuf, Box<dyn Error>> {
+    let probe = explicit.unwrap_or(history);
+
+    let result = git_output(probe, &["rev-parse", "--show-toplevel"]);
+
+    let root = match result {
+        Ok(root) => root,
+
+        Err(error) => {
+            if explicit.is_none() {
+                return Err(
+                        io::Error::new(
+                            io::ErrorKind::NotFound,
+                            format!(
+                                "could not discover a Git repository from history path {}; use --repo <PATH>: {error}",
+                                history.display(),
+                            ),
+                        )
+                        .into(),
+                    );
+            }
+
+            return Err(error);
+        }
+    };
+
+    Ok(PathBuf::from(root.trim()))
+}
+
+fn query_git_commit_info(repository: &Path, commit: &str) -> Result<GitCommitInfo, Box<dyn Error>> {
+    let author = git_output(repository, &["show", "-s", "--format=%an", commit])?
+        .trim_end()
+        .to_owned();
+
+    let authored_at = git_output(repository, &["show", "-s", "--format=%aI", commit])?
+        .trim_end()
+        .to_owned();
+
+    let subject = git_output(repository, &["show", "-s", "--format=%s", commit])?
+        .trim_end()
+        .to_owned();
+
+    Ok(GitCommitInfo {
+        author,
+        authored_at,
+        subject,
+    })
+}
+
+fn git_diff_summary(
+    repository: &Path,
+    record: &GitProvenanceRecord,
+) -> Result<GitDiffSummary, Box<dyn Error>> {
+    let (base, numstat, name_status) = match record.parents.first() {
+        Some(parent) => (
+            parent.clone(),
+            git_output(
+                repository,
+                &[
+                    "diff",
+                    "--no-ext-diff",
+                    "--numstat",
+                    "--find-renames",
+                    parent.as_str(),
+                    record.commit.as_str(),
+                ],
+            )?,
+            git_output(
+                repository,
+                &[
+                    "diff",
+                    "--no-ext-diff",
+                    "--name-status",
+                    "--find-renames",
+                    parent.as_str(),
+                    record.commit.as_str(),
+                ],
+            )?,
+        ),
+
+        None => (
+            "<root>".to_owned(),
+            git_output(
+                repository,
+                &[
+                    "diff-tree",
+                    "--root",
+                    "--no-commit-id",
+                    "-r",
+                    "--numstat",
+                    record.commit.as_str(),
+                ],
+            )?,
+            git_output(
+                repository,
+                &[
+                    "diff-tree",
+                    "--root",
+                    "--no-commit-id",
+                    "-r",
+                    "--name-status",
+                    record.commit.as_str(),
+                ],
+            )?,
+        ),
+    };
+
+    let (insertions, deletions, binary_files) = parse_numstat(&numstat);
+
+    let changed = name_status
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+
+    Ok(GitDiffSummary {
+        base,
+
+        files_changed: changed.len(),
+
+        insertions,
+
+        deletions,
+
+        binary_files,
+
+        changed,
+    })
+}
+
+fn parse_numstat(output: &str) -> (usize, usize, usize) {
+    let mut insertions = 0usize;
+    let mut deletions = 0usize;
+    let mut binary_files = 0usize;
+
+    for line in output.lines() {
+        let mut fields = line.splitn(3, '\t');
+
+        let added = fields.next().unwrap_or_default();
+
+        let removed = fields.next().unwrap_or_default();
+
+        match (added.parse::<usize>(), removed.parse::<usize>()) {
+            (Ok(added), Ok(removed)) => {
+                insertions = insertions.saturating_add(added);
+
+                deletions = deletions.saturating_add(removed);
+            }
+
+            _ => {
+                binary_files = binary_files.saturating_add(1);
+            }
+        }
+    }
+
+    (insertions, deletions, binary_files)
+}
+
+fn git_output(repository: &Path, args: &[&str]) -> Result<String, Box<dyn Error>> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(repository)
+        .args(args)
+        .output()?;
+
+    if !output.status.success() {
+        return Err(io::Error::other(format!(
+            "git {} failed in {}: {}",
+            args.join(" "),
+            repository.display(),
+            String::from_utf8_lossy(&output.stderr,).trim(),
+        ))
+        .into());
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+fn safe_terminal_text(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| {
+            if character.is_control() {
+                '�'
+            } else {
+                character
+            }
+        })
+        .collect()
+}
+
 fn parse_scan_args(args: Vec<String>) -> Result<ScanArgs, Box<dyn Error>> {
     let mut path = None;
 
@@ -1076,6 +1798,7 @@ fn parse_scan_args(args: Vec<String>) -> Result<ScanArgs, Box<dyn Error>> {
     let mut capsule = None;
     let mut history = None;
     let mut history_label = None;
+    let mut git_provenance = false;
 
     let mut index = 0usize;
 
@@ -1154,6 +1877,10 @@ fn parse_scan_args(args: Vec<String>) -> Result<ScanArgs, Box<dyn Error>> {
                 history_label = Some(value.clone());
             }
 
+            "--git-provenance" => {
+                git_provenance = true;
+            }
+
             value if value.starts_with('-') => {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
@@ -1186,6 +1913,14 @@ fn parse_scan_args(args: Vec<String>) -> Result<ScanArgs, Box<dyn Error>> {
         .into());
     }
 
+    if git_provenance && history.is_none() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "--git-provenance requires --history <DIR>",
+        )
+        .into());
+    }
+
     Ok(ScanArgs {
         path: path.unwrap_or_else(|| PathBuf::from(".")),
         profile,
@@ -1194,6 +1929,7 @@ fn parse_scan_args(args: Vec<String>) -> Result<ScanArgs, Box<dyn Error>> {
         capsule,
         history,
         history_label,
+        git_provenance,
     })
 }
 
@@ -1361,6 +2097,7 @@ fn write_scan_capsule(
     files_scanned: usize,
     analyzers_run: usize,
     history: Option<&RecordedHistory>,
+    git_provenance: Option<&GitProvenanceRecord>,
     destination: &Path,
 ) -> Result<(), Box<dyn Error>> {
     let mut capsule = DiagnosticCapsule::new(report)?;
@@ -1398,11 +2135,24 @@ fn write_scan_capsule(
             .attribute("history_run_index", history.run_index.to_string())
             .attribute("history_run_count", history.run_count.to_string())
             .attribute("history_report", history.current_report.clone())
+            .attribute("history_run_digest", history.run_digest.clone())
             .attribute("history_chain_head", history.chain_head.clone());
 
         if let Some(previous_report) = &history.previous_report {
             provenance = provenance.attribute("history_previous_report", previous_report.clone());
         }
+    }
+
+    if let Some(git_provenance) = git_provenance {
+        provenance = provenance
+            .attribute("git_provenance_schema", git_provenance.schema.clone())
+            .attribute("git_provenance_binding", git_provenance.binding.as_str())
+            .attribute(
+                "git_provenance_record_digest",
+                git_provenance.record_digest.to_string(),
+            )
+            .attribute("git_commit", git_provenance.commit.clone())
+            .attribute("git_tree", git_provenance.tree.clone());
     }
 
     capsule.add_provenance(&provenance)?;
@@ -1424,6 +2174,13 @@ fn write_scan_capsule(
         eprintln!(
             "diagprint scan: capsule anchored history run={:06} chain-head={}",
             history.run_index, history.chain_head,
+        );
+    }
+
+    if let Some(git_provenance) = git_provenance {
+        eprintln!(
+            "diagprint scan: capsule anchored Git provenance record={}",
+            git_provenance.record_digest,
         );
     }
 
@@ -1522,6 +2279,7 @@ fn print_usage() {
            history    Verify and inspect persistent diagnostic history\n\
            why        Build an evidence-backed diagnostic forensic case file\n\
            timeline   Visualize one diagnostic across every retained run\n\
+           blame      Bind diagnostic transitions to verified Git provenance\n\
          \n\
          Run a command with --help for details."
     );
@@ -1548,6 +2306,7 @@ fn print_scan_usage() {
            --capsule <DIR>\n\
            --history <DIR>\n\
            --history-label <LABEL>\n\
+           --git-provenance\n\
            -h, --help\n\
          \n\
          HISTORY:\n\
@@ -1555,6 +2314,11 @@ fn print_scan_usage() {
            append-only history directory. `.diagprint/history` is recommended.\n\
            When --capsule is also supplied, the resulting capsule provenance\n\
            anchors the exact history chain head for that scan.\n\
+           --git-provenance additionally requires a clean Git worktree, binds\n\
+           the new history run to the exact Git commit/tree, and stores the\n\
+           binding under <HISTORY>/git-provenance/. Ignore `.diagprint/` in Git\n\
+           or keep history outside the repository so generated history does not\n\
+           dirty subsequent provenance-enabled scans.\n\
          \n\
          EXAMPLES:\n\
            diagprint scan .\n\
@@ -1597,6 +2361,7 @@ fn print_history_usage() {
            lineage        Trace one logical finding across all recorded runs\n\
            why            Explain one finding as a forensic case file\n\
            timeline       Visualize lifecycle, regressions, and clean windows\n\
+           git-bind        Backfill an explicit user-asserted Git/run binding\n\
          \n\
          FINGERPRINTS:\n\
            lineage, why, and timeline accept either the full canonical\n\
@@ -1642,5 +2407,26 @@ fn print_timeline_usage() {
            ·  absent or not-yet-seen run\n\
          \n\
          The fingerprint may be complete or a unique leading hexadecimal prefix."
+    );
+}
+
+fn print_blame_usage() {
+    println!(
+        "diagprint blame\n\
+         \n\
+         USAGE:\n\
+           diagprint blame <HISTORY> <FINGERPRINT> [--run <N>] [--repo <PATH>]\n\
+         \n\
+         DESCRIPTION:\n\
+           Verify diagnostic history, verify an immutable Git provenance binding,\n\
+           verify the recorded commit/tree/parents in the local Git object store,\n\
+           and display repository change context for the selected diagnostic run.\n\
+         \n\
+         When --run is omitted, diagprint prefers the newest bound run with a\n\
+         meaningful forensic transition such as first-seen, changed, severity\n\
+         increase, resolution, or reappearance.\n\
+         \n\
+         `blame` means provenance investigation, not causal attribution. Git\n\
+         association never establishes that a commit caused the diagnostic."
     );
 }

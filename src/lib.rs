@@ -55,7 +55,19 @@
 //! `DiagnosticHistory::case_file` requires an exact canonical fingerprint.
 //! The `diagprint why` CLI additionally accepts a unique fingerprint prefix.
 //!
-////! ## Diagnostic intelligence
+//! ### Git provenance
+//!
+//! [`GitProvenanceRecord`] can bind one immutable diagnostic-history run to an
+//! exact Git commit and tree without changing history-v2 semantics.
+//!
+//! [`GitProvenanceBinding::CapturedClean`] means diagprint observed a clean
+//! worktree around the scan. [`GitProvenanceBinding::UserAsserted`] is an
+//! explicit after-the-fact association and therefore carries weaker evidence.
+//!
+//! Git provenance establishes repository context and temporal association. It
+//! does not establish that a commit caused a diagnostic transition.
+//!
+//! ## Diagnostic intelligence
 //!
 //! Structured suggestions can carry explanations, documentation links,
 //! structured edits, advisory follow-up commands, and an [`Applicability`]
@@ -225,6 +237,7 @@ mod fingerprint;
 mod fixer;
 mod fixplan;
 mod forensics;
+mod git_provenance;
 mod intelligence;
 pub mod interop;
 mod redaction;
@@ -314,6 +327,10 @@ pub use forensics::{
     DiagnosticCaseRun, DiagnosticCaseStatus, DiagnosticCleanWindow, DiagnosticCleanWindowKind,
     DiagnosticEpisode, DiagnosticTimeline, DiagnosticTimelineEvent, DiagnosticTimelinePhase,
     DiagnosticTimelineRun,
+};
+
+pub use git_provenance::{
+    GIT_PROVENANCE_V1_SCHEMA, GitProvenanceBinding, GitProvenanceError, GitProvenanceRecord,
 };
 
 pub use fixer::{FixCheck, FixError, FixPreview, FixReport, Fixer, RollbackFailure};

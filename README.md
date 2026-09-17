@@ -94,7 +94,7 @@ attributes, or remediation payloads.
 This is the foundation for the larger Diagnostic Forensics roadmap:
 
 ```text
-why ✓ → timeline ✓ → blame → causal graph → replay
+why ✓ → timeline ✓ → blame ✓ → causal graph → replay
 ```
 
 ### Visual Timeline
@@ -129,6 +129,79 @@ CLEAN WINDOWS
 The visual glyph is only a compact presentation. The underlying timeline keeps
 the complete transition counts, severity distribution, canonical content
 digests, episode identity, and run labels.
+
+### Git Provenance and `blame`
+
+A forensic timeline becomes much more useful when a history run can be tied to
+the exact repository state that surrounded it.
+
+Capture Git provenance while scanning:
+
+```bash
+diagprint scan . \
+  --static \
+  --history .diagprint/history \
+  --git-provenance
+```
+
+The worktree must be clean. diagprint verifies it before and after the scan,
+then binds the newly appended history run to the exact Git commit and tree.
+
+Investigate a diagnostic transition:
+
+```bash
+diagprint blame .diagprint/history 7f23a9d5c120
+```
+
+```text
+DIAGNOSTIC GIT PROVENANCE
+history-run: 000012
+binding: captured_clean
+history-binding-verified: true
+git-object-verified: true
+
+TRANSITION
+  phase: active
+  events: reappeared
+
+COMMIT
+  commit: 7d19fa2...
+  tree: 3c81b44...
+  author: ...
+  authored-at: ...
+  subject: refactor config loader
+
+REPOSITORY DIFF
+  files-changed: 12
+  insertions: 84
+  deletions: 39
+  changed-files:
+    M       src/config.rs
+
+ASSESSMENT
+  provenance: commit/tree captured from a clean worktree surrounding this scan
+  association: repository change context is temporally associated with this history run
+  causation: NOT ESTABLISHED
+```
+
+Older histories can be backfilled explicitly:
+
+```bash
+diagprint history git-bind \
+  .diagprint/history \
+  12 \
+  7d19fa2
+```
+
+Backfilled records are permanently marked `user_asserted`, rather than being
+presented as equivalent to scan-time clean-worktree capture.
+
+When `--git-provenance` and `--capsule` are used together, capsule provenance
+also anchors the Git provenance record digest.
+
+For repositories that keep history under `.diagprint/`, add `.diagprint/` to
+`.gitignore` so diagnostic output does not dirty later provenance-enabled
+scans.
 
 ## Installation
 

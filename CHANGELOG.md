@@ -8,6 +8,31 @@ The project follows Semantic Versioning.
 
 ### Added
 
+- Added `diagprint.forensics.git-provenance/v1`, an immutable sidecar binding
+  exact diagnostic-history run digests to Git commit, tree, and parent object
+  identities without changing history-v2 persistence semantics.
+- Added `GitProvenanceRecord`, `GitProvenanceBinding`, and
+  `GitProvenanceError`.
+- Added `captured_clean` provenance created by `scan --git-provenance`; capture
+  requires a clean Git worktree before scanning and re-verifies cleanliness,
+  HEAD, tree, and parent identities after scanning but before history append.
+- Added `user_asserted` provenance for explicit historical backfill through
+  `diagprint history git-bind`.
+- Git provenance persistence is append-only per history run; identical retries
+  are idempotent while conflicting replacement bindings are rejected.
+- Added `diagprint blame`, which verifies history integrity, provenance record
+  integrity, exact run/report association, and live Git commit/tree/parent
+  resolution before displaying transition and repository-diff context.
+- `diagprint blame` selects the newest bound meaningful transition by default
+  and supports explicit `--run` and `--repo` overrides.
+- Blame output deliberately distinguishes temporal repository association from
+  causation and always reports `causation: NOT ESTABLISHED`.
+- Added capsule anchoring of the exact history run digest and Git provenance
+  record digest when history, Git provenance, and capsule capture are combined.
+- Persisted Git provenance excludes diagnostic text, source paths/text,
+  arbitrary attributes, authors, remotes, absolute repository paths, and
+  mutable branch names.
+
 - Added `diagprint.forensics.timeline/v1`, a deterministic run-by-run forensic
   lifecycle representation derived from verified diagnostic history.
 - Added `DiagnosticTimeline`, `DiagnosticTimelineRun`,
