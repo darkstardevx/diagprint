@@ -88,9 +88,11 @@ fn run() -> Result<i32, Box<dyn Error>> {
 
         "history" => run_history_command(args.collect()),
 
+        "why" => run_why_command(args.collect()),
+
         other => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            format!("unknown command {other:?}; expected `scan`, `capsule`, or `history`"),
+            format!("unknown command {other:?}; expected `scan`, `capsule`, `history`, or `why`"),
         )
         .into()),
     }
@@ -211,6 +213,25 @@ fn run_capsule_command(args: Vec<String>) -> Result<i32, Box<dyn Error>> {
     Ok(0)
 }
 
+fn run_why_command(args: Vec<String>) -> Result<i32, Box<dyn Error>> {
+    if args.len() == 1 && matches!(args[0].as_str(), "-h" | "--help" | "help") {
+        print_why_usage();
+        return Ok(0);
+    }
+
+    if args.len() != 2 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "usage: diagprint why <HISTORY> <FINGERPRINT>",
+        )
+        .into());
+    }
+
+    show_history_why(Path::new(&args[0]), &args[1])?;
+
+    Ok(0)
+}
+
 fn run_history_command(args: Vec<String>) -> Result<i32, Box<dyn Error>> {
     let Some(command) = args.first() else {
         print_history_usage();
@@ -259,6 +280,18 @@ fn run_history_command(args: Vec<String>) -> Result<i32, Box<dyn Error>> {
             show_history_fingerprints(Path::new(&args[1]))?;
         }
 
+        "why" => {
+            if args.len() != 3 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "usage: diagprint history why <HISTORY> <FINGERPRINT>",
+                )
+                .into());
+            }
+
+            show_history_why(Path::new(&args[1]), &args[2])?;
+        }
+
         "lineage" => {
             if args.len() != 3 {
                 return Err(io::Error::new(
@@ -275,7 +308,7 @@ fn run_history_command(args: Vec<String>) -> Result<i32, Box<dyn Error>> {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 format!(
-                    "unknown history command {other:?}; expected `verify`, `show`, `fingerprints`, or `lineage`"
+                    "unknown history command {other:?}; expected `verify`, `show`, `fingerprints`, `lineage`, or `why`"
                 ),
             )
             .into());
@@ -572,6 +605,150 @@ fn show_history_fingerprints(path: &Path) -> Result<(), Box<dyn Error>> {
         );
 
         println!("  {fingerprint}");
+    }
+
+    Ok(())
+}
+
+fn show_history_why(path: &Path, query: &str) -> Result<(), Box<dyn Error>> {
+    let history = open_existing_history(path)?;
+
+    // Re-verify immediately before constructing forensic evidence so a
+    // post-open mutation cannot be silently presented as trustworthy.
+    history.verify()?;
+
+    let fingerprint = resolve_fingerprint(&history, query)?;
+
+    let case = history.case_file(&fingerprint).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("no forensic evidence exists for diagnostic fingerprint {fingerprint:?}"),
+        )
+    })?;
+
+    let first = case.evidence.first().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "forensic case file has no first evidence run",
+        )
+    })?;
+
+    let last = case.evidence.last().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "forensic case file has no last evidence run",
+        )
+    })?;
+
+    println!("DIAGNOSTIC CASE FILE");
+    println!("schema: {}", case.schema);
+    println!("directory: {}", path.display());
+    println!("fingerprint: {}", case.fingerprint);
+    println!("status: {}", case.status.as_str());
+    println!("chain-verified: true");
+
+    match &case.chain_head {
+        Some(head) => {
+            println!("chain-head: {head}");
+        }
+
+        None => {
+            println!("chain-head: none");
+        }
+    }
+
+    println!(
+        "first-seen: run={:06} label={:?}",
+        first.run_index, first.label,
+    );
+
+    println!(
+        "last-seen: run={:06} label={:?}",
+        last.run_index, last.label,
+    );
+
+    println!("history-runs: {}", case.history_runs,);
+
+    println!("observed-runs: {}", case.observed_runs,);
+
+    println!("observed-instances: {}", case.observed_instances,);
+
+    println!("active-instances: {}", case.active_instances,);
+
+    println!("unique-digests: {}", case.unique_digests,);
+
+    println!("episodes: {}", case.episodes.len(),);
+
+    println!("reappearances: {}", case.reappearances,);
+
+    println!("introduced-instances: {}", case.introduced_instances,);
+
+    println!("resolved-instances: {}", case.resolved_instances,);
+
+    println!("changed-instances: {}", case.changed_instances,);
+
+    println!("severity-increases: {}", case.severity_increases,);
+
+    println!();
+    println!("EPISODES");
+
+    for episode in &case.episodes {
+        match episode.resolved_run {
+            Some(resolved_run) => {
+                println!(
+                    "  #{:02} start={:06} last-active={:06} resolved={:06} runs={} instances={} peak={}",
+                    episode.episode,
+                    episode.started_run,
+                    episode.last_active_run,
+                    resolved_run,
+                    episode.observed_runs,
+                    episode.instances,
+                    episode.peak_instances,
+                );
+            }
+
+            None => {
+                println!(
+                    "  #{:02} start={:06} last-active={:06} resolved=active runs={} instances={} peak={}",
+                    episode.episode,
+                    episode.started_run,
+                    episode.last_active_run,
+                    episode.observed_runs,
+                    episode.instances,
+                    episode.peak_instances,
+                );
+            }
+        }
+    }
+
+    println!();
+    println!("EVIDENCE");
+
+    for evidence in &case.evidence {
+        let severities = evidence
+            .severities
+            .iter()
+            .map(|(severity, count)| format!("{severity}={count}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        println!(
+            "  RUN {:06} label={:?} instances={} severity=[{}]",
+            evidence.run_index, evidence.label, evidence.instances, severities,
+        );
+
+        println!("    report: {}", evidence.report_digest,);
+
+        println!("    run-digest: {}", evidence.run_digest,);
+
+        println!(
+            "    diagnostic-digests: {}",
+            evidence.diagnostic_digests.len(),
+        );
+
+        for digest in &evidence.diagnostic_digests {
+            println!("      {digest}");
+        }
     }
 
     Ok(())
@@ -1132,11 +1309,13 @@ fn print_usage() {
            diagprint scan [PATH] [OPTIONS]\n\
            diagprint capsule <COMMAND> <CAPSULE>\n\
            diagprint history <COMMAND> <HISTORY>\n\
+           diagprint why <HISTORY> <FINGERPRINT>\n\
          \n\
          COMMANDS:\n\
            scan       Scan a project and produce diagnostics\n\
            capsule    Verify or inspect a diagnostic capsule\n\
            history    Verify and inspect persistent diagnostic history\n\
+           why        Build an evidence-backed diagnostic forensic case file\n\
          \n\
          Run a command with --help for details."
     );
@@ -1203,15 +1382,32 @@ fn print_history_usage() {
            diagprint history show <HISTORY>\n\
            diagprint history fingerprints <HISTORY>\n\
            diagprint history lineage <HISTORY> <FINGERPRINT>\n\
+           diagprint history why <HISTORY> <FINGERPRINT>\n\
          \n\
          COMMANDS:\n\
            verify         Verify run digests, chain links, sequence, and head\n\
            show           Show runs, chain identities, and semantic transitions\n\
            fingerprints   List logical finding identities and lifecycle state\n\
            lineage        Trace one logical finding across all recorded runs\n\
+           why            Explain one finding as a forensic case file\n\
          \n\
          FINGERPRINTS:\n\
-           lineage accepts either the full canonical fingerprint or a unique\n\
-           leading hexadecimal prefix shown by `history fingerprints`."
+           lineage and why accept either the full canonical fingerprint or a\n\
+           unique leading hexadecimal prefix shown by `history fingerprints`."
+    );
+}
+fn print_why_usage() {
+    println!(
+        "diagprint why\n\
+         \n\
+         USAGE:\n\
+           diagprint why <HISTORY> <FINGERPRINT>\n\
+         \n\
+         DESCRIPTION:\n\
+           Verify a diagnostic-history chain, resolve one canonical fingerprint,\n\
+           and construct a privacy-light evidence-backed forensic case file.\n\
+         \n\
+         The fingerprint may be complete or a unique leading hexadecimal prefix.\n\
+         No source-control blame or root-cause inference is performed in v1."
     );
 }

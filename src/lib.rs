@@ -39,7 +39,23 @@
 //! Canonical v1 is immutable: incompatible identity changes require a new
 //! canonicalization version rather than silently changing existing digests.
 //!
-//! ## Diagnostic intelligence
+//! ## Diagnostic forensics
+//!
+//! [`DiagnosticCaseFile`] turns a verified [`DiagnosticHistory`] into a
+//! privacy-light forensic explanation for one logical diagnostic fingerprint.
+//!
+//! Case-file v1 reports first/last observation, current lifecycle state,
+//! contiguous active episodes, reappearances, canonical-content changes,
+//! severity increases, supporting run/report/digest evidence, and the current
+//! history-chain head.
+//!
+//! The forensic layer is deliberately evidence-based. It does not guess root
+//! cause, source-control blame, or authorship.
+//!
+//! `DiagnosticHistory::case_file` requires an exact canonical fingerprint.
+//! The `diagprint why` CLI additionally accepts a unique fingerprint prefix.
+//!
+////! ## Diagnostic intelligence
 //!
 //! Structured suggestions can carry explanations, documentation links,
 //! structured edits, advisory follow-up commands, and an [`Applicability`]
@@ -208,6 +224,7 @@ mod export;
 mod fingerprint;
 mod fixer;
 mod fixplan;
+mod forensics;
 mod intelligence;
 pub mod interop;
 mod redaction;
@@ -290,6 +307,11 @@ pub use documentation::{DocumentationError, DocumentationResolver};
 pub use fingerprint::{
     DiagnosticDigest, DiagnosticFingerprint, DigestAlgorithm, FingerprintPolicy, FingerprintSource,
     IDENTITY_ATTRIBUTE, ReportDigest,
+};
+
+pub use forensics::{
+    DIAGNOSTIC_CASE_FILE_V1_SCHEMA, DiagnosticCaseFile, DiagnosticCaseRun, DiagnosticCaseStatus,
+    DiagnosticEpisode,
 };
 
 pub use fixer::{FixCheck, FixError, FixPreview, FixReport, Fixer, RollbackFailure};

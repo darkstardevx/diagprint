@@ -192,6 +192,38 @@ fn scan_history_verify_show_fingerprints_and_lineage_work_end_to_end() {
     assert!(lineage_text.contains("DIAGPRINT LINEAGE"));
     assert!(lineage_text.contains(&fingerprint));
 
+    let why = run(&["why", &history_text, short]);
+
+    assert!(
+        why.status.success(),
+        "diagprint why failed:\n{}",
+        output_text(&why),
+    );
+
+    let why_text = output_text(&why);
+
+    assert!(why_text.contains("DIAGNOSTIC CASE FILE",),);
+
+    assert!(why_text.contains("schema: diagprint.forensics.case-file/v1",),);
+
+    assert!(why_text.contains(&fingerprint,),);
+
+    assert!(why_text.contains("chain-verified: true",),);
+
+    assert!(why_text.contains("EPISODES",),);
+
+    assert!(why_text.contains("EVIDENCE",),);
+
+    let history_why = run(&["history", "why", &history_text, short]);
+
+    assert!(
+        history_why.status.success(),
+        "history why failed:\n{}",
+        output_text(&history_why),
+    );
+
+    assert!(output_text(&history_why).contains("DIAGNOSTIC CASE FILE",),);
+
     fs::remove_dir_all(root).expect("test project should clean up");
 }
 

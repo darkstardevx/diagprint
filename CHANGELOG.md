@@ -6,6 +6,27 @@ The project follows Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+
+- Added the first Diagnostic Forensics layer with
+  `diagprint.forensics.case-file/v1`, a deterministic privacy-light case file
+  derived from verified hash-chained diagnostic history.
+- Added `DiagnosticCaseFile`, `DiagnosticCaseRun`, `DiagnosticEpisode`, and
+  `DiagnosticCaseStatus`, plus `DiagnosticHistory::case_file` for reconstructing
+  first/last observation, active/resolved state, contiguous episodes,
+  reappearances, instance changes, severity increases, canonical content
+  digests, and supporting chain evidence.
+- Added the top-level `diagprint why <HISTORY> <FINGERPRINT>` command and
+  `diagprint history why` alias with full or uniquely abbreviated canonical
+  fingerprint resolution.
+- Forensic v1 intentionally performs no root-cause, Git blame, authorship, or
+  remediation-success inference; those future layers must remain explicitly
+  distinguishable from retained evidence.
+- Forensic case files inherit diagnostic history's privacy-light boundary and
+  therefore do not regain diagnostic messages, source paths/text, arbitrary
+  attributes, help, notes, causes, or remediation payloads.
+
+
 ### Planned
 
 - Add framework and application adapters, beginning with `diagprint-axum`,

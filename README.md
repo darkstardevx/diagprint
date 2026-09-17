@@ -30,12 +30,72 @@ Define diagnostics once, then carry them safely through terminal output, compile
 - diagnostic capsules and privacy-aware export;
 - project scanning with static, standard, and deep profiles;
 - hash-chained diagnostic history and lineage;
+- diagnostic forensic case files and `diagprint why` analysis;
 - version-aware documentation.
 
 The core rule is:
 
 > Diagnostics may explain and propose. Mutation must be explicit, structured,
 > validated, and reject uncertainty.
+
+## Diagnostic Forensics
+
+Most error libraries answer:
+
+> What went wrong right now?
+
+diagprint can also start answering:
+
+> What has this exact logical diagnostic been doing over time?
+
+A scan history can be investigated with:
+
+```bash
+diagprint history fingerprints .diagprint/history
+diagprint why .diagprint/history 7f23a9d5c120
+```
+
+`diagprint why` verifies the history chain and produces a privacy-light
+**diagnostic case file**:
+
+```text
+DIAGNOSTIC CASE FILE
+schema: diagprint.forensics.case-file/v1
+fingerprint: diagprint.canonical/v1:sha256:...
+status: active
+chain-verified: true
+first-seen: run=000002 label="baseline"
+last-seen: run=000011 label="regressed"
+history-runs: 12
+observed-runs: 7
+episodes: 2
+reappearances: 1
+changed-instances: 3
+severity-increases: 1
+
+EPISODES
+  #01 start=000002 last-active=000006 resolved=000007 runs=5 instances=5 peak=1
+  #02 start=000010 last-active=000011 resolved=active runs=2 instances=2 peak=1
+
+EVIDENCE
+  RUN 000002 label="baseline" instances=1 severity=[warning=1]
+    report: diagprint.canonical/v1:sha256:...
+    run-digest: sha256:...
+```
+
+The v1 case file is deliberately evidence-based. It does not guess root cause,
+Git blame, or authorship.
+
+Because diagnostic history is privacy-light, case files contain canonical
+identity, lifecycle state, run labels, severity counts, and cryptographic
+evidence without restoring diagnostic messages, source text, arbitrary
+attributes, or remediation payloads.
+
+This is the foundation for the larger Diagnostic Forensics roadmap:
+
+```text
+why → timeline → blame → causal graph → replay
+```
 
 ## Installation
 
