@@ -395,20 +395,47 @@ Add an owning capture type:
 ```rust
 pub struct CapturedSnafuError<E> {
     error: E,
-    output: SnafuBridgeOutput,
+    capture: Result<SnafuBridgeOutput, SnafuBridgeError>,
 }
 ```
+
+The wrapper exists for **both** successful and failed diagnostic capture.
+
+The original typed application error is never replaced by instrumentation
+failure.
 
 Required access:
 
 ```rust
 error()
-output()
-report()
-graph()
+capture()
+output()        -> Result<&SnafuBridgeOutput, &SnafuBridgeError>
+report()        -> Result<&DiagnosticReport, &SnafuBridgeError>
+graph()         -> Result<&DiagnosticRelationshipGraph, &SnafuBridgeError>
+capture_error() -> Option<&SnafuBridgeError>
 into_error()
-into_parts()
+into_parts()    -> (E, Result<SnafuBridgeOutput, SnafuBridgeError>)
 ```
+
+Successful capture remains the normal path and exposes the complete report and
+graph.
+
+If metadata construction, strict root mapping, source traversal, or bridge
+assembly fails, the wrapper retains:
+
+```text
+the original concrete E
+the structured SnafuBridgeError
+```
+
+This means `result.diagprint(...)?` remains ergonomic and never loses the
+application error merely because diagnostic instrumentation failed.
+
+`Display` continues to delegate to the application error rather than replacing
+its message with instrumentation details.
+
+`Debug` may expose capture success/failure state but must avoid dumping
+privacy-sensitive diagnostic contents.
 
 Recommended ergonomics:
 
@@ -425,7 +452,11 @@ If `E: ErrorCompat`, `CapturedSnafuError<E>` should preserve/delegate compatible
 backtrace access where the trait permits.
 
 The wrapper exists so a caller can keep matching/downcasting the SNAFU error
-while also carrying diagprint's report/graph.
+while also carrying diagprint's report/graph when capture succeeds.
+
+Capture failure is intentionally **data on the wrapper**, not a second error
+type that would force callers to choose between their domain error and
+diagprint instrumentation state.
 
 ## Strict extension-trait contract
 
@@ -440,9 +471,10 @@ Two ways to satisfy that:
 2. caller supplies an explicit mapper/profile that produces stable root metadata
 ```
 
-If the extension path cannot establish root identity, it fails with a structured
-`MissingRootIdentity` error rather than silently falling back to message-based
-identity.
+If the extension path cannot establish root identity, the
+`CapturedSnafuError<E>` retains the original `E` and stores a structured
+`MissingRootIdentity` capture error rather than silently falling back to
+message-based identity.
 
 The lower-level `SnafuBridge` may still offer best-effort conversion for
 exploration/debugging, but the ergonomic capture traits stay strong.
@@ -1067,15 +1099,25 @@ Invalid strong codes rejected.
 
 ### CapturedSnafuError preservation
 
-Prove:
+Prove successful capture:
 
 ```text
 original concrete E is retained
 error() returns typed E
 into_error() recovers E
-report/graph remain available
+output/report/graph are available
 Display remains useful
 source chain remains useful
+```
+
+Also prove failed capture:
+
+```text
+original concrete E is still retained
+capture_error() exposes structured SnafuBridgeError
+output/report/graph return that capture error
+into_error() still recovers E
+Display still represents E rather than instrumentation failure
 ```
 
 ### Result .diagprint
@@ -1115,7 +1157,10 @@ Prove stable root mapping and typed downcast customization.
 
 ### Missing root identity
 
-Strong extension capture with no stable root identity fails explicitly.
+Strong extension capture with no stable root identity records
+`MissingRootIdentity` inside `CapturedSnafuError<E>`.
+
+The original typed error remains recoverable.
 
 No message-derived fallback.
 
@@ -1380,8 +1425,8 @@ E2 is complete only when:
   contract;
 - custom variants can define stable identity/code/severity/presentation and
   structured metadata independently;
-- `CapturedSnafuError<E>` preserves the concrete SNAFU error and diagprint
-  output together;
+- `CapturedSnafuError<E>` always preserves the concrete SNAFU error and
+  carries either successful diagprint output or a structured capture error;
 - Result extension traits support capture and SNAFU context construction;
 - Option extension traits support SNAFU None-context construction;
 - Future and Stream extension traits exist behind opt-in `futures`;
@@ -1408,8 +1453,11 @@ Draft baseline:
 634dee04dc74ab31e359a232dc6cf00d4b65cc52
 
 Approved E2 plan commit:
+e630a596c5221418598d8dc7e2c747333129e32f
 Approved E2 plan CI:
+35282386610
 Approved E2 plan result:
+success
 
 E2A custom errors + sync extensions commit:
 E2A CI:
@@ -1428,6 +1476,14 @@ E2 closure CI:
 E2 closure result:
 
 Notes:
+- Approved-plan CI 35282386610 succeeded on exact commit
+  e630a596c5221418598d8dc7e2c747333129e32f.
+- A pre-implementation contract review found that SnafuDiagnostic metadata,
+  strict root mapping, source traversal, and bridge assembly are fallible while
+  the ergonomic extension surface returns CapturedSnafuError<E>.
+- The Approved plan therefore defines CapturedSnafuError<E> as retaining the
+  original E plus Result<SnafuBridgeOutput, SnafuBridgeError>. Instrumentation
+  failure never replaces the application error.
 - v0.8.0 fully closed before E2.
 - custom SNAFU errors are the primary E2 design target.
 - Result/Option/Future/Stream extension traits are primary product surfaces.
