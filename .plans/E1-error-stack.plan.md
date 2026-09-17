@@ -1,6 +1,6 @@
 # Plan: E1 error-stack Ecosystem Bridge + diagprint Bridge SDK
 
-Status: Approved
+Status: Complete
 
 ## Plan revision
 
@@ -960,17 +960,46 @@ Only extract patterns demonstrated by real adapters.
 ## Completion record
 
 ```text
-E1A0 SDK commit:
-E1A0 CI run:
-E1A0 CI result:
+Initial approved plan commit: aa7c44b458f64ba50b29dcce2082dc965782c5ee
+Initial approved plan CI run: 35176603493
+Initial approved plan CI result: success
 
-E1A adapter commit:
-E1A CI run:
-E1A CI result:
+SDK plan revision commit: 6a683cd6a3141fec39d4c171b616a88d0bc3094d
+SDK plan revision CI run: 35177450645
+SDK plan revision CI result: success
 
-Final E1B commit:
-Final CI run:
-Final CI result:
+E1A0 SDK commit: b342c225159080f4eb5470f107c30e1dbfe6937e
+E1A0 CI run: 35178450457
+E1A0 CI result: success
+
+E1A adapter commit: e666c068140ac2c2a6287961edc5bc015fdf3ed7
+E1A CI run: 35179019126
+E1A CI result: success
+
+Final E1B commit: d445360897fab02c702965220151542f9feec0e1
+Final CI run: 35179936237
+Final CI result: success
 
 Notes:
+- E1A0 established the ecosystem-neutral diagprint-bridge SDK on top of
+  InteropDiagnostic and the M4 relationship graph.
+- BridgeDiagnosticMetadata, BridgeNodeId, BridgeOutputBuilder, BridgeOutput,
+  BridgeBuildStats, and BridgeError now provide reusable adapter mechanics.
+- BridgeNodeId remains ephemeral and builder-scoped; canonical diagnostic
+  fingerprints remain the only durable relationship identity.
+- E1A added diagprint-error-stack as the first real SDK consumer using stable
+  error-stack frame/context APIs rather than rendered-report parsing.
+- error-stack source topology maps to ContributesTo + SourceChain evidence
+  without inventing stronger Causes relationships.
+- E1B added grouped Report<[C]> support without inventing sibling edges.
+- attachment content is omitted by default; printable text requires explicit
+  opt-in; opaque attachment values remain private.
+- diagprint-bridge remains ecosystem-neutral and contains no error-stack
+  dependency.
+- root diagprint remains independent of error-stack.
+- both new crates are registered in CI package readiness and companion release
+  gates.
+- full workspace tests, strict Clippy/rustdoc, package checks, and Rust 1.85
+  MSRV validation completed successfully.
+- exact CI succeeded for the plan revision and every implementation checkpoint.
 ```

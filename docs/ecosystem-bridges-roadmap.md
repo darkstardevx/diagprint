@@ -80,8 +80,8 @@ ecosystem.
 ```text
 M4    Causal Diagnostic Graph                   COMPLETE
 E1A0  diagprint-bridge interoperability SDK     COMPLETE
-E1    error-stack                               E1B / CI CHECKPOINT
-M5    Replay / regression / remediation evidence
+E1    error-stack                               COMPLETE
+M5    Replay / regression / remediation evidence NEXT
 E2    SNAFU                                     uses bridge SDK
 E3    eyre / color-eyre                         uses bridge SDK
 E4    tracing-error                             uses bridge SDK
@@ -92,14 +92,20 @@ public structured APIs, MSRV fit, and dependency cost.
 
 ## Bridge E1 — error-stack
 
-M4 is complete. E1 now has an expanded active implementation plan.
+E1 is complete.
 
-Before the adapter itself, E1A0 creates the ecosystem-neutral
-`diagprint-bridge` SDK. The error-stack adapter is then the first consumer of
-that SDK.
+E1A0 delivered the ecosystem-neutral `diagprint-bridge` SDK, and E1 delivered
+`diagprint-error-stack` as its first concrete consumer.
 
-The adapter targets the stable public structured surface of `error-stack` and
-does not depend on nightly-only attachment-provider APIs.
+The completed adapter supports single and grouped reports, preserves stable
+structured source topology through the M4 relationship graph, and keeps
+attachment contents private by default.
+
+The implementation uses stable public `error-stack` APIs and does not depend on
+nightly-only attachment-provider APIs.
+
+M5 replay / regression / remediation evidence is the next interleaved feature
+train. E2 SNAFU remains the next planned adapter and will reuse the bridge SDK.
 
 Goals:
 
