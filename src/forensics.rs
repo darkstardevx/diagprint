@@ -341,3 +341,382 @@ fn build_episodes(lineage: &DiagnosticLineage) -> Vec<DiagnosticEpisode> {
 
     episodes
 }
+
+/// Stable schema for run-by-run diagnostic forensic timelines.
+///
+/// Timeline v1 is derived entirely from verified diagnostic history. It
+/// preserves the evidence-only boundary established by case-file v1.
+pub const DIAGNOSTIC_TIMELINE_V1_SCHEMA: &str = "diagprint.forensics.timeline/v1";
+
+/// Presence state of one logical diagnostic in one retained history run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DiagnosticTimelinePhase {
+    /// The run occurred before this fingerprint had ever been observed.
+    Unseen,
+
+    /// One or more matching instances are present in this run.
+    Active,
+
+    /// The fingerprint had previously been observed but is absent in this run.
+    Absent,
+}
+
+impl DiagnosticTimelinePhase {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Unseen => "unseen",
+            Self::Active => "active",
+            Self::Absent => "absent",
+        }
+    }
+
+    pub const fn is_active(self) -> bool {
+        matches!(self, Self::Active)
+    }
+}
+
+/// Notable lifecycle event occurring at one timeline run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DiagnosticTimelineEvent {
+    /// First retained observation of this fingerprint.
+    FirstSeen,
+
+    /// The diagnostic remained active without a more significant transition.
+    Persisting,
+
+    /// Canonical content changed while logical fingerprint identity remained.
+    Changed,
+
+    /// At least one same-fingerprint instance increased in severity.
+    SeverityIncreased,
+
+    /// The previous run contained the fingerprint and this run does not.
+    Resolved,
+
+    /// The fingerprint became active after at least one absent run.
+    Reappeared,
+}
+
+impl DiagnosticTimelineEvent {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::FirstSeen => "first_seen",
+            Self::Persisting => "persisting",
+            Self::Changed => "changed",
+            Self::SeverityIncreased => "severity_increased",
+            Self::Resolved => "resolved",
+            Self::Reappeared => "reappeared",
+        }
+    }
+}
+
+/// One complete run in a diagnostic forensic timeline.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DiagnosticTimelineRun {
+    pub run_index: usize,
+
+    pub label: String,
+
+    pub phase: DiagnosticTimelinePhase,
+
+    /// One-based active episode number.
+    ///
+    /// Absent and unseen runs carry `None`.
+    pub episode: Option<usize>,
+
+    pub instances: usize,
+
+    pub severities: BTreeMap<String, usize>,
+
+    pub diagnostic_digests: Vec<String>,
+
+    pub introduced_instances: usize,
+
+    pub resolved_instances: usize,
+
+    pub persisting_instances: usize,
+
+    pub changed_instances: usize,
+
+    pub severity_increases: usize,
+
+    pub events: Vec<DiagnosticTimelineEvent>,
+}
+
+/// Classification for one contiguous run window where the diagnostic is absent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DiagnosticCleanWindowKind {
+    /// Runs retained before the diagnostic was ever observed.
+    BeforeFirstSeen,
+
+    /// Absence separating two active episodes.
+    BetweenEpisodes,
+
+    /// Absence after the final retained active episode.
+    AfterResolution,
+}
+
+impl DiagnosticCleanWindowKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::BeforeFirstSeen => "before_first_seen",
+            Self::BetweenEpisodes => "between_episodes",
+            Self::AfterResolution => "after_resolution",
+        }
+    }
+}
+
+/// One contiguous history interval where the fingerprint is absent.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DiagnosticCleanWindow {
+    pub kind: DiagnosticCleanWindowKind,
+
+    pub start_run: usize,
+
+    pub end_run: usize,
+
+    pub runs: usize,
+}
+
+/// Complete run-by-run forensic lifecycle for one logical fingerprint.
+///
+/// Unlike [`DiagnosticCaseFile`], which summarizes the lifecycle, a timeline
+/// retains one row for every history run, including runs where the fingerprint
+/// was not present.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DiagnosticTimeline {
+    pub schema: String,
+
+    pub fingerprint: String,
+
+    pub status: DiagnosticCaseStatus,
+
+    pub history_runs: usize,
+
+    pub first_seen_run: usize,
+
+    pub last_seen_run: usize,
+
+    pub active_instances: usize,
+
+    pub reappearances: usize,
+
+    pub chain_head: Option<String>,
+
+    pub runs: Vec<DiagnosticTimelineRun>,
+
+    pub clean_windows: Vec<DiagnosticCleanWindow>,
+}
+
+impl DiagnosticTimeline {
+    /// Builds a deterministic timeline from one verified in-memory history.
+    ///
+    /// Returns `None` when the fingerprint has never been observed.
+    pub fn from_history(history: &DiagnosticHistory, fingerprint: &str) -> Option<Self> {
+        let case = history.case_file(fingerprint)?;
+        let lineage = history.lineage(fingerprint);
+
+        let mut runs = Vec::with_capacity(history.len());
+
+        let mut seen_before = false;
+        let mut previous_active = false;
+        let mut episode = 0usize;
+
+        for run in history.runs() {
+            let step = lineage.steps.iter().find(|step| step.to_run == run.index)?;
+
+            let mut instances = 0usize;
+
+            let mut severities = BTreeMap::<String, usize>::new();
+
+            let mut diagnostic_digests = BTreeSet::<String>::new();
+
+            for observation in run
+                .observations
+                .iter()
+                .filter(|observation| observation.fingerprint == fingerprint)
+            {
+                instances = instances.saturating_add(1);
+
+                *severities.entry(observation.severity.clone()).or_default() += 1;
+
+                diagnostic_digests.insert(observation.digest.clone());
+            }
+
+            let active = instances != 0;
+
+            let phase = if active {
+                DiagnosticTimelinePhase::Active
+            } else if seen_before {
+                DiagnosticTimelinePhase::Absent
+            } else {
+                DiagnosticTimelinePhase::Unseen
+            };
+
+            if active && !previous_active {
+                episode = episode.saturating_add(1);
+            }
+
+            let current_episode = active.then_some(episode);
+
+            let mut events = Vec::new();
+
+            if active {
+                if !seen_before {
+                    events.push(DiagnosticTimelineEvent::FirstSeen);
+                } else if !previous_active {
+                    events.push(DiagnosticTimelineEvent::Reappeared);
+                }
+
+                if step.counts.changed != 0 {
+                    events.push(DiagnosticTimelineEvent::Changed);
+                }
+
+                if step.severity_increases != 0 {
+                    events.push(DiagnosticTimelineEvent::SeverityIncreased);
+                }
+
+                if previous_active && events.is_empty() {
+                    events.push(DiagnosticTimelineEvent::Persisting);
+                }
+            } else if previous_active {
+                events.push(DiagnosticTimelineEvent::Resolved);
+            }
+
+            runs.push(DiagnosticTimelineRun {
+                run_index: run.index,
+
+                label: run.label.clone(),
+
+                phase,
+
+                episode: current_episode,
+
+                instances,
+
+                severities,
+
+                diagnostic_digests: diagnostic_digests.into_iter().collect(),
+
+                introduced_instances: step.counts.new,
+
+                resolved_instances: step.counts.resolved,
+
+                persisting_instances: step.counts.persisting,
+
+                changed_instances: step.counts.changed,
+
+                severity_increases: step.severity_increases,
+
+                events,
+            });
+
+            if active {
+                seen_before = true;
+            }
+
+            previous_active = active;
+        }
+
+        let clean_windows = build_clean_windows(&runs, case.first_seen_run);
+
+        Some(Self {
+            schema: DIAGNOSTIC_TIMELINE_V1_SCHEMA.to_owned(),
+
+            fingerprint: fingerprint.to_owned(),
+
+            status: case.status,
+
+            history_runs: history.len(),
+
+            first_seen_run: case.first_seen_run,
+
+            last_seen_run: case.last_seen_run,
+
+            active_instances: case.active_instances,
+
+            reappearances: case.reappearances,
+
+            chain_head: case.chain_head,
+
+            runs,
+
+            clean_windows,
+        })
+    }
+
+    pub fn active_runs(&self) -> usize {
+        self.runs.iter().filter(|run| run.phase.is_active()).count()
+    }
+
+    pub fn absent_runs(&self) -> usize {
+        self.runs
+            .iter()
+            .filter(|run| matches!(run.phase, DiagnosticTimelinePhase::Absent))
+            .count()
+    }
+
+    pub fn unseen_runs(&self) -> usize {
+        self.runs
+            .iter()
+            .filter(|run| matches!(run.phase, DiagnosticTimelinePhase::Unseen))
+            .count()
+    }
+}
+
+impl DiagnosticHistory {
+    /// Builds a complete privacy-light timeline for one exact canonical
+    /// diagnostic fingerprint.
+    pub fn timeline(&self, fingerprint: &str) -> Option<DiagnosticTimeline> {
+        DiagnosticTimeline::from_history(self, fingerprint)
+    }
+}
+
+fn build_clean_windows(
+    runs: &[DiagnosticTimelineRun],
+    first_seen_run: usize,
+) -> Vec<DiagnosticCleanWindow> {
+    let mut windows = Vec::new();
+
+    let mut index = 0usize;
+
+    while index < runs.len() {
+        if runs[index].phase.is_active() {
+            index += 1;
+            continue;
+        }
+
+        let start = index;
+
+        while index < runs.len() && !runs[index].phase.is_active() {
+            index += 1;
+        }
+
+        let end = index - 1;
+
+        let later_active = runs.iter().skip(index).any(|run| run.phase.is_active());
+
+        let kind = if runs[end].run_index < first_seen_run {
+            DiagnosticCleanWindowKind::BeforeFirstSeen
+        } else if later_active {
+            DiagnosticCleanWindowKind::BetweenEpisodes
+        } else {
+            DiagnosticCleanWindowKind::AfterResolution
+        };
+
+        windows.push(DiagnosticCleanWindow {
+            kind,
+
+            start_run: runs[start].run_index,
+
+            end_run: runs[end].run_index,
+
+            runs: end - start + 1,
+        });
+    }
+
+    windows
+}

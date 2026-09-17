@@ -8,6 +8,25 @@ The project follows Semantic Versioning.
 
 ### Added
 
+- Added `diagprint.forensics.timeline/v1`, a deterministic run-by-run forensic
+  lifecycle representation derived from verified diagnostic history.
+- Added `DiagnosticTimeline`, `DiagnosticTimelineRun`,
+  `DiagnosticTimelinePhase`, `DiagnosticTimelineEvent`,
+  `DiagnosticCleanWindow`, and `DiagnosticCleanWindowKind`.
+- Added explicit distinction between never-yet-seen runs, active runs, and
+  absent-after-observation runs so retained prehistory is never mislabeled as
+  resolved.
+- Added deterministic timeline events for first observation, persistence,
+  canonical content change, severity increase, resolution, and reappearance.
+- Added clean-window classification for pre-observation history, clean periods
+  between active episodes, and post-resolution history.
+- Added the visual `diagprint timeline <HISTORY> <FINGERPRINT>` command and
+  `diagprint history timeline` alias with compact lifecycle glyphs.
+- Timeline output retains complete transition counts and canonical digest
+  evidence even when a single glyph is used for compact presentation.
+- Timeline construction inherits the forensic privacy boundary and performs no
+  source-control blame or causal inference.
+
 - Added the first Diagnostic Forensics layer with
   `diagprint.forensics.case-file/v1`, a deterministic privacy-light case file
   derived from verified hash-chained diagnostic history.

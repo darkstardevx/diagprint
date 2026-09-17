@@ -248,3 +248,198 @@ fn unknown_fingerprint_has_no_case_file() {
 
     fs::remove_dir_all(root).expect("history should clean up");
 }
+
+#[test]
+fn timeline_distinguishes_unseen_active_clean_and_reappearance() {
+    use diagprint::{
+        DIAGNOSTIC_TIMELINE_V1_SCHEMA, DiagnosticCleanWindowKind, DiagnosticTimelineEvent,
+        DiagnosticTimelinePhase,
+    };
+
+    let root = temporary_directory("timeline");
+
+    let warning = issue_report("warning", 1);
+
+    let fingerprint = warning
+        .iter()
+        .next()
+        .expect("warning report should contain one diagnostic")
+        .fingerprint()
+        .qualified();
+
+    let error = issue_report("error", 1);
+    let duplicate_warning = issue_report("warning", 2);
+
+    let mut history = DiagnosticHistory::open(&root).expect("history should open");
+
+    history
+        .append_report("prehistory", &DiagnosticReport::new())
+        .expect("prehistory should append");
+
+    history
+        .append_report("first-seen", &warning)
+        .expect("first-seen should append");
+
+    history
+        .append_report("severity-regression", &error)
+        .expect("regression should append");
+
+    history
+        .append_report("fixed", &DiagnosticReport::new())
+        .expect("fixed state should append");
+
+    history
+        .append_report("still-clean", &DiagnosticReport::new())
+        .expect("clean state should append");
+
+    history
+        .append_report("reappeared", &duplicate_warning)
+        .expect("reappearance should append");
+
+    history.verify().expect("history should verify");
+
+    let timeline = history
+        .timeline(&fingerprint)
+        .expect("timeline should exist");
+
+    assert_eq!(timeline.schema, DIAGNOSTIC_TIMELINE_V1_SCHEMA,);
+
+    assert_eq!(timeline.history_runs, 6);
+    assert_eq!(timeline.active_runs(), 3);
+    assert_eq!(timeline.absent_runs(), 2);
+    assert_eq!(timeline.unseen_runs(), 1);
+    assert_eq!(timeline.first_seen_run, 1);
+    assert_eq!(timeline.last_seen_run, 5);
+    assert_eq!(timeline.reappearances, 1);
+
+    assert_eq!(
+        timeline
+            .runs
+            .iter()
+            .map(|run| run.phase)
+            .collect::<Vec<_>>(),
+        vec![
+            DiagnosticTimelinePhase::Unseen,
+            DiagnosticTimelinePhase::Active,
+            DiagnosticTimelinePhase::Active,
+            DiagnosticTimelinePhase::Absent,
+            DiagnosticTimelinePhase::Absent,
+            DiagnosticTimelinePhase::Active,
+        ],
+    );
+
+    assert!(
+        timeline.runs[1]
+            .events
+            .contains(&DiagnosticTimelineEvent::FirstSeen),
+    );
+
+    assert!(
+        timeline.runs[2]
+            .events
+            .contains(&DiagnosticTimelineEvent::Changed),
+    );
+
+    assert!(
+        timeline.runs[2]
+            .events
+            .contains(&DiagnosticTimelineEvent::SeverityIncreased),
+    );
+
+    assert!(
+        timeline.runs[3]
+            .events
+            .contains(&DiagnosticTimelineEvent::Resolved),
+    );
+
+    assert!(
+        timeline.runs[5]
+            .events
+            .contains(&DiagnosticTimelineEvent::Reappeared),
+    );
+
+    assert_eq!(timeline.runs[1].episode, Some(1));
+    assert_eq!(timeline.runs[2].episode, Some(1));
+    assert_eq!(timeline.runs[5].episode, Some(2));
+    assert_eq!(timeline.runs[5].instances, 2);
+
+    assert_eq!(timeline.clean_windows.len(), 2);
+
+    assert_eq!(
+        timeline.clean_windows[0].kind,
+        DiagnosticCleanWindowKind::BeforeFirstSeen,
+    );
+
+    assert_eq!(timeline.clean_windows[0].start_run, 0);
+    assert_eq!(timeline.clean_windows[0].end_run, 0);
+
+    assert_eq!(
+        timeline.clean_windows[1].kind,
+        DiagnosticCleanWindowKind::BetweenEpisodes,
+    );
+
+    assert_eq!(timeline.clean_windows[1].start_run, 3);
+    assert_eq!(timeline.clean_windows[1].end_run, 4);
+    assert_eq!(timeline.clean_windows[1].runs, 2);
+
+    let json = serde_json::to_string(&timeline).expect("timeline should serialize");
+
+    assert!(
+        !json.contains("configuration drift"),
+        "timeline must retain the privacy-light history boundary",
+    );
+
+    fs::remove_dir_all(root).expect("history should clean up");
+}
+
+#[test]
+fn timeline_classifies_post_resolution_clean_window() {
+    use diagprint::{DiagnosticCleanWindowKind, DiagnosticTimelineEvent};
+
+    let root = temporary_directory("timeline-resolved");
+
+    let report = issue_report("warning", 1);
+
+    let fingerprint = report
+        .iter()
+        .next()
+        .expect("report should contain a diagnostic")
+        .fingerprint()
+        .qualified();
+
+    let mut history = DiagnosticHistory::open(&root).expect("history should open");
+
+    history
+        .append_report("present", &report)
+        .expect("active run should append");
+
+    history
+        .append_report("resolved", &DiagnosticReport::new())
+        .expect("resolution should append");
+
+    history
+        .append_report("still-clean", &DiagnosticReport::new())
+        .expect("clean run should append");
+
+    let timeline = history
+        .timeline(&fingerprint)
+        .expect("timeline should exist");
+
+    assert_eq!(timeline.clean_windows.len(), 1);
+
+    assert_eq!(
+        timeline.clean_windows[0].kind,
+        DiagnosticCleanWindowKind::AfterResolution,
+    );
+
+    assert_eq!(timeline.clean_windows[0].start_run, 1);
+    assert_eq!(timeline.clean_windows[0].end_run, 2);
+
+    assert!(
+        timeline.runs[1]
+            .events
+            .contains(&DiagnosticTimelineEvent::Resolved),
+    );
+
+    fs::remove_dir_all(root).expect("history should clean up");
+}

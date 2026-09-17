@@ -310,8 +310,10 @@ pub use fingerprint::{
 };
 
 pub use forensics::{
-    DIAGNOSTIC_CASE_FILE_V1_SCHEMA, DiagnosticCaseFile, DiagnosticCaseRun, DiagnosticCaseStatus,
-    DiagnosticEpisode,
+    DIAGNOSTIC_CASE_FILE_V1_SCHEMA, DIAGNOSTIC_TIMELINE_V1_SCHEMA, DiagnosticCaseFile,
+    DiagnosticCaseRun, DiagnosticCaseStatus, DiagnosticCleanWindow, DiagnosticCleanWindowKind,
+    DiagnosticEpisode, DiagnosticTimeline, DiagnosticTimelineEvent, DiagnosticTimelinePhase,
+    DiagnosticTimelineRun,
 };
 
 pub use fixer::{FixCheck, FixError, FixPreview, FixReport, Fixer, RollbackFailure};

@@ -1,6 +1,7 @@
 use diagprint::{
     CapsuleProvenance, DIAGNOSTIC_HISTORY_RUN_V2_SCHEMA, DiagnosticCapsule,
-    DiagnosticCapsuleManifest, DiagnosticHistory, DiagnosticReport, Reporter,
+    DiagnosticCapsuleManifest, DiagnosticHistory, DiagnosticReport, DiagnosticTimelineEvent,
+    DiagnosticTimelinePhase, DiagnosticTimelineRun, Reporter,
     project_scan::{
         ProjectContext, ProjectScanProfile, ProjectScanner, ProjectTool, ProjectToolOutput,
     },
@@ -90,9 +91,12 @@ fn run() -> Result<i32, Box<dyn Error>> {
 
         "why" => run_why_command(args.collect()),
 
+
+
+        "timeline" => run_timeline_command(args.collect()),
         other => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            format!("unknown command {other:?}; expected `scan`, `capsule`, `history`, or `why`"),
+            format!("unknown command {other:?}; expected `scan`, `capsule`, `history`, `why`, or `timeline`"),
         )
         .into()),
     }
@@ -213,6 +217,25 @@ fn run_capsule_command(args: Vec<String>) -> Result<i32, Box<dyn Error>> {
     Ok(0)
 }
 
+fn run_timeline_command(args: Vec<String>) -> Result<i32, Box<dyn Error>> {
+    if args.len() == 1 && matches!(args[0].as_str(), "-h" | "--help" | "help") {
+        print_timeline_usage();
+        return Ok(0);
+    }
+
+    if args.len() != 2 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "usage: diagprint timeline <HISTORY> <FINGERPRINT>",
+        )
+        .into());
+    }
+
+    show_history_timeline(Path::new(&args[0]), &args[1])?;
+
+    Ok(0)
+}
+
 fn run_why_command(args: Vec<String>) -> Result<i32, Box<dyn Error>> {
     if args.len() == 1 && matches!(args[0].as_str(), "-h" | "--help" | "help") {
         print_why_usage();
@@ -280,6 +303,18 @@ fn run_history_command(args: Vec<String>) -> Result<i32, Box<dyn Error>> {
             show_history_fingerprints(Path::new(&args[1]))?;
         }
 
+        "timeline" => {
+            if args.len() != 3 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "usage: diagprint history timeline <HISTORY> <FINGERPRINT>",
+                )
+                .into());
+            }
+
+            show_history_timeline(Path::new(&args[1]), &args[2])?;
+        }
+
         "why" => {
             if args.len() != 3 {
                 return Err(io::Error::new(
@@ -308,7 +343,7 @@ fn run_history_command(args: Vec<String>) -> Result<i32, Box<dyn Error>> {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 format!(
-                    "unknown history command {other:?}; expected `verify`, `show`, `fingerprints`, `lineage`, or `why`"
+                    "unknown history command {other:?}; expected `verify`, `show`, `fingerprints`, `lineage`, `why`, or `timeline`"
                 ),
             )
             .into());
@@ -608,6 +643,176 @@ fn show_history_fingerprints(path: &Path) -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
+}
+
+fn show_history_timeline(path: &Path, query: &str) -> Result<(), Box<dyn Error>> {
+    let history = open_existing_history(path)?;
+
+    // Match `why`: presentation is permitted only after re-verifying the
+    // persisted chain immediately before constructing forensic evidence.
+    history.verify()?;
+
+    let fingerprint = resolve_fingerprint(&history, query)?;
+
+    let timeline = history.timeline(&fingerprint).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("no forensic timeline exists for diagnostic fingerprint {fingerprint:?}"),
+        )
+    })?;
+
+    println!("DIAGNOSTIC TIMELINE");
+    println!("schema: {}", timeline.schema);
+    println!("directory: {}", path.display());
+    println!("fingerprint: {}", timeline.fingerprint);
+    println!("status: {}", timeline.status.as_str());
+    println!("chain-verified: true");
+
+    match &timeline.chain_head {
+        Some(head) => {
+            println!("chain-head: {head}");
+        }
+
+        None => {
+            println!("chain-head: none");
+        }
+    }
+
+    println!("history-runs: {}", timeline.history_runs);
+    println!("active-runs: {}", timeline.active_runs());
+    println!("absent-runs: {}", timeline.absent_runs());
+    println!("unseen-runs: {}", timeline.unseen_runs());
+    println!("first-seen: {:06}", timeline.first_seen_run);
+    println!("last-seen: {:06}", timeline.last_seen_run);
+    println!("active-instances: {}", timeline.active_instances);
+    println!("reappearances: {}", timeline.reappearances);
+
+    println!();
+
+    let track = timeline
+        .runs
+        .iter()
+        .map(timeline_marker)
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    println!("TRACK  {track}");
+    println!(
+        "       ● first/active   ▲ severity+   ◆ changed   \
+○ resolved   ↻ reappeared   · absent/unseen"
+    );
+
+    println!();
+    println!("RUNS");
+
+    for run in &timeline.runs {
+        let marker = timeline_marker(run);
+
+        let episode = run
+            .episode
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_owned());
+
+        let severities = if run.severities.is_empty() {
+            "-".to_owned()
+        } else {
+            run.severities
+                .iter()
+                .map(|(severity, count)| format!("{severity}={count}"))
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
+
+        let events = if run.events.is_empty() {
+            "-".to_owned()
+        } else {
+            run.events
+                .iter()
+                .map(|event| event.as_str())
+                .collect::<Vec<_>>()
+                .join(",")
+        };
+
+        println!(
+            "  {marker} {:06} {:7} ep={} n={} severity=[{}] events=[{}] label={:?}",
+            run.run_index,
+            run.phase.as_str(),
+            episode,
+            run.instances,
+            severities,
+            events,
+            run.label,
+        );
+
+        if run.introduced_instances != 0
+            || run.resolved_instances != 0
+            || run.persisting_instances != 0
+            || run.changed_instances != 0
+            || run.severity_increases != 0
+        {
+            println!(
+                "      delta: new={} resolved={} persisting={} changed={} severity+={}",
+                run.introduced_instances,
+                run.resolved_instances,
+                run.persisting_instances,
+                run.changed_instances,
+                run.severity_increases,
+            );
+        }
+
+        for digest in &run.diagnostic_digests {
+            println!("      digest: {digest}");
+        }
+    }
+
+    println!();
+    println!("CLEAN WINDOWS");
+
+    if timeline.clean_windows.is_empty() {
+        println!("  none");
+    } else {
+        for window in &timeline.clean_windows {
+            println!(
+                "  {:06}..{:06} runs={} kind={}",
+                window.start_run,
+                window.end_run,
+                window.runs,
+                window.kind.as_str(),
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn timeline_marker(run: &DiagnosticTimelineRun) -> &'static str {
+    if run.events.contains(&DiagnosticTimelineEvent::Reappeared) {
+        return "↻";
+    }
+
+    if run
+        .events
+        .contains(&DiagnosticTimelineEvent::SeverityIncreased)
+    {
+        return "▲";
+    }
+
+    if run.events.contains(&DiagnosticTimelineEvent::Changed) {
+        return "◆";
+    }
+
+    if run.events.contains(&DiagnosticTimelineEvent::Resolved) {
+        return "○";
+    }
+
+    if run.events.contains(&DiagnosticTimelineEvent::FirstSeen) {
+        return "●";
+    }
+
+    match run.phase {
+        DiagnosticTimelinePhase::Active => "●",
+        DiagnosticTimelinePhase::Unseen | DiagnosticTimelinePhase::Absent => "·",
+    }
 }
 
 fn show_history_why(path: &Path, query: &str) -> Result<(), Box<dyn Error>> {
@@ -1316,6 +1521,7 @@ fn print_usage() {
            capsule    Verify or inspect a diagnostic capsule\n\
            history    Verify and inspect persistent diagnostic history\n\
            why        Build an evidence-backed diagnostic forensic case file\n\
+           timeline   Visualize one diagnostic across every retained run\n\
          \n\
          Run a command with --help for details."
     );
@@ -1390,10 +1596,12 @@ fn print_history_usage() {
            fingerprints   List logical finding identities and lifecycle state\n\
            lineage        Trace one logical finding across all recorded runs\n\
            why            Explain one finding as a forensic case file\n\
+           timeline       Visualize lifecycle, regressions, and clean windows\n\
          \n\
          FINGERPRINTS:\n\
-           lineage and why accept either the full canonical fingerprint or a\n\
-           unique leading hexadecimal prefix shown by `history fingerprints`."
+           lineage, why, and timeline accept either the full canonical\n\
+           fingerprint or a unique leading hexadecimal prefix shown by\n\
+           `history fingerprints`."
     );
 }
 fn print_why_usage() {
@@ -1409,5 +1617,30 @@ fn print_why_usage() {
          \n\
          The fingerprint may be complete or a unique leading hexadecimal prefix.\n\
          No source-control blame or root-cause inference is performed in v1."
+    );
+}
+
+fn print_timeline_usage() {
+    println!(
+        "diagprint timeline\n\
+         \n\
+         USAGE:\n\
+           diagprint timeline <HISTORY> <FINGERPRINT>\n\
+         \n\
+         DESCRIPTION:\n\
+           Verify diagnostic history and visualize one logical finding across\n\
+           every retained run, including unseen periods, active episodes,\n\
+           resolution, clean windows, changes, severity regressions, and\n\
+           reappearances.\n\
+         \n\
+         GLYPHS:\n\
+           ●  first observation or ordinary active run\n\
+           ▲  severity increase\n\
+           ◆  canonical content change\n\
+           ○  resolution transition\n\
+           ↻  reappearance after absence\n\
+           ·  absent or not-yet-seen run\n\
+         \n\
+         The fingerprint may be complete or a unique leading hexadecimal prefix."
     );
 }

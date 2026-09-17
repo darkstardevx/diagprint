@@ -94,8 +94,41 @@ attributes, or remediation payloads.
 This is the foundation for the larger Diagnostic Forensics roadmap:
 
 ```text
-why → timeline → blame → causal graph → replay
+why ✓ → timeline ✓ → blame → causal graph → replay
 ```
+
+### Visual Timeline
+
+The same evidence can be viewed run by run:
+
+```bash
+diagprint timeline .diagprint/history 7f23a9d5c120
+```
+
+```text
+DIAGNOSTIC TIMELINE
+status: active
+chain-verified: true
+
+TRACK  · ● ▲ ○ · ↻
+       ● first/active   ▲ severity+   ◆ changed   ○ resolved   ↻ reappeared   · absent/unseen
+
+RUNS
+  · 000000 unseen  ep=- n=0 severity=[-] events=[-] label="prehistory"
+  ● 000001 active  ep=1 n=1 severity=[warning=1] events=[first_seen] label="baseline"
+  ▲ 000002 active  ep=1 n=1 severity=[error=1] events=[changed,severity_increased] label="regression"
+  ○ 000003 absent  ep=- n=0 severity=[-] events=[resolved] label="fixed"
+  · 000004 absent  ep=- n=0 severity=[-] events=[-] label="still-clean"
+  ↻ 000005 active  ep=2 n=1 severity=[warning=1] events=[reappeared] label="regressed"
+
+CLEAN WINDOWS
+  000000..000000 runs=1 kind=before_first_seen
+  000003..000004 runs=2 kind=between_episodes
+```
+
+The visual glyph is only a compact presentation. The underlying timeline keeps
+the complete transition counts, severity distribution, canonical content
+digests, episode identity, and run labels.
 
 ## Installation
 

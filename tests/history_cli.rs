@@ -224,6 +224,40 @@ fn scan_history_verify_show_fingerprints_and_lineage_work_end_to_end() {
 
     assert!(output_text(&history_why).contains("DIAGNOSTIC CASE FILE",),);
 
+    let timeline = run(&["timeline", &history_text, short]);
+
+    assert!(
+        timeline.status.success(),
+        "diagprint timeline failed:\n{}",
+        output_text(&timeline),
+    );
+
+    let timeline_text = output_text(&timeline);
+
+    assert!(timeline_text.contains("DIAGNOSTIC TIMELINE",),);
+
+    assert!(timeline_text.contains("schema: diagprint.forensics.timeline/v1",),);
+
+    assert!(timeline_text.contains(&fingerprint,),);
+
+    assert!(timeline_text.contains("chain-verified: true",),);
+
+    assert!(timeline_text.contains("TRACK",),);
+
+    assert!(timeline_text.contains("RUNS",),);
+
+    assert!(timeline_text.contains("CLEAN WINDOWS",),);
+
+    let history_timeline = run(&["history", "timeline", &history_text, short]);
+
+    assert!(
+        history_timeline.status.success(),
+        "history timeline failed:\n{}",
+        output_text(&history_timeline),
+    );
+
+    assert!(output_text(&history_timeline).contains("DIAGNOSTIC TIMELINE",),);
+
     fs::remove_dir_all(root).expect("test project should clean up");
 }
 
