@@ -241,6 +241,7 @@ mod git_provenance;
 mod intelligence;
 pub mod interop;
 mod redaction;
+mod relationship;
 mod remediation;
 mod remediation_receipt;
 mod report;
@@ -349,6 +350,13 @@ pub use render::{GithubActionsDeltaRenderer, ReportRenderer, SeverityTheme, Styl
 
 pub use redaction::{
     REDACTED, RedactionPolicy, Sensitive, is_sensitive_key, sanitize_path, sanitize_url,
+};
+
+pub use relationship::{
+    DIAGNOSTIC_RELATIONSHIP_GRAPH_V1_SCHEMA, DIAGNOSTIC_RELATIONSHIP_SNAPSHOT_V1_SCHEMA,
+    DiagnosticRelationship, DiagnosticRelationshipError, DiagnosticRelationshipEvidence,
+    DiagnosticRelationshipGraph, DiagnosticRelationshipGraphBuilder, DiagnosticRelationshipKind,
+    DiagnosticRelationshipNode, DiagnosticRelationshipSnapshot,
 };
 
 pub use export::{

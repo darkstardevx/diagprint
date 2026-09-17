@@ -8,6 +8,21 @@ The project follows Semantic Versioning.
 
 ### Added
 
+- Added the M4 diagnostic relationship graph foundation with separate typed
+  relationship semantics and evidence provenance.
+- Added `diagprint.relationship.graph/v1` deterministic graph identity keyed by
+  canonical diagnostic fingerprints.
+- Added `diagprint.relationship.snapshot/v1` append-only history sidecars bound
+  to exact history-run, report, and graph digests.
+- Relationship snapshots require an exact fingerprint-set match with their
+  bound history run and reject tampering or conflicting replacement.
+- Explicit causal relationship kinds can only be represented by evidence
+  classes permitted to assert causal structure; temporal, tracing, structural,
+  and inferred evidence cannot silently become causal claims.
+- Symmetric relationship kinds are normalized for deterministic identity.
+- Added privacy tests proving persisted relationship evidence excludes
+  diagnostic messages and application text.
+
 - Added root `AGENTS.md` architecture and development guidance.
 - Added `.plans/` plan-first workflow and `scripts/plan`.
 - Added repository-owned `.githooks/pre-commit` and `scripts/install-hooks`.
