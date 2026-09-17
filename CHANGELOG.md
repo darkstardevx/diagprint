@@ -8,6 +8,21 @@ The project follows Semantic Versioning.
 
 ### Added
 
+- Added `diagprint.remediation.evidence/v1` history-bound remediation
+  evidence and `diagprint.forensics.remediation-replay/v1` read-only forensic
+  replay.
+- Added `diagprint replay <HISTORY> <FINGERPRINT> [--format text|json]` and the
+  matching `history replay` alias.
+- Added `diagprint history remediation-verify` for full remediation sidecar
+  verification.
+- Replay classifies target diagnostic transitions as introduced, resolved,
+  persisting, changed, or absent using canonical fingerprint/content evidence.
+- Later reappearance is labeled a regression after verified remediation only
+  when a verified post-apply transaction is followed by observed resolution
+  and subsequent reappearance of the same canonical fingerprint.
+- Replay explicitly keeps remediation causation, recurrence root cause, and Git
+  causation unestablished.
+
 - Added the ecosystem-neutral `diagprint-bridge` companion SDK for reusable
   adapter metadata, ephemeral construction node handles, report/graph assembly,
   logical identity handling, and shared bridge errors.

@@ -245,6 +245,7 @@ mod relationship;
 mod remediation;
 mod remediation_evidence;
 mod remediation_receipt;
+mod remediation_replay;
 mod report;
 mod reporter;
 mod result_ext;
@@ -374,6 +375,12 @@ pub use remediation_evidence::{
 pub use remediation_receipt::{
     REMEDIATION_RECEIPT_V1_SCHEMA, RemediationEffect, RemediationOutcome, RemediationPlanReceipt,
     RemediationReceipt, RemediationReceiptError, RemediationStatus,
+};
+
+pub use remediation_replay::{
+    DIAGNOSTIC_REMEDIATION_REPLAY_V1_SCHEMA, DiagnosticRemediationAssessment,
+    DiagnosticRemediationReplay, DiagnosticRemediationReplayStep, DiagnosticRemediationState,
+    RemediationReplayError,
 };
 
 pub use report::{DiagnosticReport, ReportStatus, SeverityCounts};

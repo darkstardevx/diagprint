@@ -104,3 +104,95 @@ diagprint.forensics.remediation-replay/v1
 from verified history plus verified remediation evidence.
 
 Replay is read-only and will never invoke `FixPlan::apply`.
+
+## Forensic replay schema
+
+M5B defines:
+
+```text
+diagprint.forensics.remediation-replay/v1
+```
+
+Replay is derived, not persisted.
+
+For one exact canonical diagnostic fingerprint, each verified remediation
+record becomes one chronological replay step containing:
+
+- before and after history run;
+- remediation status;
+- verification count;
+- receipt, plan descriptor, and evidence record digests;
+- target diagnostic instance counts before and after;
+- observed transition;
+- optional first later reappearance run;
+- explicit evidence assessment.
+
+Observed transitions are:
+
+```text
+introduced
+resolved
+persisting
+changed
+absent
+```
+
+`persisting` requires the sorted multiset of canonical diagnostic content
+digests to remain exactly equal. A multiplicity or content change under the
+same logical fingerprint is therefore `changed`.
+
+## Verified regression rule
+
+`regression_after_verified_remediation` is true only when:
+
+1. the evidence record is valid;
+2. remediation status is `verified`, meaning declared post-apply checks existed
+   and passed;
+3. the target fingerprint is active before the remediation;
+4. it is absent immediately afterward;
+5. the same canonical fingerprint appears in a later history run.
+
+An `applied` remediation with no declared post-apply checks can still show an
+observed resolution and later reappearance, but it is not labeled a
+verified-remediation regression.
+
+## Causation doctrine
+
+Replay always keeps these independent conclusions false in v1:
+
+```text
+remediation_caused_resolution_established
+recurrence_root_cause_established
+git_causation_established
+```
+
+Text output renders them as:
+
+```text
+remediation-caused-resolution: NOT ESTABLISHED
+recurrence-root-cause: NOT ESTABLISHED
+git-causation: NOT ESTABLISHED
+```
+
+## CLI
+
+Read-only replay:
+
+```text
+diagprint replay <HISTORY> <FINGERPRINT> [--format text|json]
+diagprint history replay <HISTORY> <FINGERPRINT> [--format text|json]
+```
+
+Evidence verification:
+
+```text
+diagprint history remediation-verify <HISTORY>
+```
+
+The fingerprint may be exact or a unique leading hexadecimal prefix at the CLI
+boundary.
+
+Both replay commands verify the diagnostic history and remediation evidence
+sidecars before presenting conclusions.
+
+No replay command applies edits or executes commands.

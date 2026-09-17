@@ -81,7 +81,7 @@ ecosystem.
 M4    Causal Diagnostic Graph                   COMPLETE
 E1A0  diagprint-bridge interoperability SDK     COMPLETE
 E1    error-stack                               COMPLETE
-M5    Replay / regression / remediation evidence ACTIVE PLAN
+M5    Replay / regression / remediation evidence M5B / FINAL CI CHECKPOINT
 E2    SNAFU                                     uses bridge SDK
 E3    eyre / color-eyre                         uses bridge SDK
 E4    tracing-error                             uses bridge SDK
@@ -92,7 +92,12 @@ public structured APIs, MSRV fit, and dependency cost.
 
 ## Milestone M5 — remediation evidence replay
 
-M5 has an active implementation plan.
+M5 has reached its final implementation CI checkpoint.
+
+M5A delivered append-only history-bound remediation evidence. M5B adds
+read-only per-fingerprint replay, later-reappearance analysis, strict
+verified-regression semantics, deterministic text/JSON CLI output, and
+remediation sidecar verification.
 
 It connects the existing `FixPlan`, `RemediationReceipt`, semantic delta, and
 tamper-evident history layers without creating another remediation engine.

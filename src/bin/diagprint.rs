@@ -3,9 +3,9 @@ use diagprint::{
     DiagnosticCapsuleManifest, DiagnosticHistory, DiagnosticRelationship,
     DiagnosticRelationshipDirection, DiagnosticRelationshipEvidence,
     DiagnosticRelationshipEvidenceFilter, DiagnosticRelationshipGraph,
-    DiagnosticRelationshipSnapshot, DiagnosticReport, DiagnosticTimeline, DiagnosticTimelineEvent,
-    DiagnosticTimelinePhase, DiagnosticTimelineRun, GitProvenanceBinding, GitProvenanceRecord,
-    Reporter,
+    DiagnosticRelationshipSnapshot, DiagnosticRemediationReplay, DiagnosticReport,
+    DiagnosticTimeline, DiagnosticTimelineEvent, DiagnosticTimelinePhase, DiagnosticTimelineRun,
+    GitProvenanceBinding, GitProvenanceRecord, Reporter,
     project_scan::{
         ProjectContext, ProjectScanProfile, ProjectScanner, ProjectTool, ProjectToolOutput,
     },
@@ -79,6 +79,12 @@ enum GraphOutputFormat {
     Text,
     Json,
     Dot,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ReplayOutputFormat {
+    Text,
+    Json,
 }
 
 #[derive(Debug)]
@@ -164,10 +170,12 @@ fn run() -> Result<i32, Box<dyn Error>> {
 
         "graph" => run_graph_command(args.collect()),
 
+        "replay" => run_replay_command(args.collect()),
+
         "blame" => run_blame_command(args.collect()),
         other => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            format!("unknown command {other:?}; expected `scan`, `capsule`, `history`, `why`, `timeline`, `graph`, or `blame`"),
+            format!("unknown command {other:?}; expected `scan`, `capsule`, `history`, `why`, `timeline`, `graph`, `replay`, or `blame`"),
         )
         .into()),
     }
@@ -536,6 +544,63 @@ fn run_graph_command(args: Vec<String>) -> Result<i32, Box<dyn Error>> {
     Ok(0)
 }
 
+fn run_replay_command(args: Vec<String>) -> Result<i32, Box<dyn Error>> {
+    if args.len() == 1 && matches!(args[0].as_str(), "-h" | "--help" | "help") {
+        print_replay_usage();
+        return Ok(0);
+    }
+
+    if args.len() < 2 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "usage: diagprint replay <HISTORY> <FINGERPRINT> [--format text|json]",
+        )
+        .into());
+    }
+
+    let mut format = ReplayOutputFormat::Text;
+    let mut index = 2usize;
+
+    while index < args.len() {
+        match args[index].as_str() {
+            "--format" => {
+                index += 1;
+
+                let Some(value) = args.get(index) else {
+                    return Err(missing_value("--format"));
+                };
+
+                format = match value.as_str() {
+                    "text" | "plain" => ReplayOutputFormat::Text,
+                    "json" => ReplayOutputFormat::Json,
+
+                    _ => {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            format!("unknown replay format {value:?}; expected text or json"),
+                        )
+                        .into());
+                    }
+                };
+            }
+
+            other => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("unknown replay option {other:?}"),
+                )
+                .into());
+            }
+        }
+
+        index += 1;
+    }
+
+    show_remediation_replay(Path::new(&args[0]), &args[1], format)?;
+
+    Ok(0)
+}
+
 fn run_why_command(args: Vec<String>) -> Result<i32, Box<dyn Error>> {
     if args.len() == 1 && matches!(args[0].as_str(), "-h" | "--help" | "help") {
         print_why_usage();
@@ -623,6 +688,22 @@ fn run_history_command(args: Vec<String>) -> Result<i32, Box<dyn Error>> {
             run_graph_command(args[1..].to_vec())?;
         }
 
+        "replay" => {
+            run_replay_command(args[1..].to_vec())?;
+        }
+
+        "remediation-verify" => {
+            if args.len() != 2 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "usage: diagprint history remediation-verify <HISTORY>",
+                )
+                .into());
+            }
+
+            verify_remediation_evidence(Path::new(&args[1]))?;
+        }
+
         "why" => {
             if args.len() != 3 {
                 return Err(io::Error::new(
@@ -651,7 +732,7 @@ fn run_history_command(args: Vec<String>) -> Result<i32, Box<dyn Error>> {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 format!(
-                    "unknown history command {other:?}; expected `verify`, `show`, `fingerprints`, `lineage`, `why`, `timeline`, `graph`, or `git-bind`"
+                    "unknown history command {other:?}; expected `verify`, `show`, `fingerprints`, `lineage`, `why`, `timeline`, `graph`, `replay`, `remediation-verify`, or `git-bind`"
                 ),
             )
             .into());
@@ -732,6 +813,37 @@ fn verify_history(path: &Path) -> Result<(), Box<dyn Error>> {
     if let Some(latest) = history.latest() {
         println!("latest-run: {:06}", latest.index);
         println!("latest-report: {}", latest.report_digest);
+    }
+
+    Ok(())
+}
+
+fn verify_remediation_evidence(path: &Path) -> Result<(), Box<dyn Error>> {
+    let history = open_existing_history(path)?;
+
+    history.verify_remediation_evidence()?;
+
+    let records = history.remediation_evidence_records()?;
+
+    println!("REMEDIATION EVIDENCE VERIFIED");
+    println!("directory: {}", path.display());
+    println!("history-runs: {}", history.len());
+    println!("records: {}", records.len());
+
+    match history.head_digest() {
+        Some(head) => println!("chain-head: {head}"),
+        None => println!("chain-head: none"),
+    }
+
+    for record in records {
+        println!(
+            "  {:06}->{:06} status={} effect={} record={}",
+            record.before_run,
+            record.after_run,
+            record.remediation_status,
+            record.effect.resolved + record.effect.new + record.effect.changed,
+            record.record_digest,
+        );
     }
 
     Ok(())
@@ -1096,6 +1208,111 @@ fn show_history_timeline(path: &Path, query: &str) -> Result<(), Box<dyn Error>>
     }
 
     Ok(())
+}
+
+fn show_remediation_replay(
+    path: &Path,
+    query: &str,
+    format: ReplayOutputFormat,
+) -> Result<(), Box<dyn Error>> {
+    let history = open_existing_history(path)?;
+
+    history.verify_remediation_evidence()?;
+
+    let fingerprint = resolve_fingerprint(&history, query)?;
+    let replay = history.remediation_replay(&fingerprint)?;
+
+    match format {
+        ReplayOutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(&replay)?);
+        }
+
+        ReplayOutputFormat::Text => {
+            print_remediation_replay_text(path, &replay);
+        }
+    }
+
+    Ok(())
+}
+
+fn print_remediation_replay_text(path: &Path, replay: &DiagnosticRemediationReplay) {
+    println!("DIAGNOSTIC REMEDIATION REPLAY");
+    println!("schema: {}", replay.schema);
+    println!("directory: {}", path.display());
+    println!("fingerprint: {}", replay.fingerprint);
+    println!("history-chain-verified: {}", replay.history_chain_verified);
+    println!(
+        "remediation-records-verified: {}",
+        replay.remediation_records_verified
+    );
+
+    match replay.history_chain_head {
+        Some(head) => println!("chain-head: {head}"),
+        None => println!("chain-head: none"),
+    }
+
+    println!("history-runs: {}", replay.history_runs);
+    println!("remediation-records: {}", replay.remediation_records);
+    println!("verified-regressions: {}", replay.verified_regressions);
+
+    println!();
+    println!("STEPS");
+
+    if replay.steps.is_empty() {
+        println!("  none");
+    }
+
+    for (index, step) in replay.steps.iter().enumerate() {
+        println!(
+            "  STEP {:02}  {:06}->{:06}",
+            index + 1,
+            step.before_run,
+            step.after_run,
+        );
+
+        println!("    remediation-status: {}", step.remediation_status);
+        println!("    verification-checks: {}", step.verification_checks);
+        println!("    evidence-record: {}", step.evidence_record_digest);
+        println!("    receipt: {}", step.receipt_digest);
+        println!("    plan: {}", step.plan_descriptor_digest);
+        println!("    before-instances: {}", step.before_instances);
+        println!("    after-instances: {}", step.after_instances);
+        println!(
+            "    observed-transition: {}",
+            step.observed_transition.as_str()
+        );
+
+        match step.later_reappearance_run {
+            Some(run) => println!("    later-reappearance: run={run:06}"),
+            None => println!("    later-reappearance: none"),
+        }
+
+        println!(
+            "    regression-after-verified-remediation: {}",
+            if step.assessment.regression_after_verified_remediation {
+                "OBSERVED"
+            } else {
+                "NOT OBSERVED"
+            }
+        );
+    }
+
+    println!();
+    println!("ASSESSMENT");
+    println!("  history-chain: VERIFIED");
+    println!("  remediation-records: VERIFIED");
+    println!(
+        "  regression-after-verified-remediation: {}",
+        if replay.has_verified_regression() {
+            "OBSERVED"
+        } else {
+            "NOT OBSERVED"
+        }
+    );
+    println!("  remediation-caused-resolution: NOT ESTABLISHED");
+    println!("  recurrence-root-cause: NOT ESTABLISHED");
+    println!("  git-causation: NOT ESTABLISHED");
+    println!("  note: replay reconstructs verified historical evidence; it never reapplies edits");
 }
 
 fn timeline_marker(run: &DiagnosticTimelineRun) -> &'static str {
@@ -2699,6 +2916,7 @@ fn print_usage() {
            diagprint history <COMMAND> <HISTORY>\n\
            diagprint why <HISTORY> <FINGERPRINT>\n\
            diagprint graph <HISTORY> <FINGERPRINT> [OPTIONS]\n\
+           diagprint replay <HISTORY> <FINGERPRINT> [--format text|json]\n\
          \n\
          COMMANDS:\n\
            scan       Scan a project and produce diagnostics\n\
@@ -2707,6 +2925,7 @@ fn print_usage() {
            why        Build an evidence-backed diagnostic forensic case file\n\
            timeline   Visualize one diagnostic across every retained run\n\
            graph      Traverse verified diagnostic relationship evidence\n\
+           replay     Replay verified remediation evidence without applying edits\n\
            blame      Bind diagnostic transitions to verified Git provenance\n\
          \n\
          Run a command with --help for details."
@@ -2782,6 +3001,8 @@ fn print_history_usage() {
            diagprint history lineage <HISTORY> <FINGERPRINT>\n\
            diagprint history why <HISTORY> <FINGERPRINT>\n\
            diagprint history graph <HISTORY> <FINGERPRINT> [OPTIONS]\n\
+           diagprint history replay <HISTORY> <FINGERPRINT> [--format text|json]\n\
+           diagprint history remediation-verify <HISTORY>\n\
          \n\
          COMMANDS:\n\
            verify         Verify run digests, chain links, sequence, and head\n\
@@ -2791,10 +3012,12 @@ fn print_history_usage() {
            why            Explain one finding as a forensic case file\n\
            timeline       Visualize lifecycle, regressions, and clean windows\n\
            graph          Traverse relationship evidence and causal cascades\n\
+           replay         Reconstruct verified remediation/regression evidence\n\
+           remediation-verify Verify every remediation evidence sidecar\n\
            git-bind       Backfill an explicit user-asserted Git/run binding\n\
          \n\
          FINGERPRINTS:\n\
-           lineage, why, and timeline accept either the full canonical\n\
+           lineage, why, timeline, and replay accept either the full canonical\n\
            fingerprint or a unique leading hexadecimal prefix shown by\n\
            `history fingerprints`."
     );
@@ -2863,6 +3086,32 @@ fn print_timeline_usage() {
            ·  absent or not-yet-seen run\n\
          \n\
          The fingerprint may be complete or a unique leading hexadecimal prefix."
+    );
+}
+
+fn print_replay_usage() {
+    println!(
+        "diagprint replay\n\
+         \n\
+         USAGE:\n\
+           diagprint replay <HISTORY> <FINGERPRINT> [--format text|json]\n\
+         \n\
+         OPTIONS:\n\
+           --format <text|json>   Output format (default: text)\n\
+           -h, --help\n\
+         \n\
+         DESCRIPTION:\n\
+           Verify the diagnostic-history chain and every remediation evidence\n\
+           sidecar, resolve one canonical fingerprint, and reconstruct how that\n\
+           diagnostic was observed across remediation-bound transitions.\n\
+         \n\
+         Replay is read-only. It never reapplies a FixPlan or executes commands.\n\
+         A verified-remediation regression requires an observed resolution after\n\
+         a remediation with declared post-apply verification, followed by later\n\
+         reappearance of the same canonical fingerprint.\n\
+         \n\
+         This establishes historical evidence, not causal attribution. Resolution\n\
+         causation, recurrence root cause, and Git causation remain NOT ESTABLISHED."
     );
 }
 

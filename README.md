@@ -261,6 +261,27 @@ explicit opt-in; opaque attachment values are not exported.
 
 Applications that only need core diagprint do not depend on `error-stack`.
 
+
+## Remediation evidence replay
+
+diagprint can bind a successful guarded remediation receipt to an exact
+adjacent transition in tamper-evident diagnostic history, then replay that
+evidence later without reapplying edits.
+
+```text
+diagprint replay <HISTORY> <FINGERPRINT>
+diagprint replay <HISTORY> <FINGERPRINT> --format json
+diagprint history remediation-verify <HISTORY>
+```
+
+Replay distinguishes observed diagnostic lifecycle evidence from causal claims.
+A diagnostic may be reported as reappearing after an observed resolution
+associated with a verified remediation, while remediation causation,
+recurrence root cause, and Git causation remain explicitly **not established**.
+
+Replay is read-only: it never invokes `FixPlan::apply` or executes shell
+commands.
+
 ## Installation
 
 ```toml
