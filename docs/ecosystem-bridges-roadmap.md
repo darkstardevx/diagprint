@@ -81,7 +81,7 @@ ecosystem.
 M4    Causal Diagnostic Graph                   COMPLETE
 E1A0  diagprint-bridge interoperability SDK     COMPLETE
 E1    error-stack                               COMPLETE
-M5    Replay / regression / remediation evidence NEXT
+M5    Replay / regression / remediation evidence ACTIVE PLAN
 E2    SNAFU                                     uses bridge SDK
 E3    eyre / color-eyre                         uses bridge SDK
 E4    tracing-error                             uses bridge SDK
@@ -89,6 +89,28 @@ E4    tracing-error                             uses bridge SDK
 
 Additional bridges are selected based on ecosystem value, maintenance quality,
 public structured APIs, MSRV fit, and dependency cost.
+
+## Milestone M5 — remediation evidence replay
+
+M5 has an active implementation plan.
+
+It connects the existing `FixPlan`, `RemediationReceipt`, semantic delta, and
+tamper-evident history layers without creating another remediation engine.
+
+The central rule is:
+
+```text
+replay evidence, not edits
+```
+
+A remediation evidence record must bind an exact receipt to two adjacent
+verified history runs and require the receipt's aggregate semantic effect to
+match the history transition exactly.
+
+`diagprint replay` will be read-only forensic reconstruction. It may report
+that the same canonical diagnostic reappeared after a verified remediation and
+observed resolution, but it will not claim that remediation caused the original
+resolution or that the recurrence has the same root cause.
 
 ## Bridge E1 — error-stack
 
