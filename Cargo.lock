@@ -415,6 +415,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "diagprint-error-stack"
+version = "0.7.0"
+dependencies = [
+ "diagprint",
+ "diagprint-bridge",
+ "error-stack",
+]
+
+[[package]]
 name = "diagprint-lsp"
 version = "0.7.0"
 dependencies = [
@@ -511,6 +520,16 @@ checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "error-stack"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d01a8d4d427153bae0c38ca68d7912cbf9903fdcc97ecac18801738b3656a46d"
+dependencies = [
+ "anyhow",
+ "rustc_version",
 ]
 
 [[package]]

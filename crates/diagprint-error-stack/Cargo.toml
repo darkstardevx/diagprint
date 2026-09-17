@@ -1,0 +1,26 @@
+[package]
+name = "diagprint-error-stack"
+version = "0.7.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Structured error-stack interoperability for diagprint."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/darkstardevx/diagprint"
+homepage = "https://github.com/darkstardevx/diagprint"
+documentation = "https://docs.rs/diagprint-error-stack"
+readme = "README.md"
+keywords = ["diagnostics", "errors", "error-stack", "interop", "reporting"]
+categories = ["development-tools::debugging", "rust-patterns"]
+
+[dependencies.diagprint]
+version = "0.7.0"
+path = "../.."
+
+[dependencies.diagprint-bridge]
+version = "0.7.0"
+path = "../diagprint-bridge"
+
+[dependencies.error-stack]
+version = "0.8"
+default-features = false
+features = ["std"]

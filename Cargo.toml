@@ -213,6 +213,7 @@ required-features = ["annotate-snippets"]
 members = [
     "crates/diagprint-bridge",
     "crates/diagprint-derive",
+    "crates/diagprint-error-stack",
     "crates/diagprint-lsp",
     "crates/diagprint-async",
     "crates/diagprint-otel",
