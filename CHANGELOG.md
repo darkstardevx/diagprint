@@ -8,6 +8,19 @@ The project follows Semantic Versioning.
 
 ### Added
 
+- Added the ecosystem-neutral `diagprint-bridge` companion SDK for reusable
+  adapter metadata, ephemeral construction node handles, report/graph assembly,
+  logical identity handling, and shared bridge errors.
+- Added `diagprint-error-stack`, the first adapter built on `diagprint-bridge`.
+- Added support for both single-context `Report<C>` and grouped `Report<[C]>`
+  error-stack reports without inventing sibling relationships.
+- Error-stack source chains map to M4 `contributes_to` relationships with
+  `source_chain` evidence; the adapter does not invent stronger `causes` edges.
+- Error-stack attachment contents are omitted by default. Printable attachment
+  text can be explicitly retained while opaque attachment values remain private.
+- Registered both interoperability crates with package-readiness and companion
+  release gates while retaining Rust 1.85 workspace validation.
+
 - Added cycle-safe, depth-bounded upstream/downstream/bidirectional traversal
   for diagnostic relationship graphs.
 - Added explicit causal cascade analysis over recorded `causes` and

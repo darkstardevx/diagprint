@@ -5,6 +5,8 @@ msrv="1.85.0"
 
 packages=(
     diagprint
+    diagprint-bridge
+    diagprint-error-stack
     diagprint-derive
     diagprint-lsp
     diagprint-async
@@ -340,6 +342,8 @@ run_satellite_release() {
     require_clean_tree
 
     local satellites=(
+        diagprint-bridge
+        diagprint-error-stack
         diagprint-lsp
         diagprint-async
         diagprint-otel

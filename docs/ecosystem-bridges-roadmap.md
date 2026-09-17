@@ -79,8 +79,8 @@ ecosystem.
 
 ```text
 M4    Causal Diagnostic Graph                   COMPLETE
-E1A0  diagprint-bridge interoperability SDK     ACTIVE PLAN
-E1    error-stack                               ACTIVE PLAN
+E1A0  diagprint-bridge interoperability SDK     COMPLETE
+E1    error-stack                               E1B / CI CHECKPOINT
 M5    Replay / regression / remediation evidence
 E2    SNAFU                                     uses bridge SDK
 E3    eyre / color-eyre                         uses bridge SDK

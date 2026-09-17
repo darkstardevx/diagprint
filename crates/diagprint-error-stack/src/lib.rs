@@ -1,13 +1,12 @@
 //! Structured [`error_stack`] interoperability for diagprint.
 //!
 //! This crate is the first ecosystem adapter built on
-//! [`diagprint_bridge`]. It keeps `error-stack`-specific frame traversal here
-//! while delegating normalized diagnostic/report/relationship assembly to the
-//! reusable bridge SDK.
+//! [`diagprint_bridge`]. It keeps `error-stack`-specific traversal and privacy
+//! policy here while delegating normalized diagnostic/report/relationship
+//! assembly to the reusable bridge SDK.
 //!
-//! E1A supports stable single-context [`error_stack::Report<C>`] conversion.
-//! Grouped `Report<[C]>` conversion and explicit attachment-content policy are
-//! added in E1B.
+//! Stable single-context [`error_stack::Report<C>`] and grouped
+//! `Report<[C]>` values are both supported.
 //!
 //! # Structural conversion
 //!
@@ -16,8 +15,16 @@
 //! `Display` or `Debug` representation of a report.
 //!
 //! Context frames become diagnostic instances. Attachment frames are
-//! traversal-transparent in E1A: their content is not read or exported, but
-//! their source edges are followed so context topology is preserved.
+//! traversal-transparent so source topology survives across attachments.
+//!
+//! # Attachment privacy
+//!
+//! Attachment content is omitted by default. Call
+//! [`ErrorStackBridge::with_attachment_policy`] with
+//! [`ErrorStackAttachmentPolicy::PrintableText`] to intentionally retain the
+//! `Display` text of printable attachments as diagnostic notes.
+//!
+//! Opaque attachment values are never exported by this adapter.
 
 use diagprint::{
     DiagnosticRelationshipEvidence, DiagnosticRelationshipGraph, DiagnosticRelationshipKind,
@@ -27,7 +34,7 @@ use diagprint_bridge::{
     BridgeBuildStats, BridgeDiagnosticMetadata, BridgeError, BridgeNodeId, BridgeOutput,
     BridgeOutputBuilder,
 };
-use error_stack::{Frame, FrameKind, Report};
+use error_stack::{AttachmentKind, Frame, FrameKind, Report};
 use std::{
     collections::{BTreeMap, BTreeSet},
     error::Error,
@@ -35,11 +42,21 @@ use std::{
 };
 
 const PRODUCER: &str = "error-stack";
+const ATTACHMENT_NOTE_PREFIX: &str = "error-stack attachment: ";
 
-/// Structured `error-stack` context exposed to application mappers.
-///
-/// `depth` is presentation/traversal metadata only. It is never used as
-/// canonical identity.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ErrorStackAttachmentPolicy {
+    #[default]
+    Omit,
+    PrintableText,
+}
+
+impl ErrorStackAttachmentPolicy {
+    pub const fn includes_printable_text(self) -> bool {
+        matches!(self, Self::PrintableText)
+    }
+}
+
 pub struct ErrorStackContextView<'a> {
     frame: &'a Frame,
     context: &'a (dyn Error + Send + Sync + 'static),
@@ -60,11 +77,6 @@ impl<'a> ErrorStackContextView<'a> {
     }
 }
 
-/// Maps one structured `error-stack` context into reusable bridge metadata.
-///
-/// Implementations can use [`Frame::downcast_ref`] to inspect known context
-/// types and return [`BridgeDiagnosticMetadata`] with domain-specific code,
-/// severity, help, notes, or logical identity.
 pub trait ErrorStackContextMapper {
     fn map(&self, view: ErrorStackContextView<'_>)
     -> Result<BridgeDiagnosticMetadata, BridgeError>;
@@ -82,10 +94,6 @@ where
     }
 }
 
-/// Default mapping for arbitrary stable `error-stack` contexts.
-///
-/// The context object's own `Display` text becomes the diagnostic message.
-/// No synthetic external logical identity is invented.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct DefaultErrorStackContextMapper;
 
@@ -98,15 +106,14 @@ impl ErrorStackContextMapper for DefaultErrorStackContextMapper {
     }
 }
 
-/// Completed `error-stack` conversion.
-///
-/// Adapter-specific frame counts remain here while the generic report, graph,
-/// and bridge statistics come from [`BridgeOutput`].
 #[derive(Debug)]
 pub struct ErrorStackBridgeOutput {
     bridge: BridgeOutput,
     context_frames: usize,
     attachment_frames: usize,
+    printable_attachment_frames: usize,
+    opaque_attachment_frames: usize,
+    included_printable_attachments: usize,
 }
 
 impl ErrorStackBridgeOutput {
@@ -134,21 +141,34 @@ impl ErrorStackBridgeOutput {
         self.attachment_frames
     }
 
+    pub const fn printable_attachment_frames(&self) -> usize {
+        self.printable_attachment_frames
+    }
+
+    pub const fn opaque_attachment_frames(&self) -> usize {
+        self.opaque_attachment_frames
+    }
+
+    pub const fn included_printable_attachments(&self) -> usize {
+        self.included_printable_attachments
+    }
+
     pub fn into_bridge(self) -> BridgeOutput {
         self.bridge
     }
 }
 
-/// Converts stable `error-stack` structure through the reusable bridge SDK.
 #[derive(Debug, Clone)]
 pub struct ErrorStackBridge<M = DefaultErrorStackContextMapper> {
     mapper: M,
+    attachment_policy: ErrorStackAttachmentPolicy,
 }
 
 impl ErrorStackBridge<DefaultErrorStackContextMapper> {
     pub const fn new() -> Self {
         Self {
             mapper: DefaultErrorStackContextMapper,
+            attachment_policy: ErrorStackAttachmentPolicy::Omit,
         }
     }
 }
@@ -164,10 +184,24 @@ where
     M: ErrorStackContextMapper,
 {
     pub const fn with_mapper(mapper: M) -> Self {
-        Self { mapper }
+        Self {
+            mapper,
+            attachment_policy: ErrorStackAttachmentPolicy::Omit,
+        }
     }
 
-    /// Converts one single-context `error-stack::Report<C>`.
+    pub const fn with_attachment_policy(
+        mut self,
+        attachment_policy: ErrorStackAttachmentPolicy,
+    ) -> Self {
+        self.attachment_policy = attachment_policy;
+        self
+    }
+
+    pub const fn attachment_policy(&self) -> ErrorStackAttachmentPolicy {
+        self.attachment_policy
+    }
+
     pub fn convert<C>(
         &self,
         report: &Report<C>,
@@ -176,13 +210,30 @@ where
     where
         C: Error + Send + Sync + 'static,
     {
-        let mut traversal = Traversal::new(&self.mapper, reporter)?;
-        traversal.walk(report.current_frame(), 0)?;
+        let mut traversal = Traversal::new(&self.mapper, reporter, self.attachment_policy)?;
+
+        traversal.walk(report.current_frame(), 0, Vec::new())?;
+        traversal.finish()
+    }
+
+    pub fn convert_grouped<C>(
+        &self,
+        report: &Report<[C]>,
+        reporter: &Reporter,
+    ) -> Result<ErrorStackBridgeOutput, ErrorStackBridgeError>
+    where
+        C: Error + Send + Sync + 'static,
+    {
+        let mut traversal = Traversal::new(&self.mapper, reporter, self.attachment_policy)?;
+
+        for current in report.current_frames() {
+            traversal.walk(current, 0, Vec::new())?;
+        }
+
         traversal.finish()
     }
 }
 
-/// Convenience conversion methods for single-context reports.
 pub trait ErrorStackReportExt {
     fn to_diagprint(
         &self,
@@ -193,6 +244,21 @@ pub trait ErrorStackReportExt {
         &self,
         reporter: &Reporter,
         mapper: &M,
+    ) -> Result<ErrorStackBridgeOutput, ErrorStackBridgeError>
+    where
+        M: ErrorStackContextMapper + ?Sized;
+
+    fn to_diagprint_with_policy(
+        &self,
+        reporter: &Reporter,
+        policy: ErrorStackAttachmentPolicy,
+    ) -> Result<ErrorStackBridgeOutput, ErrorStackBridgeError>;
+
+    fn to_diagprint_with_mapper_and_policy<M>(
+        &self,
+        reporter: &Reporter,
+        mapper: &M,
+        policy: ErrorStackAttachmentPolicy,
     ) -> Result<ErrorStackBridgeOutput, ErrorStackBridgeError>
     where
         M: ErrorStackContextMapper + ?Sized;
@@ -219,6 +285,77 @@ where
     {
         ErrorStackBridge::with_mapper(mapper).convert(self, reporter)
     }
+
+    fn to_diagprint_with_policy(
+        &self,
+        reporter: &Reporter,
+        policy: ErrorStackAttachmentPolicy,
+    ) -> Result<ErrorStackBridgeOutput, ErrorStackBridgeError> {
+        ErrorStackBridge::new()
+            .with_attachment_policy(policy)
+            .convert(self, reporter)
+    }
+
+    fn to_diagprint_with_mapper_and_policy<M>(
+        &self,
+        reporter: &Reporter,
+        mapper: &M,
+        policy: ErrorStackAttachmentPolicy,
+    ) -> Result<ErrorStackBridgeOutput, ErrorStackBridgeError>
+    where
+        M: ErrorStackContextMapper + ?Sized,
+    {
+        ErrorStackBridge::with_mapper(mapper)
+            .with_attachment_policy(policy)
+            .convert(self, reporter)
+    }
+}
+
+impl<C> ErrorStackReportExt for Report<[C]>
+where
+    C: Error + Send + Sync + 'static,
+{
+    fn to_diagprint(
+        &self,
+        reporter: &Reporter,
+    ) -> Result<ErrorStackBridgeOutput, ErrorStackBridgeError> {
+        ErrorStackBridge::new().convert_grouped(self, reporter)
+    }
+
+    fn to_diagprint_with<M>(
+        &self,
+        reporter: &Reporter,
+        mapper: &M,
+    ) -> Result<ErrorStackBridgeOutput, ErrorStackBridgeError>
+    where
+        M: ErrorStackContextMapper + ?Sized,
+    {
+        ErrorStackBridge::with_mapper(mapper).convert_grouped(self, reporter)
+    }
+
+    fn to_diagprint_with_policy(
+        &self,
+        reporter: &Reporter,
+        policy: ErrorStackAttachmentPolicy,
+    ) -> Result<ErrorStackBridgeOutput, ErrorStackBridgeError> {
+        ErrorStackBridge::new()
+            .with_attachment_policy(policy)
+            .convert_grouped(self, reporter)
+    }
+
+    fn to_diagprint_with_mapper_and_policy<M>(
+        &self,
+        reporter: &Reporter,
+        mapper: &M,
+        policy: ErrorStackAttachmentPolicy,
+    ) -> Result<ErrorStackBridgeOutput, ErrorStackBridgeError>
+    where
+        M: ErrorStackContextMapper + ?Sized,
+    {
+        ErrorStackBridge::with_mapper(mapper)
+            .with_attachment_policy(policy)
+            .convert_grouped(self, reporter)
+    }
 }
 
 #[derive(Clone)]
@@ -232,10 +369,14 @@ where
     M: ErrorStackContextMapper + ?Sized,
 {
     mapper: &'mapper M,
+    attachment_policy: ErrorStackAttachmentPolicy,
     builder: BridgeOutputBuilder<'reporter>,
     visited: BTreeMap<usize, VisitState>,
     context_frames: usize,
     attachment_frames: usize,
+    printable_attachment_frames: usize,
+    opaque_attachment_frames: usize,
+    included_printable_attachments: usize,
 }
 
 impl<'mapper, 'reporter, M> Traversal<'mapper, 'reporter, M>
@@ -245,24 +386,26 @@ where
     fn new(
         mapper: &'mapper M,
         reporter: &'reporter Reporter,
+        attachment_policy: ErrorStackAttachmentPolicy,
     ) -> Result<Self, ErrorStackBridgeError> {
         Ok(Self {
             mapper,
+            attachment_policy,
             builder: BridgeOutputBuilder::new(reporter, PRODUCER)?,
             visited: BTreeMap::new(),
             context_frames: 0,
             attachment_frames: 0,
+            printable_attachment_frames: 0,
+            opaque_attachment_frames: 0,
+            included_printable_attachments: 0,
         })
     }
 
-    /// Returns the nearest context node(s) represented at or below this frame.
-    ///
-    /// Frame addresses are used only as ephemeral traversal memoization keys.
-    /// They never become `BridgeNodeId`, canonical identity, or durable output.
     fn walk(
         &mut self,
         frame: &Frame,
         depth: usize,
+        pending_printable: Vec<String>,
     ) -> Result<Vec<BridgeNodeId>, ErrorStackBridgeError> {
         let frame_key = frame as *const Frame as usize;
 
@@ -279,17 +422,23 @@ where
             FrameKind::Context(context) => {
                 self.context_frames = self.context_frames.saturating_add(1);
 
-                let metadata = self.mapper.map(ErrorStackContextView {
+                let mut metadata = self.mapper.map(ErrorStackContextView {
                     frame,
                     context,
                     depth,
                 })?;
 
+                for attachment in pending_printable {
+                    metadata = metadata.note(format!("{ATTACHMENT_NOTE_PREFIX}{attachment}"));
+                    self.included_printable_attachments =
+                        self.included_printable_attachments.saturating_add(1);
+                }
+
                 let current = self.builder.push(metadata)?;
                 let mut source_nodes = BTreeSet::new();
 
                 for source in frame.sources() {
-                    source_nodes.extend(self.walk(source, depth.saturating_add(1))?);
+                    source_nodes.extend(self.walk(source, depth.saturating_add(1), Vec::new())?);
                 }
 
                 for source in source_nodes {
@@ -304,13 +453,37 @@ where
                 vec![current]
             }
 
-            FrameKind::Attachment(_) => {
+            FrameKind::Attachment(kind) => {
                 self.attachment_frames = self.attachment_frames.saturating_add(1);
+
+                let mut pending_printable = pending_printable;
+
+                match kind {
+                    AttachmentKind::Printable(value) => {
+                        self.printable_attachment_frames =
+                            self.printable_attachment_frames.saturating_add(1);
+
+                        if self.attachment_policy.includes_printable_text() {
+                            pending_printable.push(value.to_string());
+                        }
+                    }
+
+                    AttachmentKind::Opaque(_) => {
+                        self.opaque_attachment_frames =
+                            self.opaque_attachment_frames.saturating_add(1);
+                    }
+
+                    _ => {}
+                }
 
                 let mut nearest = BTreeSet::new();
 
                 for source in frame.sources() {
-                    nearest.extend(self.walk(source, depth.saturating_add(1))?);
+                    nearest.extend(self.walk(
+                        source,
+                        depth.saturating_add(1),
+                        pending_printable.clone(),
+                    )?);
                 }
 
                 nearest.into_iter().collect()
@@ -328,6 +501,9 @@ where
             bridge: self.builder.finish()?,
             context_frames: self.context_frames,
             attachment_frames: self.attachment_frames,
+            printable_attachment_frames: self.printable_attachment_frames,
+            opaque_attachment_frames: self.opaque_attachment_frames,
+            included_printable_attachments: self.included_printable_attachments,
         })
     }
 }

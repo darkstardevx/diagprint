@@ -421,6 +421,7 @@ dependencies = [
  "diagprint",
  "diagprint-bridge",
  "error-stack",
+ "serde_json",
 ]
 
 [[package]]

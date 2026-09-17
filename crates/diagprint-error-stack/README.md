@@ -6,33 +6,34 @@ interoperability for [`diagprint`](https://crates.io/crates/diagprint).
 This is the first ecosystem adapter built on the reusable
 [`diagprint-bridge`](https://crates.io/crates/diagprint-bridge) SDK.
 
-The adapter keeps `error-stack`-specific traversal local while the SDK owns
-normalized metadata, diagnostic report assembly, logical identity handling, and
-M4 relationship graph construction.
+The adapter keeps `error-stack`-specific traversal and privacy policy local
+while the SDK owns normalized metadata, diagnostic report assembly, logical
+identity handling, and M4 relationship graph construction.
 
-## E1A support
+## Supported reports
 
-E1A converts stable single-context `error_stack::Report<C>` values into:
+Both stable report forms are supported:
 
-- a `DiagnosticReport` with one diagnostic instance per context frame;
-- a verified `DiagnosticRelationshipGraph`;
-- reusable `BridgeBuildStats`;
-- adapter-specific context/attachment frame counts.
+```text
+Report<C>    single current context
+Report<[C]> grouped current contexts
+```
 
-Grouped `Report<[C]>` support and explicit attachment-content policy arrive in
-E1B.
+Grouped reports are traversed from every `current_frames()` root. Independent
+siblings are not related merely because they occur in one grouped report.
 
 ## Structure, not rendering
 
-The adapter uses:
+The adapter uses stable structured APIs:
 
 - `Report::current_frame()`;
+- `Report::current_frames()`;
 - `Frame::kind()`;
 - `Frame::sources()`;
-- stable `Frame::downcast_ref::<T>()` for application mappers.
+- `Frame::downcast_ref::<T>()`.
 
-It does **not** parse `Report` terminal rendering, ANSI output, box-drawing
-characters, or debug text.
+It does **not** parse terminal rendering, ANSI output, box-drawing characters,
+alternate `Display`, or `Debug` output.
 
 ## Relationship semantics
 
@@ -46,49 +47,51 @@ outer/current context
 
 The adapter does not invent a stronger `causes` edge by default.
 
-## Typed mapper
+## Attachment privacy
 
-Implement `ErrorStackContextMapper` when application domain errors can provide
-stronger metadata.
+Attachment content is omitted by default.
 
-Mapper input is error-stack-specific:
+To intentionally include printable attachment text:
 
-```text
-ErrorStackContextView
+```rust
+use diagprint_error_stack::{
+    ErrorStackAttachmentPolicy,
+    ErrorStackReportExt,
+};
+
+let output = report.to_diagprint_with_policy(
+    &reporter,
+    ErrorStackAttachmentPolicy::PrintableText,
+)?;
 ```
 
-Mapper output is shared across adapters:
+Only `AttachmentKind::Printable` text is included, as diagnostic notes on the
+nearest context below the attachment in that source branch.
 
-```text
-diagprint_bridge::BridgeDiagnosticMetadata
-```
+Opaque attachment values are never exported by this adapter.
 
-A mapper can use `view.frame().downcast_ref::<T>()` to recognize known context
-types and provide:
+Attachment frames remain traversal-transparent, so source relationships are
+preserved regardless of whether attachment content is included.
 
-- severity;
-- code;
-- help;
-- notes;
-- stable application-owned logical identity.
+## SDK boundary
 
-## Attachments
+`diagprint-error-stack` delegates common mechanics to `diagprint-bridge`:
 
-E1A treats attachment frames as traversal-transparent.
-
-Their content is not copied into diagnostics. The adapter follows their source
-frames so context-to-context relationships remain intact.
-
-E1B adds an explicit printable attachment opt-in policy and dedicated privacy
-regression coverage.
+- normalized mapper output;
+- ephemeral construction node handles;
+- canonical logical identity attachment;
+- `DiagnosticReport` construction;
+- M4 relationship validation and graph construction;
+- duplicate logical-instance handling;
+- logical self-relation collapse;
+- generic bridge statistics.
 
 ## Backtrace behavior
 
 `diagprint-error-stack` depends on `error-stack` with default features disabled
-and only `std` enabled. Installing the adapter therefore does not intentionally
-enable error-stack's default backtrace feature.
+and only `std` enabled.
 
-Backtraces and span traces are not automatically exported by this adapter.
+Backtraces and span traces are not automatically exported.
 
 ## MSRV
 

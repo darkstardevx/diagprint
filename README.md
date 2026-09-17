@@ -238,6 +238,29 @@ The relationship API is also the common substrate for the Ecosystem Bridges
 track, allowing third-party error/diagnostic crates to preserve structured
 relationships instead of flattening them into rendered strings.
 
+
+## Ecosystem Bridge SDK
+
+The Ecosystem Bridges track now has a reusable construction SDK:
+
+```text
+diagprint-bridge
+    reusable adapter mechanics
+
+diagprint-error-stack
+    first concrete adapter
+```
+
+`diagprint-bridge` builds on the core `InteropDiagnostic` protocol and M4
+relationship graph. `diagprint-error-stack` proves that SDK against a real
+structured error ecosystem, including grouped reports and privacy-aware
+attachment handling.
+
+Attachment content is private by default. Printable attachment text requires
+explicit opt-in; opaque attachment values are not exported.
+
+Applications that only need core diagprint do not depend on `error-stack`.
+
 ## Installation
 
 ```toml

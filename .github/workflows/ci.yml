@@ -200,6 +200,8 @@ jobs:
 
           packages=(
             diagprint
+            diagprint-bridge
+            diagprint-error-stack
             diagprint-derive
             diagprint-lsp
             diagprint-async
