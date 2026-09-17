@@ -573,9 +573,9 @@ M5 closure commit: 1409696f7e29714738a54b1509c77bf5ca641fce
 M5 closure CI run: 35188544365
 M5 closure CI result: success
 
-Release-sequencing revision commit:
-Release-sequencing revision CI run:
-Release-sequencing revision CI result:
+Release-sequencing revision commit: e51e3289e914e6c933ff55ba66430d3233b44e46
+Release-sequencing revision CI run: 35191143109
+Release-sequencing revision CI result: success
 
 R8A release-preparation commit:
 R8A CI run:

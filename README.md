@@ -94,7 +94,7 @@ attributes, or remediation payloads.
 This is the foundation for the larger Diagnostic Forensics roadmap:
 
 ```text
-why ✓ → timeline ✓ → blame ✓ → causal graph ✓ → replay
+why ✓ → timeline ✓ → blame ✓ → causal graph ✓ → replay ✓
 ```
 
 ### Visual Timeline
@@ -261,6 +261,17 @@ explicit opt-in; opaque attachment values are not exported.
 
 Applications that only need core diagprint do not depend on `error-stack`.
 
+For v0.8 applications building ecosystem adapters:
+
+```toml
+[dependencies]
+diagprint = "0.8"
+diagprint-bridge = "0.8"
+
+# Only when error-stack integration is required:
+diagprint-error-stack = "0.8"
+```
+
 
 ## Remediation evidence replay
 
@@ -286,10 +297,10 @@ commands.
 
 ```toml
 [dependencies]
-diagprint = "0.7"
+diagprint = "0.8"
 ```
 
-`diagprint` v0.7 uses Rust 2024 and supports Rust **1.85 and newer**.
+`diagprint` v0.8 uses Rust 2024 and supports Rust **1.85 and newer**.
 
 ## Optional Features
 
@@ -298,7 +309,7 @@ All optional features are disabled by default.
 ```toml
 [dependencies]
 diagprint = {
-    version = "0.7",
+    version = "0.8",
     features = [
         "artifact-store",
         "derive",

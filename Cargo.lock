@@ -358,7 +358,7 @@ dependencies = [
 
 [[package]]
 name = "diagprint"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "annotate-snippets",
  "anyhow",
@@ -391,7 +391,7 @@ dependencies = [
 
 [[package]]
 name = "diagprint-async"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "diagprint",
  "tokio",
@@ -399,14 +399,14 @@ dependencies = [
 
 [[package]]
 name = "diagprint-bridge"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "diagprint",
 ]
 
 [[package]]
 name = "diagprint-derive"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -416,7 +416,7 @@ dependencies = [
 
 [[package]]
 name = "diagprint-error-stack"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "diagprint",
  "diagprint-bridge",
@@ -426,7 +426,7 @@ dependencies = [
 
 [[package]]
 name = "diagprint-lsp"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "diagprint",
  "lsp-types",
@@ -434,7 +434,7 @@ dependencies = [
 
 [[package]]
 name = "diagprint-otel"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "diagprint",
  "opentelemetry",
@@ -444,7 +444,7 @@ dependencies = [
 
 [[package]]
 name = "diagprint-test"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "diagprint",
  "serde_json",

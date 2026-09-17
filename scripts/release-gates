@@ -287,6 +287,41 @@ run_full_gates() {
             --all-features
 }
 
+run_staged_release() {
+    local package="${1:-}"
+
+    if [[ -z "$package" ]]; then
+        echo "error: staged mode requires a package name" >&2
+        exit 2
+    fi
+
+    local known=0
+    local candidate
+
+    for candidate in "${packages[@]}"; do
+        if [[ "$candidate" == "$package" ]]; then
+            known=1
+            break
+        fi
+    done
+
+    if [[ "$known" -ne 1 ]]; then
+        echo "error: unknown publishable package: $package" >&2
+        exit 2
+    fi
+
+    echo
+    print_rule
+    echo " STAGED REGISTRY CHECK: $package"
+    print_rule
+
+    require_clean_tree
+
+    run_gate         "$package package verification"         cargo package             -p "$package"
+
+    run_gate         "$package publish dry run"         cargo publish             --dry-run             -p "$package"
+}
+
 run_derive_release() {
     run_full_gates
 
@@ -391,6 +426,14 @@ case "$mode" in
         run_full_gates
         ;;
 
+    prepublish)
+        run_full_gates
+        ;;
+
+    staged)
+        run_staged_release "${2:-}"
+        ;;
+
     derive)
         run_derive_release
         ;;
@@ -408,6 +451,8 @@ case "$mode" in
         echo "Usage:"
         echo "  ./scripts/release-gates quick"
         echo "  ./scripts/release-gates full"
+        echo "  ./scripts/release-gates prepublish"
+        echo "  ./scripts/release-gates staged <PACKAGE>"
         echo "  ./scripts/release-gates derive"
         echo "  ./scripts/release-gates core"
         echo "  ./scripts/release-gates satellites"

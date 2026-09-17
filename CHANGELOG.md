@@ -6,6 +6,13 @@ The project follows Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-17
+
+v0.8.0 completes the first Diagnostic Forensics, Ecosystem Bridges, and
+remediation-evidence release trains. It adds relationship-graph forensics,
+Git provenance, a reusable ecosystem adapter SDK with the first `error-stack`
+adapter, and privacy-light read-only remediation replay.
+
 ### Added
 
 - Added `diagprint.remediation.evidence/v1` history-bound remediation

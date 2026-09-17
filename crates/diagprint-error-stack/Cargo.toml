@@ -1,6 +1,6 @@
 [package]
 name = "diagprint-error-stack"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2024"
 rust-version = "1.85"
 description = "Structured error-stack interoperability for diagprint."
@@ -13,11 +13,11 @@ keywords = ["diagnostics", "errors", "error-stack", "interop", "reporting"]
 categories = ["development-tools::debugging", "rust-patterns"]
 
 [dependencies.diagprint]
-version = "0.7.0"
+version = "0.8.0"
 path = "../.."
 
 [dependencies.diagprint-bridge]
-version = "0.7.0"
+version = "0.8.0"
 path = "../diagprint-bridge"
 
 [dependencies.error-stack]

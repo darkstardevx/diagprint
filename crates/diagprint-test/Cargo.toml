@@ -1,6 +1,6 @@
 [package]
 name = "diagprint-test"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2024"
 rust-version = "1.85"
 description = "Testing assertions and snapshot helpers for the diagprint diagnostics lifecycle framework."
@@ -13,5 +13,5 @@ keywords = ["diagnostics", "testing", "snapshots", "assertions", "errors"]
 categories = ["development-tools::testing"]
 
 [dependencies]
-diagprint = { version = "0.7.0", path = "../.." }
+diagprint = { version = "0.8.0", path = "../.." }
 serde_json = { version = "1", features = ["arbitrary_precision"] }

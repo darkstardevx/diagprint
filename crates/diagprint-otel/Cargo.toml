@@ -1,6 +1,6 @@
 [package]
 name = "diagprint-otel"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2024"
 rust-version = "1.85"
 description = "Privacy-aware OpenTelemetry integration for diagprint."
@@ -13,7 +13,7 @@ keywords = ["diagnostics", "opentelemetry", "telemetry", "tracing", "errors"]
 categories = ["development-tools::debugging"]
 
 [dependencies.diagprint]
-version = "0.7.0"
+version = "0.8.0"
 path = "../.."
 
 [dependencies.opentelemetry]

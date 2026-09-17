@@ -1,6 +1,6 @@
 [package]
 name = "diagprint-async"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2024"
 rust-version = "1.85"
 description = "Bounded asynchronous diagnostic delivery for diagprint."
@@ -13,7 +13,7 @@ keywords = ["diagnostics", "async", "tokio", "logging", "errors"]
 categories = ["asynchronous", "development-tools"]
 
 [dependencies.diagprint]
-version = "0.7.0"
+version = "0.8.0"
 path = "../.."
 
 [dependencies.tokio]
