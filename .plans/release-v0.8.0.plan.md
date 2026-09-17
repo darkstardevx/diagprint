@@ -136,9 +136,21 @@ Expected work:
 - regenerate/update Cargo.lock;
 - curate the v0.8.0 changelog/release notes;
 - update README installation examples/version references where applicable;
-- update release tooling only if required for deterministic publish ordering;
-- verify package contents for all eight packages;
-- run full/MSRV/release dry-run gates.
+- update release tooling for dependency-aware staged publication;
+- verify package file lists for all eight packages;
+- run full workspace/MSRV gates;
+- run all release checks that do not require unpublished 0.8 registry
+  dependencies.
+
+R8A must **not** require `cargo package` verification or
+`cargo publish --dry-run` for a package whose 0.8 internal registry dependency
+has not yet been published.
+
+Cargo uses local `path` dependencies during workspace development, but the
+`version` requirement is the registry fallback used for published packages.
+Package/publish verification builds the packaged crate against registry
+dependencies. Therefore a dependent 0.8 package cannot be fully verified
+against crates.io until its required 0.8 dependency is visible there.
 
 No feature implementation belongs in R8A.
 
@@ -175,12 +187,54 @@ Each publish is irreversible. Before each real `cargo publish`:
 
 - package version must equal 0.8.0;
 - dependency requirements must equal the planned 0.8 line;
+- every required internal 0.8 dependency must already be visible from the
+  registry;
 - `cargo package` must succeed;
-- `cargo publish --dry-run` must succeed where registry availability permits;
+- `cargo publish --dry-run` must succeed;
 - working tree must be clean;
 - exact release-preparation CI must be green.
 
 After each real publish, verify the exact version is visible before continuing.
+
+The staged verification/publish sequence is:
+
+```text
+derive:
+  package
+  publish --dry-run
+  publish
+  verify registry visibility
+
+core:
+  wait for derive 0.8.0 visibility
+  package
+  publish --dry-run
+  publish
+  verify registry visibility
+
+bridge:
+  wait for diagprint 0.8.0 visibility
+  package
+  publish --dry-run
+  publish
+  verify registry visibility
+
+error-stack:
+  wait for diagprint-bridge 0.8.0 visibility
+  package
+  publish --dry-run
+  publish
+  verify registry visibility
+
+lsp / async / otel / test:
+  wait for diagprint 0.8.0 visibility
+  package
+  publish --dry-run
+  publish
+  verify registry visibility
+```
+
+Do not use `--no-verify` as a substitute for dependency-aware sequencing.
 
 ### R8C — main merge, tag, GitHub release
 
@@ -246,30 +300,69 @@ The v0.8.0 notes should prominently cover:
 
 ## Release validation
 
-Before registry publication:
+### Before any registry publication
+
+Require:
 
 ```bash
 ./scripts/release-gates full
-./scripts/release-gates derive
-./scripts/release-gates core
-./scripts/release-gates satellites
 ```
 
-Also require:
+Also inspect package file lists for all eight packages:
 
 ```bash
-cargo package -p diagprint-derive
-cargo package -p diagprint
-cargo package -p diagprint-bridge
-cargo package -p diagprint-error-stack
-cargo package -p diagprint-lsp
-cargo package -p diagprint-async
-cargo package -p diagprint-otel
-cargo package -p diagprint-test
+cargo package --allow-dirty --list -p diagprint-derive
+cargo package --allow-dirty --list -p diagprint
+cargo package --allow-dirty --list -p diagprint-bridge
+cargo package --allow-dirty --list -p diagprint-error-stack
+cargo package --allow-dirty --list -p diagprint-lsp
+cargo package --allow-dirty --list -p diagprint-async
+cargo package --allow-dirty --list -p diagprint-otel
+cargo package --allow-dirty --list -p diagprint-test
 ```
 
-All package manifests must resolve from packaged registry dependencies rather
-than accidentally relying on unpublished path-only state.
+These prepublication checks validate workspace quality and package contents
+without pretending that unpublished 0.8 registry dependencies already exist.
+
+### During staged registry publication
+
+Run full package verification and publish dry-run immediately before each real
+publish, after that package's internal 0.8 registry dependencies are visible.
+
+Required staged gates:
+
+```text
+diagprint-derive
+  cargo package
+  cargo publish --dry-run
+
+diagprint
+  after diagprint-derive 0.8.0 is visible
+  cargo package
+  cargo publish --dry-run
+
+diagprint-bridge
+  after diagprint 0.8.0 is visible
+  cargo package
+  cargo publish --dry-run
+
+diagprint-error-stack
+  after diagprint-bridge 0.8.0 is visible
+  cargo package
+  cargo publish --dry-run
+
+diagprint-lsp / async / otel / test
+  after diagprint 0.8.0 is visible
+  cargo package
+  cargo publish --dry-run
+```
+
+Release tooling may expose dedicated staged modes for these checks, but the
+dependency ordering above is authoritative.
+
+A successful local workspace build does not prove registry resolution because
+local `path` dependencies are used during development while their `version`
+requirements become registry dependencies in the published package.
 
 ## Registry verification
 
@@ -457,8 +550,10 @@ The v0.8.0 release is complete when:
 - internal public dependency requirements are aligned to 0.8.0;
 - Cargo.lock is consistent;
 - Rust 1.85 is green;
-- full release gates pass;
-- package dry runs pass;
+- full prepublication workspace/MSRV gates pass;
+- package file-list inspection passes for all eight packages;
+- each package verification and publish dry-run passes at its dependency-aware
+  publication stage;
 - `diagprint-bridge` 0.8.0 is published;
 - `diagprint-error-stack` 0.8.0 is published;
 - all six existing package families have their planned 0.8.0 publication;
@@ -477,6 +572,10 @@ The v0.8.0 release is complete when:
 M5 closure commit: 1409696f7e29714738a54b1509c77bf5ca641fce
 M5 closure CI run: 35188544365
 M5 closure CI result: success
+
+Release-sequencing revision commit:
+Release-sequencing revision CI run:
+Release-sequencing revision CI result:
 
 R8A release-preparation commit:
 R8A CI run:
