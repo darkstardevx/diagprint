@@ -94,7 +94,7 @@ attributes, or remediation payloads.
 This is the foundation for the larger Diagnostic Forensics roadmap:
 
 ```text
-why ✓ → timeline ✓ → blame ✓ → causal graph → replay
+why ✓ → timeline ✓ → blame ✓ → causal graph ✓ → replay
 ```
 
 ### Visual Timeline

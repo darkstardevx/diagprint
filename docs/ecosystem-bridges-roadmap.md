@@ -60,8 +60,8 @@ ecosystem.
 ## Interleaved roadmap
 
 ```text
-M4  Causal Diagnostic Graph
-E1  error-stack
+M4  Causal Diagnostic Graph                     COMPLETE
+E1  error-stack                                 NEXT
 M5  Replay / regression / remediation evidence
 E2  SNAFU
 E3  eyre / color-eyre
@@ -73,7 +73,10 @@ public structured APIs, MSRV fit, and dependency cost.
 
 ## Bridge E1 — error-stack
 
-Target after M4.
+M4 is complete. E1 is the next active feature train.
+
+The implementation plan will target the stable public structured surface of
+`error-stack` first and will not depend on nightly-only attachment-provider APIs.
 
 Goals:
 

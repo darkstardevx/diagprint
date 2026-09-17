@@ -1,6 +1,6 @@
 # Plan: M4 Causal Diagnostic Graph
 
-Status: Approved
+Status: Complete
 
 ## Goal
 
@@ -880,8 +880,23 @@ M4 is complete when:
 ## Completion record
 
 ```text
-Commit:
-CI run:
-CI result:
+Foundation commit: ba0cd74917581dc89142a254e7875df87527024e
+Foundation CI run: 35174402109
+Foundation CI result: success
+
+Final implementation commit: 42d4025e2814649120971864cc9045654964bf44
+Final CI run: 35175704119
+Final CI result: success
+
 Notes:
+- M4A established the typed relationship model, deterministic graph identity,
+  and tamper-evident history-bound relationship snapshots.
+- M4B added cycle-safe traversal, explicit causal cascade topology, and
+  text/JSON/Graphviz DOT graph inspection.
+- canonical-v1, history-v2, capsule-v1, Cargo manifests, and companion crates
+  remained unchanged.
+- no dependency or feature flag was added.
+- Rust 1.85 MSRV validation remained green.
+- inferred correlation remains structurally distinct from causal edge kinds.
+- Git provenance remains repository context and does not establish causation.
 ```
