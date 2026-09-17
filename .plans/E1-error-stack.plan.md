@@ -1,6 +1,44 @@
-# Plan: E1 error-stack Ecosystem Bridge
+# Plan: E1 error-stack Ecosystem Bridge + diagprint Bridge SDK
 
 Status: Approved
+
+## Plan revision
+
+This Approved plan was expanded before any E1 implementation landed.
+
+The first E1 implementation checkpoint now creates a reusable, ecosystem-neutral
+interoperability SDK:
+
+```text
+crates/diagprint-bridge
+package: diagprint-bridge
+```
+
+`diagprint-error-stack` becomes the first adapter implemented on top of that SDK.
+
+This revision exists because the first adapter exposed a durable architectural
+pattern worth owning directly:
+
+```text
+external structured diagnostic ecosystem
+                │
+                ▼
+        adapter-specific mapper
+                │
+                ▼
+       BridgeDiagnosticMetadata
+                │
+                ▼
+         BridgeOutputBuilder
+           │             │
+           ▼             ▼
+   DiagnosticReport   M4 relationship graph
+```
+
+The SDK belongs to diagprint. It does not adopt a third-party bridge framework.
+
+It builds on diagprint's existing `InteropDiagnostic` protocol rather than
+creating a competing normalized diagnostic representation.
 
 ## Product thesis
 
@@ -9,25 +47,50 @@ Status: Approved
 
 E1 is the first implementation milestone in the Ecosystem Bridges track.
 
-The bridge must let applications keep using `error-stack` as their error
-construction and propagation model while gaining diagprint lifecycle features:
+The reusable SDK should make later adapters smaller, more consistent, and safer.
 
-- canonical diagnostic identity;
-- diagnostic reports;
-- M4 relationship graphs;
-- history;
-- forensic `why` and timeline analysis;
-- relationship graph inspection;
-- Git provenance;
-- future M5 replay/regression/remediation evidence;
-- export and telemetry surfaces.
+Future adapters such as SNAFU, eyre/color-eyre, tracing-error, compiler/tooling,
+or other structured producers should be able to reuse the same bridge mechanics
+without depending on the error-stack adapter.
 
-The integration must preserve upstream structure rather than parsing
-`error-stack`'s rendered `Display` or `Debug` output.
+## Goals
+
+E1 now has two related product goals:
+
+1. establish `diagprint-bridge` as diagprint's reusable adapter SDK;
+2. establish `diagprint-error-stack` as its first real ecosystem adapter.
+
+The combined architecture must preserve:
+
+- canonical logical identity;
+- diagnostic instance multiplicity;
+- M4 relationship semantics/evidence;
+- source topology;
+- adapter producer provenance;
+- privacy boundaries;
+- stable-only upstream APIs;
+- root core independence from fast-moving external crates.
+
+## Non-goals
+
+E1 will not:
+
+- create a universal Rust error trait;
+- replace `std::error::Error`;
+- replace `InteropDiagnostic`;
+- make diagprint core depend on third-party error crates;
+- invent cross-ecosystem causal truth;
+- create persistent identity from addresses, `TypeId`, traversal order, or branch indexes;
+- serialize bridge-construction node handles;
+- build a plugin ABI;
+- build proc macros for adapter generation;
+- implement SNAFU/eyre/tracing-error in the same milestone;
+- automatically export backtraces or span traces;
+- require nightly provider APIs.
 
 ## Upstream research snapshot
 
-Verified before this plan was opened:
+Verified before E1 implementation:
 
 ```text
 crate:        error-stack
@@ -56,180 +119,407 @@ Report::contains<T>()
 Report::downcast_ref<T>()
 ```
 
-`error-stack` supports both:
-
-```text
-Report<C>    one current context
-Report<[C]> one or more current contexts / grouped errors
-```
-
-Nightly-only provider-style APIs such as frame/report `request_ref` and
-`request_value` are outside E1's required stable contract.
-
-`error-stack` 0.8 also recently changed the mutable frame traversal API.
-That upstream evolution is a major reason E1 belongs in an isolated companion
-crate rather than adding another fast-moving dependency to diagprint core.
+Nightly-only provider-style APIs such as `request_ref` and `request_value` are
+outside the required stable contract.
 
 ## Packaging decision
 
-Create a new workspace companion crate:
+Create two workspace companion crates:
 
 ```text
+crates/diagprint-bridge
+package: diagprint-bridge
+
 crates/diagprint-error-stack
 package: diagprint-error-stack
 ```
 
-Do not add `error-stack` as a dependency of the root `diagprint` package.
+### diagprint-bridge
 
-The companion crate owns all direct knowledge of `error-stack`.
+Depends on:
 
-Proposed dependency shape:
+```text
+diagprint
+std
+```
+
+No third-party diagnostic ecosystem dependency belongs in `diagprint-bridge`.
+
+The SDK is versioned with the diagprint workspace release line.
+
+### diagprint-error-stack
+
+Depends on:
+
+```text
+diagprint
+diagprint-bridge
+error-stack 0.8
+```
+
+`error-stack` remains completely outside the root `diagprint` dependency graph.
+
+Proposed upstream dependency:
 
 ```toml
-[dependencies.diagprint]
-version = "0.7.0"
-path = "../.."
-
 [dependencies.error-stack]
 version = "0.8"
 default-features = false
 features = ["std"]
 ```
 
-The exact manifest is validated during implementation, but the intent is to
-avoid enabling `error-stack`'s default `backtrace` feature merely because the
-bridge exists.
+The adapter should not enable error-stack's default backtrace feature merely by
+being installed.
 
-The application may independently enable other `error-stack` features.
+## Existing core interoperability boundary
 
-## Core compatibility boundary
-
-E1 should consume the M4 public API as it exists.
-
-Protected by default:
+diagprint core already exposes:
 
 ```text
-src/relationship.rs
-src/history.rs
-src/fingerprint.rs
-src/canonical.rs
-src/capsule.rs
-src/bin/diagprint.rs
-root diagprint feature list
-root diagprint dependencies
+InteropDiagnostic
+InteropDiagnosticSource
+InteropDiagnosticSourceExt
+DiagnosticRelationship
+DiagnosticRelationshipGraph
+DiagnosticRelationshipKind
+DiagnosticRelationshipEvidence
+IDENTITY_ATTRIBUTE
 ```
 
-If E1 cannot be implemented cleanly using the existing public graph/report
-surface, stop and revise this plan before changing core.
+`diagprint-bridge` composes these APIs.
 
-Do not silently widen core just to make the first bridge easier.
+It must not duplicate their responsibilities.
 
-## Architecture
+### Responsibility split
 
-The bridge converts one `error_stack::Report` into a bundle containing:
+```text
+InteropDiagnostic
+    normalized diagnostic payload
+
+DiagnosticRelationshipGraph
+    durable logical relationship model
+
+diagprint-bridge
+    adapter construction SDK:
+    - mapper output metadata
+    - ephemeral node handles
+    - logical identity attachment
+    - output assembly
+    - relation assembly
+    - duplicate/self-relation handling
+    - shared bridge statistics
+    - bridge errors
+
+adapter crate
+    ecosystem-specific traversal and semantics
+```
+
+## diagprint-bridge public architecture
+
+Proposed foundational public types:
+
+```text
+BridgeDiagnosticMetadata
+BridgeNodeId
+BridgeOutput
+BridgeOutputBuilder
+BridgeBuildStats
+BridgeError
+```
+
+Exact naming may be refined during implementation.
+
+### BridgeDiagnosticMetadata
+
+Wraps:
+
+```text
+InteropDiagnostic
+optional application-owned logical identity
+```
+
+It provides reusable adapter metadata methods for:
+
+```text
+severity
+code
+help
+notes
+labels
+cause
+documentation
+related diagnostics
+explicit logical identity
+```
+
+The normalized payload continues to come from `InteropDiagnostic`.
+
+The SDK should not fork or mirror the entire diagnostic data model.
+
+### Logical identity
+
+Optional mapper-owned identity is attached using diagprint's existing
+`IDENTITY_ATTRIBUTE`.
+
+SDK identity input must reject obviously invalid values rather than silently
+accepting accidental empty/control-character identifiers.
+
+Minimum proposed rules:
+
+```text
+non-empty
+bounded length
+no ASCII control characters
+```
+
+Do not over-constrain application namespace syntax in v1.
+
+### BridgeNodeId
+
+`BridgeNodeId` is an opaque in-process construction handle.
+
+Properties:
+
+```text
+Copy
+Eq
+Hash/Ord if useful
+not Serialize
+not a canonical identity
+not exposed in final graph JSON
+not derived from source addresses
+```
+
+Adapters use it to relate diagnostic instances while constructing output.
+
+Persistent graph endpoints are always canonical diagnostic fingerprints.
+
+### BridgeOutputBuilder
+
+The central reusable builder.
+
+Conceptual API:
+
+```text
+let mut bridge = BridgeOutputBuilder::new(reporter, "error-stack");
+
+let source = bridge.push(metadata_a)?;
+let outer = bridge.push(metadata_b)?;
+
+bridge.relate(
+    source,
+    outer,
+    DiagnosticRelationshipKind::ContributesTo,
+    DiagnosticRelationshipEvidence::SourceChain,
+)?;
+
+let output = bridge.finish()?;
+```
+
+Responsibilities:
+
+- convert `BridgeDiagnosticMetadata` into real `Diagnostic` values;
+- append every diagnostic instance to `DiagnosticReport`;
+- compute each instance's canonical logical fingerprint;
+- retain an internal `BridgeNodeId -> fingerprint` mapping;
+- construct M4 relationships from node handles;
+- let M4 validate relationship kinds/evidence/producer;
+- build and verify the final deterministic relationship graph;
+- preserve duplicate diagnostic instances;
+- collapse logical self-relations when two instance handles resolve to one fingerprint;
+- count collapsed self-relations rather than manufacturing fake identity.
+
+### BridgeOutput
+
+Contains:
 
 ```text
 DiagnosticReport
 DiagnosticRelationshipGraph
-bridge metadata needed for inspection/testing
+BridgeBuildStats
 ```
 
-Proposed public types:
+Exposes immutable accessors and `into_parts()`/equivalent ownership ergonomics.
+
+### BridgeBuildStats
+
+Generic counts only.
+
+Candidate fields:
+
+```text
+diagnostic_instances
+logical_nodes
+relationships
+collapsed_self_relationships
+```
+
+Adapter-specific counts such as error-stack attachment frames remain in the
+adapter crate.
+
+### BridgeError
+
+Must cover:
+
+```text
+invalid node handle
+invalid mapper identity
+relationship construction failure
+graph construction/verification failure
+bridge invariant violation
+```
+
+Preserve source errors where applicable.
+
+## Mapper strategy
+
+The SDK owns mapper *output*, not every adapter's mapper input trait.
+
+This distinction is important.
+
+Each ecosystem exposes different structured source objects.
+
+Therefore:
+
+```text
+diagprint-bridge:
+    BridgeDiagnosticMetadata
+
+diagprint-error-stack:
+    ErrorStackContextView
+    ErrorStackContextMapper
+
+future diagprint-snafu:
+    SnafuContextView
+    SnafuContextMapper
+```
+
+Every adapter-specific mapper returns the same reusable
+`BridgeDiagnosticMetadata`.
+
+This gives consistency without forcing unrelated ecosystems into one awkward
+input trait.
+
+## Privacy architecture
+
+The SDK must be safe by default but must not pretend every ecosystem has the
+same privacy surface.
+
+SDK-level guarantees:
+
+- no node handle persistence;
+- no pointer/address persistence;
+- no `TypeId` persistence;
+- no implicit debug rendering;
+- no automatic environment/filesystem capture;
+- no automatic backtrace/span-trace capture.
+
+Adapter-specific content policy remains in adapters unless repeated use proves a
+generic policy belongs in the SDK.
+
+E1B may promote a simple reusable text inclusion policy into `diagprint-bridge`
+only if it cleanly applies without error-stack terminology.
+
+Do not put `ErrorStackAttachmentPolicy` in the SDK.
+
+## Core compatibility boundary
+
+Protected by default:
+
+```text
+src/
+tests/                  root integration tests
+root diagprint feature list
+root diagprint dependencies
+```
+
+The root workspace member list may change.
+
+If `diagprint-bridge` requires new public core behavior rather than existing
+public APIs, stop and revise the plan before touching root core source.
+
+## error-stack adapter architecture
+
+The adapter converts one `error_stack::Report` into output built through
+`BridgeOutputBuilder`.
+
+Proposed public adapter types:
 
 ```text
 ErrorStackBridge
 ErrorStackBridgeConfig
 ErrorStackBridgeOutput
 ErrorStackReportExt
+ErrorStackContextView
 ErrorStackContextMapper
-ErrorStackContextMetadata
 ErrorStackAttachmentPolicy
 ErrorStackBridgeError
 ```
 
-Exact names may be refined during implementation while preserving the
-responsibilities below.
+`ErrorStackContextMetadata` from the original plan is replaced by the reusable:
+
+```text
+diagprint_bridge::BridgeDiagnosticMetadata
+```
 
 ## Context frames become diagnostics
 
-Each `FrameKind::Context` becomes one diagprint diagnostic instance.
+Each `FrameKind::Context` becomes one diagnostic instance by pushing
+`BridgeDiagnosticMetadata` into `BridgeOutputBuilder`.
 
-The default mapper obtains the diagnostic message from the actual structured
-context object through its `Display` implementation.
-
-That is acceptable because the bridge is formatting the context object it was
-given; it is not parsing a rendered `Report`.
-
-The default mapping should use:
+Default mapping:
 
 ```text
 severity: error
 message: context Display value
-code: none unless supplied by a mapper
-stable explicit identity: none unless supplied by a mapper
+code: none
+explicit identity: none
 ```
 
-This means the default bridge is useful for arbitrary `error-stack` reports,
-while applications with typed domain errors can provide a mapper for stronger
-metadata and identity.
+Formatting the actual context object's `Display` is allowed.
+
+Parsing the rendered `Report` is forbidden.
 
 ## Stable identity policy
 
-`error-stack` does not expose a generic portable string identity for every
-erased `dyn Error` context frame.
+The default mapper invents no external stable identity.
 
-E1 must not invent a persistent identity from:
+Typed application mappers may use stable downcasting to supply domain metadata
+and `BridgeDiagnosticMetadata::identity(...)`.
 
-- memory addresses;
+Forbidden persistent identity inputs:
+
+- frame address;
+- pointer address;
 - `TypeId`;
-- frame iteration position;
-- branch index;
-- debug formatting;
-- unstable implementation details.
+- traversal depth;
+- frame index;
+- grouped branch index;
+- rendered debug text.
 
-Instead, expose `ErrorStackContextMapper`.
+## Logical identity versus instances
 
-The mapper must be able to inspect the stable frame/context and, when it knows a
-concrete application error type, use stable downcasting to provide:
+`DiagnosticReport` preserves every diagnostic instance.
 
-```text
-diagnostic code
-severity
-help
-notes
-explicit diagprint identity
-other safe semantic metadata
-```
+M4 graph nodes remain logical fingerprints.
 
-A mapper can use `Frame::downcast_ref<T>()` for known types.
+`BridgeNodeId` allows adapters to represent instance topology while assembling
+the graph.
 
-The default mapper leaves explicit identity unset and lets normal diagprint
-canonical identity rules apply.
+If a relation connects two instance handles that map to one logical
+fingerprint, `BridgeOutputBuilder` records a collapsed logical self-relation and
+does not emit an invalid M4 self-edge.
 
-## Logical identity versus error instances
-
-M4 is a logical diagnostic relationship graph.
-
-If two `error-stack` branches map to the same diagprint logical fingerprint,
-the graph may contain one logical node while `DiagnosticReport` still preserves
-duplicate diagnostic instances.
-
-Do not manufacture frame-instance IDs just to prevent logical deduplication.
-
-If future use cases need an instance graph, that is a separate schema and plan.
+This behavior is centralized in the SDK so every future adapter gets it
+consistently.
 
 ## Source-chain relationship mapping
 
-Use `Frame::sources()` to preserve actual upstream frame topology.
+Use `Frame::sources()`.
 
-Do not infer topology from the flat `Report::frames()` order.
+Do not infer topology from flat `Report::frames()` order.
 
-Walk from each current frame through its source frames.
-
-Attachments may appear between context frames and should be traversed through,
-not converted into fake diagnostic nodes.
-
-When one context frame is the structured source of another context frame, emit:
+When one context frame is the structured source of another context frame:
 
 ```text
 kind:     contributes_to
@@ -243,14 +533,13 @@ Direction:
 source/deeper context  --contributes_to-->  outer/current context
 ```
 
-E1 should not emit `causes` by default.
+The adapter should pass the relevant `BridgeNodeId`s to the SDK builder.
 
-`ContributesTo` accurately preserves structured source-chain causality without
-claiming that the deeper error is the sole cause.
+No default `causes` edge.
 
-No inferred-correlation edge is produced by this bridge.
+No inferred-correlation edge.
 
-No Git provenance edge is produced by this bridge.
+No Git provenance edge.
 
 ## Multiple current contexts
 
@@ -261,195 +550,73 @@ Report<C>
 Report<[C]>
 ```
 
-For a single report, begin traversal at `current_frame()`.
+Single:
 
-For a grouped report, begin independently at every frame in `current_frames()`.
+```text
+Report::current_frame()
+```
 
-Do not create relationships between sibling current branches merely because
-they appear in one `Report<[C]>`.
+Grouped:
 
-Preserve only relationships present in each branch's upstream frame topology.
+```text
+Report::current_frames()
+```
 
-The implementation must be safe if frame topology shares descendants or if a
-future upstream version exposes a more graph-like structure.
+Sibling grouped branches are not related merely because they share one grouped
+report.
 
-Traversal may use ephemeral in-process frame addresses for a visited set only
-if necessary to avoid duplicate traversal.
+Only upstream structure creates relations.
 
-Ephemeral addresses must never be serialized, hashed, exposed as identity, or
-persisted.
+Ephemeral source-frame addresses may still be used inside the error-stack
+adapter as a traversal visited/memoization key if needed.
+
+Those addresses must never become `BridgeNodeId`, canonical identity, serialized
+output, or graph data.
 
 ## Attachment policy
 
-Attachments enrich diagnostics; they are not diagnostic nodes by default.
+Attachments enrich diagnostics; they are not graph nodes.
 
-E1 must treat attachment content as potentially sensitive.
-
-Default policy:
+Default:
 
 ```text
-attachment content: omitted
-opaque attachment values: omitted
-printable attachment values: omitted
+printable attachment content: omitted
+opaque attachment content: omitted
 ```
 
-The bridge may retain non-content counts/classification in its own output
-metadata when doing so does not affect canonical logical identity.
-
-Provide an explicit opt-in policy for printable attachment text.
-
-Proposed policy:
+E1B adds adapter-level:
 
 ```text
 ErrorStackAttachmentPolicy::Omit
 ErrorStackAttachmentPolicy::PrintableText
 ```
 
-When `PrintableText` is selected, call the structured printable attachment's
-`Display` implementation and attach the resulting text through an appropriate
-diagprint note/enrichment surface.
+Printable inclusion is explicit opt-in.
 
-Do not parse the complete `Report` rendering.
+Opaque attachment values remain omitted unless a future reviewed typed mapping
+extension handles them.
 
-Opaque attachments remain omitted unless an application explicitly provides a
-typed attachment mapper in a future or reviewed E1 extension.
+Attachment frames may be traversed through to preserve source topology.
 
-E1 must not require nightly provider APIs to inspect arbitrary attachments.
-
-## Attachment ownership
-
-While walking one frame branch, printable/opaque attachment frames encountered
-above a context belong to the nearest context reached below them in that
-branch.
-
-The bridge should collect pending attachment metadata while traversing
-attachment frames and apply it when the owning context frame is reached.
-
-Attachments must not cause source-chain edges by themselves.
-
-## Privacy rules
-
-Default bridge output must not copy:
-
-- opaque attachment values;
-- backtraces;
-- span traces;
-- arbitrary provided values;
-- memory addresses;
-- debug renderings of the full report;
-- environment data;
-- filesystem content;
-- source text;
-- Git information.
-
-Printable attachment text is opt-in.
-
-Custom context mappers are explicitly application-controlled and may enrich
-diagnostics with application data.
-
-Documentation must state that mapper-provided metadata follows the user's own
-privacy policy.
-
-## Backtrace and tracing policy
-
-E1 does not automatically export `Backtrace` or `SpanTrace`.
-
-The companion dependency should avoid enabling upstream default backtrace
-capture on its own.
-
-If the consuming application already uses those features, E1 still leaves those
-objects untouched unless a later explicit bridge extension defines a safe
-mapping.
-
-This avoids large, path-heavy, privacy-sensitive diagnostic payloads.
+Attachments never create source-chain edges by themselves.
 
 ## No renderer archaeology
 
-Forbidden implementation strategies:
+Forbidden:
 
 ```text
-format!("{report:?}") then parse lines
-format!("{report:#}") then parse cause text
-regex over error-stack terminal output
+format!("{report:?}") then parse
+format!("{report:#}") then parse
+regex over pretty output
 ANSI stripping to recover structure
-counting box-drawing glyphs
+box-drawing glyph parsing
 ```
 
-Use only structured frame/report APIs.
-
-A regression test should make this philosophy observable where practical.
-
-## Public conversion surface
-
-Desired ergonomics:
-
-```text
-report.to_diagprint(&reporter)
-report.to_diagprint_with(&reporter, &mapper)
-```
-
-or equivalently an explicit bridge object:
-
-```text
-ErrorStackBridge::new(...)
-    .convert(&report, &reporter)
-```
-
-Support must exist for both `Report<C>` and `Report<[C]>`.
-
-The bridge output should expose immutable accessors for the resulting
-`DiagnosticReport` and `DiagnosticRelationshipGraph`.
-
-If ownership ergonomics are useful, also provide `into_parts()`.
-
-## Mapper design
-
-`ErrorStackContextMapper` should receive enough stable structured information
-for typed applications to enrich a context without exposing bridge internals.
-
-A likely input includes:
-
-```text
-&error_stack::Frame
-&(dyn Error + Send + Sync + 'static)
-branch/depth structural position for presentation only
-```
-
-Structural position is not identity.
-
-Mapper output may include:
-
-```text
-severity
-code
-help
-notes
-explicit logical identity
-```
-
-Prefer a typed context object over a function with many positional arguments.
-
-Do not suppress Clippy `too_many_arguments`; use structural parameter objects.
-
-## Error behavior
-
-The bridge should fail closed for invalid mapping output.
-
-Examples:
-
-- invalid explicit identity supplied by mapper;
-- internal relationship endpoint missing;
-- graph construction failure;
-- unsupported invariant violation;
-- mapper tries to create inconsistent context metadata.
-
-Bridge errors should preserve useful source errors where applicable.
-
-Do not panic on unusual but valid frame stacks.
+Use stable structured APIs only.
 
 ## Workspace and release integration
 
-Implementation must add `diagprint-error-stack` to:
+By E1 completion, add both new packages to:
 
 ```text
 [workspace].members
@@ -458,20 +625,39 @@ scripts/release-gates satellite release list
 .github/workflows/ci.yml package readiness list
 ```
 
-Workspace-wide default/all-feature/MSRV jobs will then exercise the crate
-automatically.
+Workspace default/all-feature/MSRV gates then exercise both automatically.
 
-No root feature-matrix entry is required because E1 is not a root feature.
-
-Package readiness must include:
+Package checks:
 
 ```text
+cargo package --list -p diagprint-bridge
 cargo package --list -p diagprint-error-stack
 ```
 
-Satellite release dry-runs must include the new package.
+Satellite publish dry-runs include both.
 
 ## Expected implementation files
+
+### E1A0 SDK foundation
+
+New:
+
+```text
+crates/diagprint-bridge/Cargo.toml
+crates/diagprint-bridge/README.md
+crates/diagprint-bridge/src/lib.rs
+crates/diagprint-bridge/tests/builder.rs
+crates/diagprint-bridge/examples/custom_bridge.rs
+```
+
+Modified:
+
+```text
+Cargo.toml
+Cargo.lock
+```
+
+### E1A error-stack adapter
 
 New:
 
@@ -483,11 +669,18 @@ crates/diagprint-error-stack/tests/bridge.rs
 crates/diagprint-error-stack/examples/basic.rs
 ```
 
+Potential split modules:
+
+```text
+crates/diagprint-error-stack/src/bridge.rs
+crates/diagprint-error-stack/src/mapper.rs
+```
+
+### E1B integration
+
 Expected modified:
 
 ```text
-Cargo.toml
-Cargo.lock
 .github/workflows/ci.yml
 scripts/release-gates
 README.md
@@ -496,11 +689,9 @@ docs/ecosystem-bridges-roadmap.md
 .plans/E1-error-stack.plan.md
 ```
 
-Optional if justified:
+Optional E1B tests:
 
 ```text
-crates/diagprint-error-stack/src/bridge.rs
-crates/diagprint-error-stack/src/mapper.rs
 crates/diagprint-error-stack/tests/grouped.rs
 crates/diagprint-error-stack/tests/privacy.rs
 ```
@@ -509,7 +700,7 @@ Protected unless the plan is revised:
 
 ```text
 src/
-tests/              # root integration tests
+tests/
 crates/diagprint-derive/
 crates/diagprint-lsp/
 crates/diagprint-async/
@@ -517,60 +708,94 @@ crates/diagprint-otel/
 crates/diagprint-test/
 ```
 
-## Test matrix
+## SDK test matrix
+
+### Metadata normalization
+
+Prove:
+
+- `BridgeDiagnosticMetadata` uses `InteropDiagnostic`;
+- code/severity/help/notes/labels/cause/documentation survive conversion;
+- optional logical identity reaches `IDENTITY_ATTRIBUTE`;
+- invalid identity fails closed.
+
+### Node handles
+
+Prove:
+
+- every pushed diagnostic returns an opaque `BridgeNodeId`;
+- node handles are instance construction references only;
+- final output contains fingerprints, not node-handle values;
+- duplicate logical diagnostics may have different node handles.
+
+### Relationship assembly
+
+Prove:
+
+- relating two handles creates an M4 relationship with the chosen kind/evidence;
+- producer passes through M4 validation;
+- unknown node handles fail closed;
+- M4 invalid relation/evidence combinations fail closed;
+- deterministic graph identity remains intact.
+
+### Logical self-collapse
+
+Push two instances with one explicit logical identity.
+
+Relate them.
+
+Prove:
+
+- report retains both instances;
+- graph contains one logical node;
+- no self-edge is emitted;
+- collapsed-self count increments.
+
+### No adapter dependency
+
+Prove `diagprint-bridge` has no dependency on:
+
+```text
+error-stack
+snafu
+eyre
+tracing-error
+```
+
+## error-stack test matrix
 
 ### Basic context conversion
 
 Prove:
 
-- `Report<C>` converts without parsing rendered report output;
-- every structured context frame becomes a diagnostic instance;
-- the outer/current context is represented;
-- deeper contexts are represented;
-- resulting graph verifies successfully.
+- `Report<C>` converts without parsing rendered output;
+- every context frame becomes a diagnostic instance;
+- M4 graph verifies.
 
-### Source-chain graph
+### Source chain
 
-Build:
+For:
 
 ```text
-root context
-  -> change_context middle
-  -> change_context outer
+root -> middle -> outer
 ```
 
-Prove graph edges are:
+Prove:
 
 ```text
 root   --contributes_to/source_chain--> middle
 middle --contributes_to/source_chain--> outer
 ```
 
-Prove no default `causes` edge exists.
+No default `causes`.
 
-Prove no inferred edge exists.
-
-### Attachments
-
-Test both printable and opaque attachments.
-
-Default policy:
-
-- attachment values are absent from diagnostics and bridge serialization/output;
-- source-chain relationships still cross attachment frames correctly.
-
-Printable opt-in:
-
-- printable attachment `Display` text can be retained;
-- opaque values remain absent.
-
-Use obvious secret sentinel strings in privacy tests.
+No inferred edge.
 
 ### Typed mapper
 
-Create custom error types and mapper logic using stable downcasts.
+Adapter-specific mapper returns `BridgeDiagnosticMetadata`.
 
-Prove mapper can provide:
+Prove downcast-based mapping can supply:
 
 - code;
 - severity;
@@ -578,153 +803,172 @@ Prove mapper can provide:
 - notes;
 - explicit identity.
 
-Prove mapper identity is stable across reports where volatile message values
-change but the application-supplied logical identity remains constant.
-
 ### Grouped reports
 
-Create `Report<[C]>` with multiple current branches.
+`Report<[C]>`:
 
-Prove:
+- every branch traversed;
+- branch source chains preserved;
+- siblings not linked without upstream evidence.
 
-- every branch is traversed;
-- each branch's source chain is preserved;
-- sibling branches are not connected to each other;
-- no fake common-cause node is introduced.
+### Attachments/privacy
+
+Default output excludes printable and opaque secret sentinels.
+
+Printable opt-in exposes only the selected printable content.
+
+Opaque values remain private.
 
 ### Duplicate logical diagnostics
 
-Create multiple error instances that intentionally map to one logical
-fingerprint.
+Prove SDK behavior is reused rather than reimplemented in the adapter.
 
-Prove:
+## Stable-only and MSRV contract
 
-- `DiagnosticReport` retains instances;
-- M4 graph remains a logical graph and may deduplicate the node;
-- no per-frame synthetic identity is introduced.
+Build and test without:
 
-### Privacy
+```text
+nightly Rust
+error-stack/unstable
+```
 
-Default output must not contain sentinel values from:
+Rust 1.85 remains the workspace MSRV.
 
-- opaque attachment;
-- printable attachment;
-- backtrace-like test text;
-- arbitrary debug-only attachment representation.
-
-Printable opt-in should expose only the printable value intentionally selected.
-
-### Stable-only contract
-
-Build and test without nightly Rust or upstream unstable APIs.
-
-Do not enable `error-stack/unstable`.
-
-### MSRV
-
-Run the complete workspace under Rust 1.85.
-
-`error-stack` currently declares Rust 1.83, so the bridge should fit the
-workspace MSRV if dependency resolution remains compatible.
-
-### Package hygiene
-
-Verify:
-
-- root `diagprint` package does not gain an `error-stack` dependency;
-- `diagprint-error-stack` package contents are intentional;
-- satellite publish dry-run includes the bridge;
-- the new crate README/doc examples compile.
+`error-stack` currently declares Rust 1.83.
 
 ## Implementation sequence
 
-### E1A — companion crate skeleton and stable frame conversion
+### E1A0 — diagprint-bridge SDK foundation
 
 Add:
 
-- workspace package;
-- minimal dependencies;
-- bridge config;
-- context mapper abstraction;
-- `Report<C>` support;
-- diagnostic report output;
-- source-chain relationship graph output;
-- basic tests;
-- README example.
+- new `diagprint-bridge` workspace crate;
+- `BridgeDiagnosticMetadata`;
+- `BridgeNodeId`;
+- `BridgeOutput`;
+- `BridgeOutputBuilder`;
+- `BridgeBuildStats`;
+- `BridgeError`;
+- builder tests;
+- SDK README;
+- custom-adapter example.
+
+No third-party ecosystem dependency.
 
 Gate:
 
 ```bash
-cargo test -p diagprint-error-stack
-cargo clippy -p diagprint-error-stack --all-targets -- -D warnings
+cargo test -p diagprint-bridge --all-targets
+cargo clippy -p diagprint-bridge --all-targets -- -D warnings
+RUSTDOCFLAGS="-D warnings" cargo doc -p diagprint-bridge --no-deps
+./scripts/gate.sh fast
 ```
 
-### E1B — grouped reports, attachment privacy, release integration
+Commit and verify exact CI before E1A.
+
+### E1A — error-stack stable frame conversion
 
 Add:
 
-- `Report<[C]>` support;
-- attachment policy;
-- privacy tests;
-- typed mapper tests;
-- grouped-branch tests;
-- CI/package/release-gate registration;
-- root README and CHANGELOG docs.
+- `diagprint-error-stack` workspace crate;
+- dependency on `diagprint-bridge`;
+- adapter-specific mapper input trait/view;
+- mapper output through `BridgeDiagnosticMetadata`;
+- single `Report<C>` conversion;
+- source-chain relations through `BridgeOutputBuilder`;
+- basic tests;
+- README/example.
 
 Gate:
 
 ```bash
 cargo test -p diagprint-error-stack --all-targets
+cargo clippy -p diagprint-error-stack --all-targets -- -D warnings
+RUSTDOCFLAGS="-D warnings" cargo doc -p diagprint-error-stack --no-deps
 ./scripts/gate.sh fast
+```
+
+Commit and verify exact CI before E1B.
+
+### E1B — grouped reports, privacy, release integration
+
+Add:
+
+- `Report<[C]>`;
+- attachment privacy policy;
+- privacy regression tests;
+- grouped tests;
+- CI package readiness for both new crates;
+- release-gate registration for both new crates;
+- root README/CHANGELOG;
+- ecosystem roadmap updates;
+- full workspace/MSRV validation.
+
+Gate:
+
+```bash
 ./scripts/gate.sh full
 ```
 
-### Exact CI checkpoint
-
-After implementation is committed:
-
-```text
-push exact E1 commit
-verify GitHub CI success on that SHA
-record commit/run in this plan
-close E1 in a separate planning-only commit
-```
+Commit and verify exact CI.
 
 ## Acceptance criteria
 
 E1 is complete when:
 
+- `diagprint-bridge` exists as a publishable reusable SDK;
+- SDK depends on diagprint core but on no third-party diagnostic ecosystem;
+- `BridgeDiagnosticMetadata` reuses `InteropDiagnostic`;
+- `BridgeOutputBuilder` centralizes diagnostic/report/graph assembly;
+- `BridgeNodeId` is ephemeral and never durable identity;
+- duplicate logical instances are preserved in reports;
+- logical self-relations collapse centrally and are counted;
+- relationship semantics/evidence continue through M4 validation;
+- no root diagprint dependency on error-stack exists;
 - `diagprint-error-stack` exists as a publishable companion crate;
-- root diagprint has no direct `error-stack` dependency;
-- stable `Report<C>` conversion works;
-- stable grouped `Report<[C]>` conversion works;
-- context frames become diagprint diagnostic instances;
+- `Report<C>` and `Report<[C]>` are supported;
 - source topology comes from `Frame::sources()`;
-- source-chain edges use `ContributesTo + SourceChain`;
-- no default `Causes` edges are invented;
-- sibling grouped branches are not linked without upstream evidence;
-- attachment contents are omitted by default;
+- source edges use `ContributesTo + SourceChain`;
+- no default `Causes` relationship is invented;
+- attachment content is omitted by default;
 - printable attachment text requires explicit opt-in;
-- opaque attachment values remain private by default;
-- custom typed mappers can improve code/severity/help/notes/identity;
-- no persistent identity uses addresses, TypeId, branch number, or frame order;
-- no report-rendering parser exists;
-- M4 graph verification remains green;
-- workspace strict Clippy remains warning-free;
-- workspace full tests/docs remain green;
-- Rust 1.85 MSRV remains green;
-- package readiness includes the new crate;
-- satellite release gates include the new crate;
-- exact implementation CI succeeds.
+- typed mappers can improve semantic metadata and logical identity;
+- no renderer archaeology exists;
+- both crates pass strict Clippy/rustdoc/tests;
+- both crates are registered in package/release gates;
+- Rust 1.85 remains green;
+- exact CI succeeds at every implementation checkpoint.
+
+## Future SDK growth
+
+Do not overload v1.
+
+After E1 and at least one additional adapter, evaluate promoting more repeated
+patterns into `diagprint-bridge`, such as:
+
+- generic content/privacy policy types;
+- bridge conformance test helpers;
+- source-topology utilities;
+- adapter capability metadata;
+- bridge version negotiation;
+- adapter inventory/registration;
+- richer safe attachment mapping;
+- standard exporter capability descriptors.
+
+Only extract patterns demonstrated by real adapters.
 
 ## Completion record
 
 ```text
-E1A commit:
+E1A0 SDK commit:
+E1A0 CI run:
+E1A0 CI result:
+
+E1A adapter commit:
 E1A CI run:
 E1A CI result:
 
-Final implementation commit:
+Final E1B commit:
 Final CI run:
 Final CI result:
 

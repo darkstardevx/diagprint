@@ -21,6 +21,24 @@ act
 export
 ```
 
+## Reusable bridge SDK
+
+`diagprint-bridge` is the reusable interoperability construction SDK shared by
+Ecosystem Bridge adapters.
+
+It builds on core `InteropDiagnostic` plus the M4 relationship graph rather
+than replacing either one.
+
+The SDK owns common adapter mechanics such as normalized mapper output,
+ephemeral construction node handles, report/graph assembly, logical
+self-relation collapse, bridge statistics, and shared bridge errors.
+
+Adapter-specific crates continue to own ecosystem-specific traversal, typed
+source views, and semantics.
+
+`BridgeNodeId` is intentionally ephemeral. Durable graph identity remains the
+canonical diagnostic fingerprint.
+
 ## Bridge rule
 
 A good bridge does not reduce an upstream error to:
@@ -60,12 +78,13 @@ ecosystem.
 ## Interleaved roadmap
 
 ```text
-M4  Causal Diagnostic Graph                     COMPLETE
-E1  error-stack                                 ACTIVE PLAN
-M5  Replay / regression / remediation evidence
-E2  SNAFU
-E3  eyre / color-eyre
-E4  tracing-error
+M4    Causal Diagnostic Graph                   COMPLETE
+E1A0  diagprint-bridge interoperability SDK     ACTIVE PLAN
+E1    error-stack                               ACTIVE PLAN
+M5    Replay / regression / remediation evidence
+E2    SNAFU                                     uses bridge SDK
+E3    eyre / color-eyre                         uses bridge SDK
+E4    tracing-error                             uses bridge SDK
 ```
 
 Additional bridges are selected based on ecosystem value, maintenance quality,
@@ -73,10 +92,14 @@ public structured APIs, MSRV fit, and dependency cost.
 
 ## Bridge E1 — error-stack
 
-M4 is complete. E1 now has an active implementation plan.
+M4 is complete. E1 now has an expanded active implementation plan.
 
-The implementation plan will target the stable public structured surface of
-`error-stack` first and will not depend on nightly-only attachment-provider APIs.
+Before the adapter itself, E1A0 creates the ecosystem-neutral
+`diagprint-bridge` SDK. The error-stack adapter is then the first consumer of
+that SDK.
+
+The adapter targets the stable public structured surface of `error-stack` and
+does not depend on nightly-only attachment-provider APIs.
 
 Goals:
 
