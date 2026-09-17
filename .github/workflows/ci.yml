@@ -255,45 +255,21 @@ jobs:
         run: |
           set -euo pipefail
 
-          metadata="$(
-            cargo metadata \
-              --no-deps \
-              --format-version 1
-          )"
+          readarray -t package_meta < <(
+            cargo metadata --no-deps --format-version 1 |
+              python3 -c 'import json,sys; m=json.load(sys.stdin); p=next(p for p in m["packages"] if p["name"]=="diagprint-derive"); print(p["version"]); print(m["target_directory"])'
+          )
 
-          derive_version="$(
-            python3 -c '
-import json
-import sys
-
-metadata = json.load(sys.stdin)
-
-for package in metadata["packages"]:
-    if package["name"] == "diagprint-derive":
-        print(package["version"])
-        break
-else:
-    raise SystemExit("diagprint-derive package metadata not found")
-' <<<"$metadata"
-          )"
-
-          target_directory="$(
-            python3 -c '
-import json
-import sys
-
-metadata = json.load(sys.stdin)
-print(metadata["target_directory"])
-' <<<"$metadata"
-          )"
-
+          derive_version="${package_meta[0]}"
+          target_directory="${package_meta[1]}"
           archive="${target_directory}/package/diagprint-derive-${derive_version}.crate"
+
+          echo "Cargo target directory: $target_directory"
+          echo "diagprint-derive version: $derive_version"
 
           if [[ ! -f "$archive" ]]
           then
             echo "ERROR: expected first-stage archive is missing: $archive"
-            echo "Cargo target directory: $target_directory"
-            echo "diagprint-derive version: $derive_version"
             echo
             echo "Available package archives:"
 

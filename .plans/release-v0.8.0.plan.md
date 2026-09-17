@@ -581,9 +581,13 @@ R8A release-preparation commit: fe443b31bfbd9e5d32cdbd6f127f8a751507f3c6
 R8A CI run: 35266729806
 R8A CI result: failure — package-readiness workflow used a stale hard-coded archive lookup after successfully building diagprint-derive-0.8.0.crate; format/clippy, tests, MSRV, package-content inspection, generated-state exclusion, and first-stage archive build passed.
 
-R8A release-fix commit:
-R8A release-fix CI run:
-R8A release-fix CI result:
+R8A release-fix commit: 27be7b162e9225bce95251e24fcb2c3928a28c65
+R8A release-fix CI run: 35268241545
+R8A release-fix CI result: failure — workflow YAML parse failure; GitHub created the run but scheduled zero jobs
+
+R8A workflow-parse repair commit:
+R8A workflow-parse repair CI run:
+R8A workflow-parse repair CI result:
 
 Published:
 diagprint-derive 0.8.0:
@@ -603,5 +607,6 @@ Tag:
 GitHub release:
 
 Notes:
+- Release-fix CI 35268241545 failed before job creation because multiline Python embedded in the YAML shell block escaped YAML indentation. The workflow-parse repair uses an indentation-safe single-line Python parser while still deriving both package version and Cargo target_directory.
 - R8A release-fix derives both `diagprint-derive` version and Cargo `target_directory` from `cargo metadata`; local Cargo uses `~/.cargo-target`, while GitHub Actions may use a different target directory.
 ```
