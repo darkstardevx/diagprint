@@ -1,6 +1,6 @@
 # Plan: diagprint v0.8.0 Release
 
-Status: Approved
+Status: Complete
 
 ## Goal
 
@@ -585,28 +585,39 @@ R8A release-fix commit: 27be7b162e9225bce95251e24fcb2c3928a28c65
 R8A release-fix CI run: 35268241545
 R8A release-fix CI result: failure — workflow YAML parse failure; GitHub created the run but scheduled zero jobs
 
-R8A workflow-parse repair commit:
-R8A workflow-parse repair CI run:
-R8A workflow-parse repair CI result:
+R8A workflow-parse repair commit: 9ab4252e7962c88ec6ff725889d9f4e66fe88bca
+R8A workflow-parse repair CI run: 35269023775
+R8A workflow-parse repair CI result: success
 
 Published:
-diagprint-derive 0.8.0:
-diagprint 0.8.0:
-diagprint-bridge 0.8.0:
-diagprint-error-stack 0.8.0:
-diagprint-lsp 0.8.0:
-diagprint-async 0.8.0:
-diagprint-otel 0.8.0:
-diagprint-test 0.8.0:
+diagprint-derive 0.8.0: published; exact crates.io registry visibility confirmed
+diagprint 0.8.0: published; exact crates.io registry visibility confirmed
+diagprint-bridge 0.8.0: published; exact crates.io registry visibility confirmed
+diagprint-error-stack 0.8.0: published; exact crates.io registry visibility confirmed
+diagprint-lsp 0.8.0: published; exact crates.io registry visibility confirmed
+diagprint-async 0.8.0: published; exact crates.io registry visibility confirmed
+diagprint-otel 0.8.0: published; exact crates.io registry visibility confirmed
+diagprint-test 0.8.0: published; exact crates.io registry visibility confirmed
 
-Merged main commit:
-Merged main CI run:
-Merged main CI result:
+Merged main commit: 9ab4252e7962c88ec6ff725889d9f4e66fe88bca
+Merged main CI run: 35271633881
+Merged main CI result: success
 
-Tag:
-GitHub release:
+Tag: v0.8.0 -> 9ab4252e7962c88ec6ff725889d9f4e66fe88bca
+GitHub release: https://github.com/darkstardevx/diagprint/releases/tag/v0.8.0
 
 Notes:
 - Release-fix CI 35268241545 failed before job creation because multiline Python embedded in the YAML shell block escaped YAML indentation. The workflow-parse repair uses an indentation-safe single-line Python parser while still deriving both package version and Cargo target_directory.
 - R8A release-fix derives both `diagprint-derive` version and Cargo `target_directory` from `cargo metadata`; local Cargo uses `~/.cargo-target`, while GitHub Actions may use a different target directory.
+- R8A workflow-parse repair commit 9ab4252e7962c88ec6ff725889d9f4e66fe88bca was the exact immutable green source basis used for the entire R8B publication train.
+- R8B published all eight synchronized 0.8.0 packages in dependency order with `cargo package` and `cargo publish --dry-run` immediately before each real publish.
+- New crate names `diagprint-bridge` and `diagprint-error-stack` were checked before irreversible publication began.
+- Registry verification used Cargo-native exact package/version resolution; ambiguous publish outcomes were never blindly retried.
+- All eight 0.8.0 packages were confirmed registry-visible after the final publication stage.
+- `main` fast-forwarded from v0.7.1 commit c8362db755008ab98d8d834ce82dd5d60e6d696e to the exact published source commit 9ab4252e7962c88ec6ff725889d9f4e66fe88bca without rewriting history.
+- Exact merged-main CI #121 / run 35271633881 succeeded on 9ab4252e7962c88ec6ff725889d9f4e66fe88bca.
+- Annotated tag `v0.8.0` points to that same exact commit.
+- GitHub release `diagprint v0.8.0` was published at https://github.com/darkstardevx/diagprint/releases/tag/v0.8.0 using the curated release notes in `docs/releases/v0.8.0.md`.
+- Published crate source, canonical `main` release commit, and `v0.8.0` tag therefore share one exact release identity: 9ab4252e7962c88ec6ff725889d9f4e66fe88bca.
+- E2 SNAFU remained unimplemented through release completion, satisfying the release gate.
 ```
