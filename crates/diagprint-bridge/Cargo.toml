@@ -1,0 +1,17 @@
+[package]
+name = "diagprint-bridge"
+version = "0.7.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Reusable interoperability SDK for building structured diagprint ecosystem adapters."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/darkstardevx/diagprint"
+homepage = "https://github.com/darkstardevx/diagprint"
+documentation = "https://docs.rs/diagprint-bridge"
+readme = "README.md"
+keywords = ["diagnostics", "interop", "adapter", "errors", "reporting"]
+categories = ["development-tools::debugging", "rust-patterns"]
+
+[dependencies.diagprint]
+version = "0.7.0"
+path = "../.."

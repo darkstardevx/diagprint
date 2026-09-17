@@ -211,6 +211,7 @@ required-features = ["annotate-snippets"]
 
 [workspace]
 members = [
+    "crates/diagprint-bridge",
     "crates/diagprint-derive",
     "crates/diagprint-lsp",
     "crates/diagprint-async",

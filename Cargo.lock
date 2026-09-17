@@ -398,6 +398,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "diagprint-bridge"
+version = "0.7.0"
+dependencies = [
+ "diagprint",
+]
+
+[[package]]
 name = "diagprint-derive"
 version = "0.7.0"
 dependencies = [
