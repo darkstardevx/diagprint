@@ -243,6 +243,7 @@ pub mod interop;
 mod redaction;
 mod relationship;
 mod remediation;
+mod remediation_evidence;
 mod remediation_receipt;
 mod report;
 mod reporter;
@@ -363,6 +364,11 @@ pub use relationship::{
 pub use export::{
     ExportAttributes, ExportDiagnostic, ExportDocumentationLink, ExportLabel, ExportPath,
     ExportPolicy, ExportRemediation, ExportSourceLocation, ExportSuggestion, ExportText, ExportUrl,
+};
+
+pub use remediation_evidence::{
+    REMEDIATION_EVIDENCE_V1_SCHEMA, RemediationEvidenceEffect, RemediationEvidenceError,
+    RemediationEvidenceRecord,
 };
 
 pub use remediation_receipt::{
