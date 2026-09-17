@@ -81,8 +81,8 @@ ecosystem.
 M4    Causal Diagnostic Graph                   COMPLETE
 E1A0  diagprint-bridge interoperability SDK     COMPLETE
 E1    error-stack                               COMPLETE
-M5    Replay / regression / remediation evidence M5B / FINAL CI CHECKPOINT
-E2    SNAFU                                     uses bridge SDK
+M5    Replay / regression / remediation evidence COMPLETE
+E2    SNAFU                                     NEXT / uses bridge SDK
 E3    eyre / color-eyre                         uses bridge SDK
 E4    tracing-error                             uses bridge SDK
 ```
@@ -92,15 +92,16 @@ public structured APIs, MSRV fit, and dependency cost.
 
 ## Milestone M5 — remediation evidence replay
 
-M5 has reached its final implementation CI checkpoint.
+M5 is complete.
 
-M5A delivered append-only history-bound remediation evidence. M5B adds
+M5A delivered append-only history-bound remediation evidence. M5B delivered
 read-only per-fingerprint replay, later-reappearance analysis, strict
 verified-regression semantics, deterministic text/JSON CLI output, and
 remediation sidecar verification.
 
-It connects the existing `FixPlan`, `RemediationReceipt`, semantic delta, and
-tamper-evident history layers without creating another remediation engine.
+The completed milestone connects the existing `FixPlan`,
+`RemediationReceipt`, semantic delta, and tamper-evident history layers
+without creating another remediation engine.
 
 The central rule is:
 
@@ -131,8 +132,10 @@ attachment contents private by default.
 The implementation uses stable public `error-stack` APIs and does not depend on
 nightly-only attachment-provider APIs.
 
-M5 replay / regression / remediation evidence is the next interleaved feature
-train. E2 SNAFU remains the next planned adapter and will reuse the bridge SDK.
+M5 replay / regression / remediation evidence is complete.
+
+E2 SNAFU is the next planned adapter and will reuse the bridge SDK proven by
+the error-stack integration.
 
 Goals:
 

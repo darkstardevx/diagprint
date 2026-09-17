@@ -1,6 +1,6 @@
 # Plan: M5 Remediation Evidence Replay and Regression Forensics
 
-Status: Approved
+Status: Complete
 
 ## Goal
 
@@ -1033,13 +1033,49 @@ M5 is complete when:
 ## Completion record
 
 ```text
-M5A evidence commit:
-M5A CI run:
-M5A CI result:
+Approved M5 plan commit: 374350e5c763560a3a27a1d44ec541292a87fb47
+Approved M5 plan CI run: 35181414058
+Approved M5 plan CI result: success
 
-Final M5B replay commit:
-Final CI run:
-Final CI result:
+M5A evidence commit: e6eb81491cca4641f10d6ea58104be0c9cd34f58
+M5A CI run: 35185715518
+M5A CI result: success
+
+Final M5B replay commit: 1c89b7be4418e4fa55c768eb46d1bc3ff55c1867
+Final CI run: 35187262248
+Final CI result: success
 
 Notes:
+- M5A added diagprint.remediation.evidence/v1 as an append-only,
+  privacy-light binding between one exact remediation receipt and one exact
+  adjacent verified diagnostic-history transition.
+- remediation evidence binds run digests, report digests, the exact receipt
+  digest, the exact fix-plan descriptor digest, remediation status,
+  verification summary, and aggregate semantic effect.
+- evidence recording fails closed on non-adjacent transitions, report
+  mismatches, semantic-effect mismatches, tampered records, and conflicting
+  replacements.
+- evidence sidecars persist no FixPlan title/explanation, source paths,
+  changed-file paths, source/edit/verification text, diagnostic messages,
+  help, notes, causes, or arbitrary attributes.
+- M5B added diagprint.forensics.remediation-replay/v1 as a derived,
+  read-only per-fingerprint forensic replay model.
+- replay classifies introduced, resolved, persisting, changed, and absent
+  states using canonical fingerprint/content multiset evidence.
+- later reappearance is only labeled regression-after-verified-remediation
+  when a verified remediation is followed by observed resolution and later
+  reappearance of the same canonical fingerprint.
+- replay explicitly keeps remediation-caused-resolution,
+  recurrence-root-cause, and git-causation as NOT ESTABLISHED.
+- diagprint replay and the history replay alias are read-only and never
+  reapply FixPlan edits or execute commands.
+- diagprint history remediation-verify verifies every remediation evidence
+  sidecar before forensic use.
+- M5A evidence schema and implementation remained frozen during M5B.
+- canonical-v1, history-v2, remediation-receipt-v1,
+  fix-plan-descriptor-v1, M4 relationship schemas, Git provenance, and
+  capsule-v1 remained unchanged.
+- no dependency or Cargo manifest change was required.
+- Rust 1.85 MSRV remained green.
+- exact CI succeeded for the Approved M5 plan, M5A, and final M5B checkpoint.
 ```
