@@ -1092,58 +1092,36 @@ all features on Rust 1.85.
 
 ## Development
 
-Default gate:
+Install repository hooks once per clone:
 
-```bash
-cargo fmt --all -- --check
+    ./scripts/install-hooks
 
-cargo check \
-    --all-targets
+Rust implementation is plan-first:
 
-cargo clippy \
-    --all-targets \
-    -- -D warnings
+    ./scripts/plan new M4-causal-graph
+    # edit the generated plan
+    ./scripts/plan approve
+    git add .plans/
+    git commit
 
-cargo test \
-    --all-targets
+Only after the Approved plan is committed should Rust implementation begin.
 
-cargo test \
-    --doc
-```
+Development gates:
 
-Full feature gate:
+    ./scripts/gate.sh precommit
+    ./scripts/gate.sh fast
+    ./scripts/gate.sh forensics
+    ./scripts/gate.sh full
 
-```bash
-cargo check \
-    --all-targets \
-    --all-features
+The repository-owned pre-commit hook checks staged whitespace and, for code
+changes, all-target/all-feature Cargo check plus strict Clippy. Rust changes
+also require an Approved plan already committed in HEAD.
 
-cargo clippy \
-    --all-targets \
-    --all-features \
-    -- -D warnings
+Bacon is optional. The committed `bacon.toml` provides check, clippy, test,
+forensics, and precommit jobs.
 
-cargo test \
-    --all-targets \
-    --all-features
-
-cargo test \
-    --doc \
-    --all-features
-
-cargo doc \
-    --no-deps \
-    --all-features
-```
-
-MSRV gate:
-
-```bash
-CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback \
-cargo +1.85.0 check \
-    --all-targets \
-    --all-features
-```
+Git's `--no-verify` remains a human emergency escape hatch; coding agents are
+instructed not to use it.
 
 ## Examples
 

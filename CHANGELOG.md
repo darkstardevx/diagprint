@@ -8,6 +8,19 @@ The project follows Semantic Versioning.
 
 ### Added
 
+- Added root `AGENTS.md` architecture and development guidance.
+- Added `.plans/` plan-first workflow and `scripts/plan`.
+- Added repository-owned `.githooks/pre-commit` and `scripts/install-hooks`.
+- Rust implementation commits now require an Approved plan already committed in
+  the prior repository state.
+- Added adaptive pre-commit validation with staged whitespace checks,
+  all-target/all-feature Cargo check, strict Clippy, and staged-vs-working-tree
+  safety for Rust/Cargo changes.
+- Added `scripts/gate.sh` with precommit, fast, forensics, and full modes.
+- Added optional `bacon.toml` continuous-development jobs.
+- Excluded development-only plans, hooks, Bacon config, and scripts from the
+  published core crate package.
+
 - Added `diagprint.forensics.git-provenance/v1`, an immutable sidecar binding
   exact diagnostic-history run digests to Git commit, tree, and parent object
   identities without changing history-v2 persistence semantics.

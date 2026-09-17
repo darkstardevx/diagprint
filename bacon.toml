@@ -1,0 +1,20 @@
+#:schema https://dystroy.org/bacon/.bacon.schema.json
+
+default_job = "check"
+
+env.CARGO_TERM_COLOR = "always"
+
+[jobs.check]
+command = ["cargo", "check", "--workspace", "--all-targets", "--all-features", "--locked"]
+
+[jobs.clippy]
+command = ["cargo", "clippy", "--workspace", "--all-targets", "--all-features", "--locked", "--", "-D", "warnings"]
+
+[jobs.test]
+command = ["cargo", "test", "--workspace", "--all-targets", "--all-features", "--locked"]
+
+[jobs.forensics]
+command = ["./scripts/gate.sh", "forensics"]
+
+[jobs.precommit]
+command = ["./scripts/gate.sh", "precommit"]

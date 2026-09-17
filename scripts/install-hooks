@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+chmod +x .githooks/pre-commit scripts/gate.sh scripts/install-hooks scripts/plan
+git config --local core.hooksPath .githooks
+[[ "$(git config --local --get core.hooksPath)" == ".githooks" ]]
+echo "Installed core.hooksPath=.githooks"

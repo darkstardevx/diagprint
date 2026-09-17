@@ -15,8 +15,13 @@ categories = ["command-line-utilities", "development-tools::debugging"]
 exclude = [
     "/.diagprint/",
     "/.github/",
+    "/.githooks/",
+    "/.plans/",
     "/.gitignore",
+    "/AGENTS.md",
+    "/bacon.toml",
     "/reports/",
+    "/scripts/",
 ]
 
 [features]

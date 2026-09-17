@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 1
+cd "$root"
+
+active=".plans/ACTIVE"
+template=".plans/TEMPLATE.plan.md"
+
+read_active() {
+  [[ -f "$active" ]] || { echo "error: no active plan" >&2; exit 1; }
+  local plan
+  plan="$(tr -d '\r\n' < "$active")"
+  [[ "$plan" == .plans/*.plan.md ]] || { echo "error: invalid active plan" >&2; exit 1; }
+  [[ -f "$plan" ]] || { echo "error: missing active plan: $plan" >&2; exit 1; }
+  printf '%s\n' "$plan"
+}
+
+case "${1:-status}" in
+  new)
+    slug="${2:-}"
+    [[ "$slug" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "error: invalid slug" >&2; exit 2; }
+    [[ ! -e "$active" ]] || { echo "error: active plan already exists" >&2; exit 1; }
+    path=".plans/${slug}.plan.md"
+    [[ ! -e "$path" ]] || { echo "error: plan exists: $path" >&2; exit 1; }
+    cp "$template" "$path"
+    printf '%s\n' "$path" > "$active"
+    echo "Created $path"
+    ;;
+  approve)
+    plan="$(read_active)"
+    grep -qx 'Status: Draft' "$plan" || { echo "error: plan is not Draft" >&2; exit 1; }
+    sed -i 's/^Status: Draft$/Status: Approved/' "$plan"
+    echo "Approved $plan"
+    ;;
+  close)
+    plan="$(read_active)"
+    grep -qx 'Status: Approved' "$plan" || { echo "error: plan is not Approved" >&2; exit 1; }
+    sed -i 's/^Status: Approved$/Status: Complete/' "$plan"
+    rm "$active"
+    echo "Completed $plan"
+    ;;
+  status)
+    if [[ ! -f "$active" ]]; then
+      echo "No active implementation plan."
+      exit 0
+    fi
+    plan="$(read_active)"
+    echo "Active plan: $plan"
+    grep '^Status:' "$plan"
+    ;;
+  *)
+    echo "Usage: ./scripts/plan {new <slug>|approve|close|status}" >&2
+    exit 2
+    ;;
+esac
