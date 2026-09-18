@@ -1,7 +1,13 @@
-use crate::{CapturedSnafuError, SnafuBridge, SnafuDiagnostic, SnafuErrorMapper};
+use crate::{
+    CapturedSnafuError, SnafuBridge, SnafuDiagnostic, SnafuErrorMapper, WhateverDiagnosticContext,
+    whatever::{whatever_local_with_source, whatever_with_source},
+};
 use diagprint::Reporter;
 use futures_util::stream::{Stream, TryStream, TryStreamExt as FuturesTryStreamExt};
-use snafu::{ErrorCompat, IntoError, futures::TryStreamExt as SnafuTryStreamExt};
+use snafu::{
+    ErrorCompat, FromString, IntoError, Whatever, WhateverLocal,
+    futures::TryStreamExt as SnafuTryStreamExt,
+};
 use std::error::Error as StdError;
 
 /// diagprint capture and SNAFU context combinators for `TryStream` values.
@@ -119,6 +125,66 @@ pub trait DiagprintTryStreamExt: TryStream + Sized {
         FuturesTryStreamExt::map_err(contextual, move |error| {
             let capture = SnafuBridge::new().convert_with_mapper(&error, reporter, mapper);
             CapturedSnafuError::new(error, capture)
+        })
+    }
+
+    fn diagprint_whatever_context<'a>(
+        self,
+        reporter: &'a Reporter,
+        context: WhateverDiagnosticContext,
+    ) -> impl Stream<Item = Result<Self::Ok, CapturedSnafuError<Whatever>>> + 'a
+    where
+        Self: 'a,
+        Self::Error: Into<<Whatever as FromString>::Source>,
+    {
+        FuturesTryStreamExt::map_err(self, move |error| {
+            whatever_with_source(error, reporter, context.clone())
+        })
+    }
+
+    fn diagprint_with_whatever_context<'a, F>(
+        self,
+        reporter: &'a Reporter,
+        mut context: F,
+    ) -> impl Stream<Item = Result<Self::Ok, CapturedSnafuError<Whatever>>> + 'a
+    where
+        Self: 'a,
+        Self::Error: Into<<Whatever as FromString>::Source>,
+        F: FnMut(&mut Self::Error) -> WhateverDiagnosticContext + 'a,
+    {
+        FuturesTryStreamExt::map_err(self, move |mut error| {
+            let context = context(&mut error);
+            whatever_with_source(error, reporter, context)
+        })
+    }
+
+    fn diagprint_whatever_local_context<'a>(
+        self,
+        reporter: &'a Reporter,
+        context: WhateverDiagnosticContext,
+    ) -> impl Stream<Item = Result<Self::Ok, CapturedSnafuError<WhateverLocal>>> + 'a
+    where
+        Self: 'a,
+        Self::Error: Into<<WhateverLocal as FromString>::Source>,
+    {
+        FuturesTryStreamExt::map_err(self, move |error| {
+            whatever_local_with_source(error, reporter, context.clone())
+        })
+    }
+
+    fn diagprint_with_whatever_local_context<'a, F>(
+        self,
+        reporter: &'a Reporter,
+        mut context: F,
+    ) -> impl Stream<Item = Result<Self::Ok, CapturedSnafuError<WhateverLocal>>> + 'a
+    where
+        Self: 'a,
+        Self::Error: Into<<WhateverLocal as FromString>::Source>,
+        F: FnMut(&mut Self::Error) -> WhateverDiagnosticContext + 'a,
+    {
+        FuturesTryStreamExt::map_err(self, move |mut error| {
+            let context = context(&mut error);
+            whatever_local_with_source(error, reporter, context)
         })
     }
 }

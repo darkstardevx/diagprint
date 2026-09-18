@@ -6,6 +6,19 @@ The project follows Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+
+- Added the in-development `diagprint-snafu` ecosystem adapter with typed
+  `SnafuDiagnostic` metadata, `CapturedSnafuError<E>`, Result/Option and
+  opt-in Future/Stream extension traits, closure-friendly foreign error
+  mapping, privacy/backtrace capture profiles, strong Whatever/WhateverLocal
+  context, deterministic adapter statistics, and M4 `SourceChain`
+  relationships.
+- SNAFU backtrace text is omitted by default; unmapped source text can be
+  explicitly redacted without changing root identity or source-chain topology.
+- Strong Whatever helpers require explicit `SnafuIdentity`/`SnafuCode`; message
+  text is never promoted into lifecycle identity.
+
 ## [0.8.0] - 2026-09-17
 
 v0.8.0 completes the first Diagnostic Forensics, Ecosystem Bridges, and

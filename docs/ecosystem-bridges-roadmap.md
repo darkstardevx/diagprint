@@ -82,7 +82,7 @@ M4    Causal Diagnostic Graph                   COMPLETE
 E1A0  diagprint-bridge interoperability SDK     COMPLETE
 E1    error-stack                               COMPLETE
 M5    Replay / regression / remediation evidence COMPLETE
-E2    SNAFU                                     NEXT / uses bridge SDK
+E2    SNAFU                                     IN PROGRESS / E2C
 E3    eyre / color-eyre                         uses bridge SDK
 E4    tracing-error                             uses bridge SDK
 ```
@@ -150,12 +150,33 @@ dependency and feature surface at implementation time.
 
 ## Bridge E2 — SNAFU
 
-Goals:
+E2A and E2B are complete; E2C is the final implementation checkpoint before
+the separate plan-closure commit.
 
-- preserve typed context and source relationships;
-- map useful stable context into diagprint diagnostics;
-- feed structured relationship evidence into the M4 graph;
-- avoid relying on rendered error strings when typed/source APIs suffice.
+Delivered architecture:
+
+- application-owned `SnafuDiagnostic` identity/code metadata;
+- typed `CapturedSnafuError<E>` preservation even on instrumentation failure;
+- Result and Option extension traits;
+- opt-in lazy Future and Stream extension traits with no Tokio dependency;
+- stable source-chain relationships through `diagprint-bridge`;
+- closure-friendly foreign error mapping;
+- explicit text/backtrace capture profiles;
+- strong Whatever and WhateverLocal context whose message is separate from
+  diagprint identity;
+- deterministic adapter statistics for mapping, redaction, backtrace, and
+  Whatever capture.
+
+Evidence remains conservative:
+
+```text
+source relationship = ContributesTo / SourceChain
+```
+
+This is structural evidence, not a root-cause claim.
+
+E2 remains in progress until E2C receives exact green CI and the Approved plan
+is closed in a separate documentation/planning commit.
 
 ## Bridge E3 — eyre / color-eyre
 

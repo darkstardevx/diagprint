@@ -1,7 +1,13 @@
-use crate::{CapturedSnafuError, SnafuBridge, SnafuDiagnostic, SnafuErrorMapper};
+use crate::{
+    CapturedSnafuError, SnafuBridge, SnafuDiagnostic, SnafuErrorMapper, WhateverDiagnosticContext,
+    whatever::{whatever_local_with_source, whatever_with_source},
+};
 use diagprint::Reporter;
 use futures_util::future::{TryFuture, TryFutureExt as FuturesTryFutureExt};
-use snafu::{ErrorCompat, IntoError, futures::TryFutureExt as SnafuTryFutureExt};
+use snafu::{
+    ErrorCompat, FromString, IntoError, Whatever, WhateverLocal,
+    futures::TryFutureExt as SnafuTryFutureExt,
+};
 use std::{error::Error as StdError, future::Future};
 
 /// diagprint capture and SNAFU context combinators for `TryFuture` values.
@@ -118,6 +124,66 @@ pub trait DiagprintTryFutureExt: TryFuture + Sized {
         FuturesTryFutureExt::map_err(contextual, move |error| {
             let capture = SnafuBridge::new().convert_with_mapper(&error, reporter, mapper);
             CapturedSnafuError::new(error, capture)
+        })
+    }
+
+    fn diagprint_whatever_context<'a>(
+        self,
+        reporter: &'a Reporter,
+        context: WhateverDiagnosticContext,
+    ) -> impl Future<Output = Result<Self::Ok, CapturedSnafuError<Whatever>>> + 'a
+    where
+        Self: 'a,
+        Self::Error: Into<<Whatever as FromString>::Source>,
+    {
+        FuturesTryFutureExt::map_err(self, move |error| {
+            whatever_with_source(error, reporter, context)
+        })
+    }
+
+    fn diagprint_with_whatever_context<'a, F>(
+        self,
+        reporter: &'a Reporter,
+        context: F,
+    ) -> impl Future<Output = Result<Self::Ok, CapturedSnafuError<Whatever>>> + 'a
+    where
+        Self: 'a,
+        Self::Error: Into<<Whatever as FromString>::Source>,
+        F: FnOnce(&mut Self::Error) -> WhateverDiagnosticContext + 'a,
+    {
+        FuturesTryFutureExt::map_err(self, move |mut error| {
+            let context = context(&mut error);
+            whatever_with_source(error, reporter, context)
+        })
+    }
+
+    fn diagprint_whatever_local_context<'a>(
+        self,
+        reporter: &'a Reporter,
+        context: WhateverDiagnosticContext,
+    ) -> impl Future<Output = Result<Self::Ok, CapturedSnafuError<WhateverLocal>>> + 'a
+    where
+        Self: 'a,
+        Self::Error: Into<<WhateverLocal as FromString>::Source>,
+    {
+        FuturesTryFutureExt::map_err(self, move |error| {
+            whatever_local_with_source(error, reporter, context)
+        })
+    }
+
+    fn diagprint_with_whatever_local_context<'a, F>(
+        self,
+        reporter: &'a Reporter,
+        context: F,
+    ) -> impl Future<Output = Result<Self::Ok, CapturedSnafuError<WhateverLocal>>> + 'a
+    where
+        Self: 'a,
+        Self::Error: Into<<WhateverLocal as FromString>::Source>,
+        F: FnOnce(&mut Self::Error) -> WhateverDiagnosticContext + 'a,
+    {
+        FuturesTryFutureExt::map_err(self, move |mut error| {
+            let context = context(&mut error);
+            whatever_local_with_source(error, reporter, context)
         })
     }
 }

@@ -150,6 +150,11 @@ impl WhateverDiagnosticContext {
     pub fn into_metadata(self) -> SnafuDiagnosticMetadata {
         self.metadata
     }
+
+    pub(crate) fn into_parts(self) -> (String, SnafuDiagnosticMetadata) {
+        let message = self.metadata.message().to_owned();
+        (message, self.metadata)
+    }
 }
 
 fn valid_symbol(value: &str, max_len: usize) -> bool {
