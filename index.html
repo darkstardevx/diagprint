@@ -189,6 +189,11 @@ EPISODES
     <a class="dl-btn" href="https://github.com/darkstardevx/diagprint/releases" target="_blank" rel="noopener">releases</a>
     <a class="dl-btn" href="https://github.com/darkstardevx/diagprint" target="_blank" rel="noopener">source</a>
   </div>
+  <p class="section-head">cli <span class="n">// curl -fsSL .../install.sh | sh</span></p>
+  <div class="dl-row">
+    <img src="https://img.shields.io/crates/d/diagprint.svg?label=crates.io%20downloads" alt="crates.io downloads" style="height:1.4rem;">
+    <span class="dl-btn" id="cli-dl-badge">CLI downloads: &hellip;</span>
+  </div>
 
   <p class="section-head">repo <span class="n" id="stat-line">syncing&hellip;</span></p>
 
@@ -211,26 +216,47 @@ EPISODES
     return Math.floor(mo / 12) + "y ago";
   }
   var line = document.getElementById("stat-line");
+  var cliBadge = document.getElementById("cli-dl-badge");
 
+  // diagprint tags two separate release families on this repo: bare
+  // "vX.Y.Z" (crates.io publishes) and "cli-vX.Y.Z" (prebuilt CLI
+  // binaries) -- kept apart deliberately so a binary release doesn't
+  // imply a new crate version shipped. GitHub's own /releases/latest
+  // returns whichever published most recently regardless of which
+  // family it's from, so it can't be trusted to mean "the crate
+  // version" -- fetch the full list and pick each family explicitly.
   Promise.all([
     fetch("https://api.github.com/repos/darkstardevx/diagprint", { headers: { Accept: "application/vnd.github+json" } }).then(function (r) { return r.ok ? r.json() : null; }),
-    fetch("https://api.github.com/repos/darkstardevx/diagprint/releases/latest", { headers: { Accept: "application/vnd.github+json" } }).then(function (r) { return r.ok ? r.json() : null; })
+    fetch("https://api.github.com/repos/darkstardevx/diagprint/releases", { headers: { Accept: "application/vnd.github+json" } }).then(function (r) { return r.ok ? r.json() : []; })
   ]).then(function (res) {
-    var repo = res[0], rel = res[1];
+    var repo = res[0], releases = res[1] || [];
+    var crateRel = releases.find(function (r) { return /^v\d/.test(r.tag_name); });
+    var cliRel = releases.find(function (r) { return /^cli-v/.test(r.tag_name); });
+
     var parts = [];
     if (repo) {
       parts.push(repo.stargazers_count + " star" + (repo.stargazers_count === 1 ? "" : "s"));
       parts.push(repo.open_issues_count + " open issue" + (repo.open_issues_count === 1 ? "" : "s"));
       parts.push("pushed " + relTime(repo.pushed_at));
     }
-    if (rel) {
-      document.getElementById("badge-version").textContent = rel.tag_name.replace(/^v/, "");
-      document.getElementById("diff-version").textContent = rel.tag_name.replace(/^v/, "");
-      parts.unshift("latest " + rel.tag_name);
+    if (crateRel) {
+      document.getElementById("badge-version").textContent = crateRel.tag_name.replace(/^v/, "");
+      document.getElementById("diff-version").textContent = crateRel.tag_name.replace(/^v/, "");
+      parts.unshift("latest " + crateRel.tag_name);
     }
     line.textContent = parts.length ? "// " + parts.join(" · ") : "// could not reach api.github.com";
+
+    if (cliRel) {
+      var dl = (cliRel.assets || [])
+        .filter(function (a) { return !a.name.endsWith(".sha256"); })
+        .reduce(function (sum, a) { return sum + (a.download_count || 0); }, 0);
+      cliBadge.textContent = "CLI downloads: " + dl.toLocaleString() + " (" + cliRel.tag_name + ")";
+    } else {
+      cliBadge.textContent = "CLI downloads: —";
+    }
   }).catch(function () {
     line.textContent = "// could not reach api.github.com";
+    cliBadge.textContent = "CLI downloads: —";
   });
 })();
 </script>
