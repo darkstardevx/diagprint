@@ -143,6 +143,7 @@ optional = true
 [dependencies.cybercore]
 version = "0.4.0"
 git = "https://github.com/darkstardevx/cybercore.git"
+rev = "c9d55dd517291ea8e99336b7197bc05b7f170fbc"
 optional = true
 
 [dependencies.reqwest]

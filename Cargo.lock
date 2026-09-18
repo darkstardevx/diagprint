@@ -320,7 +320,7 @@ dependencies = [
 [[package]]
 name = "cybercore"
 version = "0.4.0"
-source = "git+https://github.com/darkstardevx/cybercore.git#ec5631cdfd88da12efc4b92f2a01123be4451732"
+source = "git+https://github.com/darkstardevx/cybercore.git?rev=c9d55dd517291ea8e99336b7197bc05b7f170fbc#c9d55dd517291ea8e99336b7197bc05b7f170fbc"
 dependencies = [
  "serde",
  "serde_json",
