@@ -202,6 +202,7 @@ jobs:
             diagprint
             diagprint-bridge
             diagprint-error-stack
+            diagprint-snafu
             diagprint-derive
             diagprint-lsp
             diagprint-async

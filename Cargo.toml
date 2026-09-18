@@ -214,6 +214,7 @@ members = [
     "crates/diagprint-bridge",
     "crates/diagprint-derive",
     "crates/diagprint-error-stack",
+    "crates/diagprint-snafu",
     "crates/diagprint-lsp",
     "crates/diagprint-async",
     "crates/diagprint-otel",
