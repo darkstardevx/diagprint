@@ -7,7 +7,7 @@ use diagprint_bridge::{
     BridgeBuildStats, BridgeDiagnosticMetadata, BridgeError, BridgeOutput, BridgeOutputBuilder,
 };
 use snafu::ErrorCompat;
-use std::{collections::BTreeSet, error::Error as StdError, fmt};
+use std::{error::Error as StdError, fmt};
 
 const PRODUCER: &str = "snafu";
 const MAX_SOURCE_DEPTH: usize = 128;
@@ -146,8 +146,9 @@ impl SnafuBridge {
         let mut builder = BridgeOutputBuilder::new(reporter, PRODUCER)?;
         let root_error: &(dyn StdError + 'static) = error;
         let root_node = builder.push(root_metadata.into_bridge_metadata()?)?;
-        let mut seen = BTreeSet::new();
-        seen.insert(error_address(root_error));
+        let root_data = root_error as *const (dyn StdError + 'static) as *const ();
+        let mut seen: Vec<*const (dyn StdError + 'static)> =
+            vec![root_error as *const (dyn StdError + 'static)];
         let mut wrapper = root_node;
         let mut current = root_error.source();
         let mut depth = 1usize;
@@ -160,9 +161,20 @@ impl SnafuBridge {
                     limit: MAX_SOURCE_DEPTH,
                 });
             }
-            if !seen.insert(error_address(source)) {
+            let source_pointer = source as *const (dyn StdError + 'static);
+            let source_data = source_pointer as *const ();
+
+            let revisits_root = source_data == root_data && source.is::<E>();
+
+            let revisits_seen_pointer = seen
+                .iter()
+                .any(|seen_pointer| std::ptr::eq(*seen_pointer, source_pointer));
+
+            if revisits_root || revisits_seen_pointer {
                 return Err(SnafuBridgeError::SourceCycle { depth });
             }
+
+            seen.push(source_pointer);
             let metadata = match mapper.map(SnafuErrorView {
                 error: source,
                 depth,
@@ -196,10 +208,6 @@ impl SnafuBridge {
             unmapped_nodes,
         })
     }
-}
-fn error_address(error: &(dyn StdError + 'static)) -> usize {
-    let p = error as *const dyn StdError;
-    p as *const () as usize
 }
 
 #[derive(Debug)]

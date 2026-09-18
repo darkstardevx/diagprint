@@ -2,12 +2,28 @@
 
 Structured SNAFU interoperability for diagprint.
 
-E2A provides the synchronous foundation:
+The adapter keeps custom `#[derive(Snafu)]` errors typed while attaching
+diagprint reports and M4 source-chain relationships.
 
-- typed `#[derive(Snafu)]` application errors through `SnafuDiagnostic`;
-- stable `SnafuIdentity` and `SnafuCode` classification;
-- `CapturedSnafuError<E>` preserving the original concrete error;
-- `Result` and `Option` extension traits;
-- source-chain conversion into diagprint's M4 relationship graph.
+Default synchronous surface:
 
-Future/Stream extensions and advanced Whatever/privacy/backtrace policy are intentionally deferred to later E2 checkpoints.
+- `SnafuDiagnostic` and `SnafuDiagnosticMetadata`;
+- `CapturedSnafuError<E>`;
+- `DiagprintResultExt`;
+- `DiagprintOptionExt`.
+
+Opt-in `futures` surface:
+
+- `DiagprintTryFutureExt`;
+- `DiagprintTryStreamExt`;
+- lazy direct capture;
+- lazy SNAFU context construction;
+- independent capture of each stream error;
+- no Tokio dependency and no mandatory future/stream boxing.
+
+SNAFU's implicit location data in Future/Stream context combinators follows
+poll/combinator execution rather than necessarily identifying the call site
+where the combinator was created. diagprint identity does not depend on this
+location.
+
+Advanced Whatever/privacy/backtrace policy remains deferred to E2C.

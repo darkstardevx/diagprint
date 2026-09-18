@@ -15,8 +15,14 @@ pub use bridge::{
 };
 pub use captured::CapturedSnafuError;
 pub use ext::{DiagprintOptionExt, DiagprintResultExt};
+
+#[cfg(feature = "futures")]
+pub use ext::{DiagprintTryFutureExt, DiagprintTryStreamExt};
 pub use metadata::{SnafuCode, SnafuDiagnosticMetadata, SnafuIdentity, WhateverDiagnosticContext};
 
 pub mod prelude {
     pub use crate::{DiagprintOptionExt as _, DiagprintResultExt as _};
+
+    #[cfg(feature = "futures")]
+    pub use crate::{DiagprintTryFutureExt as _, DiagprintTryStreamExt as _};
 }
