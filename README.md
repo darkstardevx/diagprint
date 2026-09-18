@@ -1,6 +1,7 @@
 # diagprint
 
 [![CI](https://github.com/darkstardevx/diagprint/actions/workflows/ci.yml/badge.svg)](https://github.com/darkstardevx/diagprint/actions/workflows/ci.yml)
+[![Release](https://github.com/darkstardevx/diagprint/actions/workflows/release.yml/badge.svg)](https://github.com/darkstardevx/diagprint/actions/workflows/release.yml)
 [![Crates.io](https://img.shields.io/crates/v/diagprint.svg)](https://crates.io/crates/diagprint)
 [![Docs.rs](https://docs.rs/diagprint/badge.svg)](https://docs.rs/diagprint)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
@@ -301,6 +302,20 @@ diagprint = "0.8"
 ```
 
 `diagprint` v0.8 uses Rust 2024 and supports Rust **1.85 and newer**.
+
+### CLI
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/darkstardevx/diagprint/main/install.sh | sh
+```
+
+Downloads the latest release for your platform (Linux or macOS,
+x86_64 or aarch64), verifies its SHA-256 checksum, and installs
+`diagprint` to `~/.local/bin`. Or, since it's also on crates.io:
+
+```bash
+cargo install diagprint
+```
 
 ## Optional Features
 
